@@ -73,6 +73,10 @@ func (a App) IsValidEntity(data []byte) (bool, error) {
 	return err == nil, err
 }
 
+func (a App) Seed(ctx context.Context, data []byte) error {
+	return nil
+}
+
 func unmarshalEntity(data []byte) (string, string, error) {
 	var d struct {
 		Id   *string `json:"id,omitempty"`
