@@ -37,6 +37,22 @@ func (c Config) ConnStr() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", c.user, c.password, c.host, c.port, c.dbname, c.sslmode)
 }
 
+type ConditionFunc func(map[string]any) map[string]any
+
+func EntityType(t string) ConditionFunc {
+	return func(q map[string]any) map[string]any {
+		q["entity_type"] = t
+		return q
+	}
+}
+
+func EntityID(id string) ConditionFunc {
+	return func(q map[string]any) map[string]any {
+		q["entity_id"] = id
+		return q
+	}
+}
+
 type Db struct {
 	pool *pgxpool.Pool
 }
@@ -128,31 +144,17 @@ func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
 	return err
 }
 
-func (db Db) QueryEntities(ctx context.Context, conditions map[string]any) ([]byte, error) {
+func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
 	if len(conditions) == 0 {
 		return nil, fmt.Errorf("query contains no conditions")
 	}
 
 	log := logging.GetFromContext(ctx)
 
-	query := `select entity_id, entity_type, entity_location from entities where`
+	query := `select entity_id, entity_type, entity_location from entities `
+	queryParams := newQueryParams(conditions)
 
-	i := 1
-	for k := range conditions {
-		query = fmt.Sprintf("%s %s=$%d and", query, k, i)
-		i++
-	}
-	query, _ = strings.CutSuffix(query, "and")
-
-	values := func(m map[string]any) []any {
-		val := make([]any, 0)
-		for _, v := range m {
-			val = append(val, v)
-		}
-		return val
-	}
-
-	rows, err := db.pool.Query(ctx, query, values(conditions)...)
+	rows, err := db.pool.Query(ctx, query + queryParams.Where, queryParams.Values...)
 	if err != nil {
 		log.Error("could not query entities", "err", err.Error())
 		return nil, err
@@ -186,6 +188,45 @@ func (db Db) QueryEntities(ctx context.Context, conditions map[string]any) ([]by
 	}
 
 	return b, nil
+}
+
+func newQueryParams(conditions []ConditionFunc) queryParams {
+	m := make(map[string]any)
+	for _, f := range conditions {
+		m = f(m)
+	}
+
+	where := `where`
+
+	i := 1
+	for k := range m {
+		where = fmt.Sprintf("%s %s=$%d and", where, k, i)
+		i++
+	}
+	where, _ = strings.CutSuffix(where, "and")
+	k,v := keyValues(m)
+
+	return queryParams{
+		Where:  where,
+		Keys:   k,
+		Values: v,
+	}
+}
+
+type queryParams struct {
+	Where  string
+	Keys   []string
+	Values []any
+}
+
+func keyValues[M ~map[K]V, K comparable, V any](m M) ([]K, []V) {
+	r := make([]V, 0, len(m))
+	t := make([]K, 0, len(m))
+	for k, v := range m {
+		r = append(r, v)
+		t = append(t, k)
+	}
+	return t, r
 }
 
 func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error) {

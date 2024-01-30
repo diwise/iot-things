@@ -51,7 +51,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Post("/{id}/related", addRelatedEntityHandler(log, app))
 
 				r.Post("/seed", seedHandler(log, app))
-			})			
+			})
 		})
 	})
 
@@ -135,14 +135,7 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		conditions := getConditions(r.URL.Query())
-		if len(conditions) == 0 {
-			logger.Error("no conditions provided")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		b, err := app.QueryEntities(ctx, conditions...)
+		b, err := app.QueryEntities(ctx, r.URL.Query())
 		if err != nil {
 			logger.Error("could not query entities", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -209,17 +202,6 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 	}
 }
 
-func getConditions(q map[string][]string) []application.ConditionFunc {
-	conditions := make([]application.ConditionFunc, 0)
-
-	entity_type := q["type"]
-	if len(entity_type) > 0 {
-		conditions = append(conditions, application.EntityType(entity_type[0]))
-	}
-
-	return conditions
-}
-
 func retrieveEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -284,7 +266,7 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		
+
 		ctx, span := tracer.Start(r.Context(), "seed")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
@@ -305,7 +287,7 @@ func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 
 		b, err := io.ReadAll(file)
 		if err != nil {
-			logger.Error("unable to read file", "err", err.Error())
+			logger.Error("unable to read file upload", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
