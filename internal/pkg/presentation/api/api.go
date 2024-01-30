@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/diwise/iot-entities/internal/pkg/application"
@@ -39,7 +40,6 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 
 	r.Route("/api/v0", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.AllowContentType("application/json", "application/geo+json"))
 			r.Use(authenticator)
 
 			r.Route("/entities", func(r chi.Router) {
@@ -48,8 +48,9 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Post("/", createEntityHandler(log, app))
 				r.Get("/{id}/related", retrieveRelatedEntitiesHandler(log, app))
 				r.Post("/{id}/related", addRelatedEntityHandler(log, app))
-			})
 
+				r.Post("/seed", seedHandler(log, app))
+			})
 		})
 	})
 
@@ -84,6 +85,7 @@ func retrieveRelatedEntitiesHandler(log *slog.Logger, app application.App) http.
 
 	}
 }
+
 func addRelatedEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -132,14 +134,7 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		conditions := getConditions(r.URL.Query())
-		if len(conditions) == 0 {
-			logger.Error("no conditions provided")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		b, err := app.QueryEntities(ctx, conditions...)
+		b, err := app.QueryEntities(ctx, r.URL.Query())
 		if err != nil {
 			logger.Error("could not query entities", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -206,17 +201,6 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 	}
 }
 
-func getConditions(q map[string][]string) []application.ConditionFunc {
-	conditions := make([]application.ConditionFunc, 0)
-
-	entity_type := q["type"]
-	if len(entity_type) > 0 {
-		conditions = append(conditions, application.EntityType(entity_type[0]))
-	}
-
-	return conditions
-}
-
 func retrieveEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -276,6 +260,51 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 
 		w.WriteHeader(http.StatusCreated)
 	}
+}
+
+func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
+		ctx, span := tracer.Start(r.Context(), "seed")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		if !isMultipartFormData(r) {
+			logger.Error("could not read body", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		file, _, err := r.FormFile("fileupload")
+		if err != nil {
+			logger.Error("unable to read file", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		b, err := io.ReadAll(file)
+		if err != nil {
+			logger.Error("unable to read file upload", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		err = app.Seed(ctx, b)
+		if err != nil {
+			logger.Error("could not seed", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func isMultipartFormData(r *http.Request) bool {
+	contentType := r.Header.Get("Content-Type")
+	return strings.Contains(contentType, "multipart/form-data")
 }
 
 type FeatureCollection struct {

@@ -89,11 +89,11 @@ func TestQueryEntities(t *testing.T) {
 	err = db.CreateEntity(ctx, wasteContainer)
 	is.NoErr(err)
 
-	q := make(map[string]any)
-	q["entity_id"] = id
-	q["entity_type"] = "WasteContainer"
+	q := make([]ConditionFunc, 0)
+	q = append(q, EntityID(id))
+	q = append(q, EntityType("WasteContainer"))
 
-	e, err := db.QueryEntities(ctx, q)
+	e, err := db.QueryEntities(ctx, q...)
 	is.NoErr(err)
 
 	entities := make([]entity, 0)
@@ -157,8 +157,8 @@ func createEnity(args ...string) []byte {
 	}
 
 	e := entity{
-		Id:    args[0],
-		Type_: type_,
+		Id:   args[0],
+		Type: type_,
 		Location: location{
 			Latitude:  17.2,
 			Longitude: 64.3,
