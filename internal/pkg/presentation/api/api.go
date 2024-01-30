@@ -40,7 +40,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 
 	r.Route("/api/v0", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.AllowContentType("application/json", "application/geo+json", "text/csv"))
+			//r.Use(middleware.AllowContentType("application/json", "application/geo+json", "text/csv"))
 			r.Use(authenticator)
 
 			r.Route("/entities", func(r chi.Router) {

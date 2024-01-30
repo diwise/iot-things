@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/diwise/iot-entities/internal/pkg/storage"
@@ -37,7 +38,6 @@ func (a App) AddRelatedEntity(ctx context.Context, entityId string, data []byte)
 }
 
 func (a App) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
-
 	return a.storage.RetrieveRelatedEntities(ctx, entityId)
 }
 
@@ -85,62 +85,74 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			continue
 		}
 
-		rec := struct {
-			Entity struct {
-				Id       string
-				Type     string
-				Location []string
+		e := entity{
+			Id:       record[0],
+			Type:     record[1],
+			Location: parseLocation(record[2]),
+		}
+
+		d := entity{
+			Id:       record[3],
+			Type:     "Device",
+			Location: parseLocation(record[4]),
+		}
+
+		be, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+
+		err = a.CreateOrUpdate(ctx, be)
+		if err != nil {
+			return err
+		}
+
+		if d.Id != "" {
+			bd, err := json.Marshal(d)
+			if err != nil {
+				return err
 			}
-			Device struct {
-				Id       string
-				Type     string
-				Location []string
+
+			err = a.AddRelatedEntity(ctx, e.Id, bd)
+			if err != nil {
+				return err
 			}
-		}{
-			Entity: struct {
-				Id       string
-				Type     string
-				Location []string
-			}{
-				Id:       record[0],
-				Type:     record[1],
-				Location: strings.Split(record[2], ","),
-			},
-			Device: struct {
-				Id       string
-				Type     string
-				Location []string
-			}{
-				Id:       record[3],
-				Type:     "Device",
-				Location: strings.Split(record[4], ","),
-			},
 		}
-
-		e, err := json.Marshal(rec.Entity)
-		if err != nil {
-			return err
-		}
-
-		d, err := json.Marshal(rec.Device)
-		if err != nil {
-			return err
-		}
-
-		err = a.CreateOrUpdate(ctx, e)
-		if err != nil {
-			return err
-		}
-
-		err = a.AddRelatedEntity(ctx, rec.Entity.Id, d)
-		if err != nil {
-			return err
-		}
-
 		rowNum++
 	}
 
 	return nil
+}
+
+type entity struct {
+	Id       string   `json:"id"`
+	Type     string   `json:"type"`
+	Location location `json:"location"`
+}
+
+type location struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+func parseLocation(s string) location {
+	parts := strings.Split(s, ",")
+	if len(parts) != 2 {
+		return location{}
+	}
+
+	parse := func(s string) float64 {
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0.0
+		}
+		return f
+	}
+
+	return location{
+		Latitude:  parse(parts[0]),
+		Longitude: parse(parts[1]),
+	}
 }
 
 func (a App) CreateOrUpdate(ctx context.Context, data []byte) error {

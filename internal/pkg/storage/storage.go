@@ -3,12 +3,15 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -73,19 +76,26 @@ func New(ctx context.Context, cfg Config) (Db, error) {
 	}, nil
 }
 
+func logPgxError(log *slog.Logger, err error) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		log.Error("pgx error", "code", pgErr.Code, "message", pgErr.Message)
+	}
+}
+
 func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) error {
 	log := logging.GetFromContext(ctx)
-
-	_, _, err := db.RetrieveEntity(ctx, entityId)
-	if err != nil {
-		log.Error("could not retrieve current entity", "err", err.Error())
-		return fmt.Errorf("coult not retrieve current entity")
-	}
 
 	related, err := unmarshalEntity(v)
 	if err != nil {
 		log.Error("could not unmarshal entity", "err", err.Error())
 		return fmt.Errorf("could not unmarshal entity")
+	}
+
+	_, _, err = db.RetrieveEntity(ctx, entityId)
+	if err != nil {
+		log.Error("could not retrieve current entity", "err", err.Error())
+		return fmt.Errorf("coult not retrieve current entity")
 	}
 
 	_, _, err = db.RetrieveEntity(ctx, related.Id)
@@ -104,6 +114,16 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 			   );`
 
 	_, err = db.pool.Exec(ctx, insert, entityId, related.Id)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" { // duplicate key value violates unique constraint
+				return nil
+			}
+		}
+
+		logPgxError(log, err)
+	}
 
 	return err
 }
@@ -121,7 +141,10 @@ func (db Db) CreateEntity(ctx context.Context, v []byte) error {
 	lon := entity.Location.Longitude
 
 	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data) VALUES ($1, $2, point($3,$4), $5);`
-	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type_, lon, lat, string(v))
+	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type, lon, lat, string(v))
+	if err != nil {
+		logPgxError(log, err)
+	}
 
 	return err
 }
@@ -140,6 +163,9 @@ func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
 
 	update := `UPDATE entities SET entity_location=point($1,$2), entity_data=$3, modified_on=$4 WHERE entity_id=$5;`
 	_, err = db.pool.Exec(ctx, update, lon, lat, string(v), time.Now(), entity.Id)
+	if err != nil {
+		logPgxError(log, err)
+	}
 
 	return err
 }
@@ -154,9 +180,9 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 	query := `select entity_id, entity_type, entity_location from entities `
 	queryParams := newQueryParams(conditions)
 
-	rows, err := db.pool.Query(ctx, query + queryParams.Where, queryParams.Values...)
+	rows, err := db.pool.Query(ctx, query+queryParams.Where, queryParams.Values...)
 	if err != nil {
-		log.Error("could not query entities", "err", err.Error())
+		logPgxError(log, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -169,12 +195,13 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 
 		err := rows.Scan(&entity_id, &entity_type, &entity_location)
 		if err != nil {
+			logPgxError(log, err)
 			return nil, err
 		}
 
 		entities = append(entities, entity{
-			Id:    entity_id,
-			Type_: entity_type,
+			Id:   entity_id,
+			Type: entity_type,
 			Location: location{
 				Latitude:  entity_location.P.Y,
 				Longitude: entity_location.P.X,
@@ -204,7 +231,7 @@ func newQueryParams(conditions []ConditionFunc) queryParams {
 		i++
 	}
 	where, _ = strings.CutSuffix(where, "and")
-	k,v := keyValues(m)
+	k, v := keyValues(m)
 
 	return queryParams{
 		Where:  where,
@@ -234,6 +261,8 @@ func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, strin
 		return nil, "", fmt.Errorf("no id for entity provided")
 	}
 
+	log := logging.GetFromContext(ctx)
+
 	query := `select entity_data, entity_type from entities where entity_id=$1`
 	row := db.pool.QueryRow(ctx, query, entityId)
 
@@ -242,6 +271,7 @@ func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, strin
 
 	err := row.Scan(&entityData, &entityType)
 	if err != nil {
+		logPgxError(log, err)
 		return nil, "", err
 	}
 
@@ -252,6 +282,8 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 	if entityId == "" {
 		return nil, fmt.Errorf("no id for entity provided")
 	}
+
+	log := logging.GetFromContext(ctx)
 
 	query := `
 		select entity_id, entity_type, entity_location from entities where node_id IN 
@@ -272,6 +304,7 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 
 	rows, err := db.pool.Query(ctx, query, entityId)
 	if err != nil {
+		logPgxError(log, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -284,12 +317,13 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 
 		err := rows.Scan(&entity_id, &entity_type, &entity_location)
 		if err != nil {
+			logPgxError(log, err)
 			return nil, err
 		}
 
 		entities = append(entities, entity{
-			Id:    entity_id,
-			Type_: entity_type,
+			Id:   entity_id,
+			Type: entity_type,
 			Location: location{
 				Latitude:  entity_location.P.Y,
 				Longitude: entity_location.P.X,
@@ -325,8 +359,8 @@ func unmarshalEntity(v []byte) (entity, error) {
 	}
 
 	entity := entity{
-		Id:    *e.Id,
-		Type_: *e.Type_,
+		Id:   *e.Id,
+		Type: *e.Type_,
 	}
 
 	if e.Location != nil {
@@ -338,7 +372,7 @@ func unmarshalEntity(v []byte) (entity, error) {
 
 type entity struct {
 	Id       string   `json:"id"`
-	Type_    string   `json:"type"`
+	Type     string   `json:"type"`
 	Location location `json:"location"`
 }
 
@@ -348,6 +382,8 @@ type location struct {
 }
 
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
+	log := logging.GetFromContext(ctx)
+
 	ddl := `
 		CREATE TABLE IF NOT EXISTS entities (		
 			node_id     	BIGSERIAL,	
@@ -371,17 +407,20 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
+		logPgxError(log, err)
 		return err
 	}
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
+		logPgxError(log, err)
 		tx.Rollback(ctx)
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
+		logPgxError(log, err)
 		return err
 	}
 

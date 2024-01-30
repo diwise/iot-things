@@ -157,8 +157,8 @@ func createEnity(args ...string) []byte {
 	}
 
 	e := entity{
-		Id:    args[0],
-		Type_: type_,
+		Id:   args[0],
+		Type: type_,
 		Location: location{
 			Latitude:  17.2,
 			Longitude: 64.3,
