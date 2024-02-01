@@ -76,10 +76,12 @@ func New(ctx context.Context, cfg Config) (Db, error) {
 	}, nil
 }
 
-func logPgxError(log *slog.Logger, err error) {
+func logError(log *slog.Logger, err error) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		log.Error("pgx error", "code", pgErr.Code, "message", pgErr.Message)
+	} else {
+		log.Error("pgx error", "err", err.Error())
 	}
 }
 
@@ -122,7 +124,7 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 			}
 		}
 
-		logPgxError(log, err)
+		logError(log, err)
 	}
 
 	return err
@@ -143,7 +145,7 @@ func (db Db) CreateEntity(ctx context.Context, v []byte) error {
 	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data) VALUES ($1, $2, point($3,$4), $5);`
 	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type, lon, lat, string(v))
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 	}
 
 	return err
@@ -164,7 +166,7 @@ func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
 	update := `UPDATE entities SET entity_location=point($1,$2), entity_data=$3, modified_on=$4 WHERE entity_id=$5;`
 	_, err = db.pool.Exec(ctx, update, lon, lat, string(v), time.Now(), entity.Id)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 	}
 
 	return err
@@ -182,7 +184,7 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 
 	rows, err := db.pool.Query(ctx, query+queryParams.Where, queryParams.Values...)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -195,7 +197,7 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 
 		err := rows.Scan(&entity_id, &entity_type, &entity_location)
 		if err != nil {
-			logPgxError(log, err)
+			logError(log, err)
 			return nil, err
 		}
 
@@ -271,7 +273,7 @@ func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, strin
 
 	err := row.Scan(&entityData, &entityType)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		return nil, "", err
 	}
 
@@ -304,7 +306,7 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 
 	rows, err := db.pool.Query(ctx, query, entityId)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -317,7 +319,7 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 
 		err := rows.Scan(&entity_id, &entity_type, &entity_location)
 		if err != nil {
-			logPgxError(log, err)
+			logError(log, err)
 			return nil, err
 		}
 
@@ -407,20 +409,20 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		return err
 	}
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		tx.Rollback(ctx)
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logPgxError(log, err)
+		logError(log, err)
 		return err
 	}
 
