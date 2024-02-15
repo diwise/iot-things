@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,14 +45,19 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", queryEntitiesHandler(log, app))
-				r.Get("/{id}", retrieveEntityHandler(log, app))
 				r.Post("/", createEntityHandler(log, app))
+				r.Get("/{id}", retrieveEntityHandler(log, app))
+				r.Put("/{id}", updateEntityHandler(log, app))
 				r.Get("/{id}/related", retrieveRelatedEntitiesHandler(log, app))
 				r.Post("/{id}/related", addRelatedEntityHandler(log, app))
 
 				r.Post("/seed", seedHandler(log, app))
 			})
 		})
+	})
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 	})
 
 	return r, nil
@@ -252,6 +258,11 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 		}
 
 		err = app.CreateEntity(ctx, b)
+		if err != nil && errors.Is(err, application.ErrAlreadyExists) {
+			logger.Info("entity already exists")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		if err != nil {
 			logger.Error("could not create entity", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -259,6 +270,39 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func updateEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		ctx, span := tracer.Start(r.Context(), "update-entity")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error("could not read body", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if valid, err := app.IsValidEntity(b); !valid {
+			logger.Error("invalid entity", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = app.UpdateEntity(ctx, b)
+		if err != nil {
+			logger.Error("could not create entity", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

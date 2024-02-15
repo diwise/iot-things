@@ -56,6 +56,8 @@ func EntityID(id string) ConditionFunc {
 	}
 }
 
+var ErrAlreadyExists error = fmt.Errorf("entity already exists")
+
 type Db struct {
 	pool *pgxpool.Pool
 }
@@ -117,17 +119,24 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 
 	_, err = db.pool.Exec(ctx, insert, entityId, related.Id)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23505" { // duplicate key value violates unique constraint
-				return nil
-			}
+		if IsDuplicateKeyErr(err) {
+			return nil
 		}
 
 		logError(log, err)
 	}
 
 	return err
+}
+
+func IsDuplicateKeyErr(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if pgErr.Code == "23505" { // duplicate key value violates unique constraint
+			return true
+		}
+	}
+	return false
 }
 
 func (db Db) CreateEntity(ctx context.Context, v []byte) error {
@@ -142,10 +151,13 @@ func (db Db) CreateEntity(ctx context.Context, v []byte) error {
 	lat := entity.Location.Latitude
 	lon := entity.Location.Longitude
 
-	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data) VALUES ($1, $2, point($3,$4), $5);`
-	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type, lon, lat, string(v))
+	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data, tenant) VALUES ($1, $2, point($3,$4), $5, $6);`
+	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type, lon, lat, string(v), entity.Tenant)
 	if err != nil {
-		logError(log, err)
+		logError(log, err) //23505
+		if IsDuplicateKeyErr(err) {
+			return ErrAlreadyExists
+		}
 	}
 
 	return err
@@ -376,6 +388,7 @@ type entity struct {
 	Id       string   `json:"id"`
 	Type     string   `json:"type"`
 	Location location `json:"location"`
+	Tenant   string   `json:"tenant"`
 }
 
 type location struct {
@@ -392,7 +405,8 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			entity_id		TEXT 	NOT NULL UNIQUE,			
 			entity_type 	TEXT 	NOT NULL,
 			entity_location POINT 	NULL,
-			entity_data 	JSONB	NULL,		
+			entity_data 	JSONB	NULL,	
+			tenant			TEXT 	NOT NULL,	
 			created_on 		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
 			modified_on		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,	
 			PRIMARY KEY (node_id)

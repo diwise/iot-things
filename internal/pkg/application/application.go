@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -60,8 +61,14 @@ func (a App) RetrieveEntity(ctx context.Context, entityId string) ([]byte, error
 	return b, err
 }
 
+var ErrAlreadyExists error = fmt.Errorf("entity already exists")
+
 func (a App) CreateEntity(ctx context.Context, data []byte) error {
-	return a.storage.CreateEntity(ctx, data)
+	err := a.storage.CreateEntity(ctx, data)
+	if errors.Is(err, storage.ErrAlreadyExists) {
+		return ErrAlreadyExists
+	}
+	return err
 }
 
 func (a App) IsValidEntity(data []byte) (bool, error) {
@@ -102,7 +109,7 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			return err
 		}
 
-		err = a.CreateOrUpdate(ctx, be)
+		err = a.CreateOrUpdateEntity(ctx, be)
 		if err != nil {
 			return err
 		}
@@ -155,7 +162,7 @@ func parseLocation(s string) location {
 	}
 }
 
-func (a App) CreateOrUpdate(ctx context.Context, data []byte) error {
+func (a App) CreateOrUpdateEntity(ctx context.Context, data []byte) error {
 	id, _, err := unmarshalEntity(data)
 	if err != nil {
 		return err
@@ -164,6 +171,20 @@ func (a App) CreateOrUpdate(ctx context.Context, data []byte) error {
 	_, _, err = a.storage.RetrieveEntity(ctx, id)
 	if err != nil {
 		return a.storage.CreateEntity(ctx, data)
+	}
+
+	return a.storage.UpdateEntity(ctx, data)
+}
+
+func (a App) UpdateEntity(ctx context.Context, data []byte) error {
+	id, _, err := unmarshalEntity(data)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = a.storage.RetrieveEntity(ctx, id)
+	if err != nil {
+		return err
 	}
 
 	return a.storage.UpdateEntity(ctx, data)

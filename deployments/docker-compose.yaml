@@ -27,5 +27,37 @@ services:
     ports:
       - "5432:5432"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:20.0
+    command:
+      - 'start-dev'
+      - '--hostname=iam.diwise.local'
+      - '--hostname-port=8444'
+      - '--proxy=edge'
+      - '--health-enabled=true'
+      - '-Dkeycloak.migration.action=import'
+      - '-Dkeycloak.migration.provider=singleFile'
+      - '-Dkeycloak.migration.strategy=OVERWRITE_EXISTING'
+      - '-Dkeycloak.migration.file=/application-realm.json'
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - '9080:8080'
+    volumes:
+      - ./configs/keycloak/realm.json:/application-realm.json
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:8080/health/ready"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 10s
+
 volumes:
   pgadmin-data: ~
