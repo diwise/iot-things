@@ -96,12 +96,14 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
+			Tenant:   record[5],
 		}
 
 		d := entity{
 			Id:       record[3],
 			Type:     "Device",
 			Location: parseLocation(record[4]),
+			Tenant:   record[5],
 		}
 
 		be, err := json.Marshal(e)
@@ -135,6 +137,7 @@ type entity struct {
 	Id       string   `json:"id"`
 	Type     string   `json:"type"`
 	Location location `json:"location"`
+	Tenant   string   `json:"tenant"`
 }
 
 type location struct {

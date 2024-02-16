@@ -122,6 +122,11 @@ func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Read
 	}, nil
 }
 
+func WithAllowedTenants(ctx context.Context, tenants []string) context.Context {
+	ctx = context.WithValue(ctx, allowedTenantsCtxKey, tenants)
+	return ctx
+}
+
 // GetAllowedTenantsFromContext extracts the names of allowed tenants, if any, from the provided context
 func GetAllowedTenantsFromContext(ctx context.Context) []string {
 	tenants, ok := ctx.Value(allowedTenantsCtxKey).([]string)

@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
-	"strings"
 	"time"
 
+	"github.com/diwise/iot-entities/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,6 +58,18 @@ func EntityID(id string) ConditionFunc {
 
 var ErrAlreadyExists error = fmt.Errorf("entity already exists")
 
+type entity struct {
+	Id       string   `json:"id"`
+	Type     string   `json:"type"`
+	Location location `json:"location"`
+	Tenant   string   `json:"tenant"`
+}
+
+type location struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
 type Db struct {
 	pool *pgxpool.Pool
 }
@@ -78,13 +90,166 @@ func New(ctx context.Context, cfg Config) (Db, error) {
 	}, nil
 }
 
-func logError(log *slog.Logger, err error) {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		log.Error("pgx error", "code", pgErr.Code, "message", pgErr.Message)
-	} else {
-		log.Error("pgx error", "err", err.Error())
+func (db Db) CreateEntity(ctx context.Context, v []byte) error {
+	log := logging.GetFromContext(ctx)
+
+	entity, err := unmarshalEntity(v)
+	if err != nil {
+		log.Error("could not unmarshal entity", "err", err.Error())
+		return fmt.Errorf("could not unmarshal entity")
 	}
+
+	lat := entity.Location.Latitude
+	lon := entity.Location.Longitude
+
+	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data, tenant) VALUES (@entity_id, @entity_type, point(@lon,@lat), @entity_data, @tenant);`
+	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
+		"entity_id":   entity.Id,
+		"entity_type": entity.Type,
+		"lon":         lon,
+		"lat":         lat,
+		"entity_data": string(v),
+		"tenant":      entity.Tenant,
+	})
+	if err != nil {
+		if isDuplicateKeyErr(err) {
+			return ErrAlreadyExists
+		}
+
+		log.Error("could not execute statement", "err", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
+	log := logging.GetFromContext(ctx)
+
+	entity, err := unmarshalEntity(v)
+	if err != nil {
+		log.Error("could not unmarshal entity", "err", err.Error())
+		return fmt.Errorf("could not unmarshal entity")
+	}
+
+	lat := entity.Location.Latitude
+	lon := entity.Location.Longitude
+
+	update := `UPDATE entities SET entity_location=point(@lon,@lat), entity_data=@entity_data, modified_on=@modified_on WHERE entity_id=@entity_id;`
+	_, err = db.pool.Exec(ctx, update, pgx.NamedArgs{
+		"entity_id":   entity.Id,
+		"modified_on": time.Now(),
+		"entity_data": string(v),
+		"lon":         lat,
+		"lat":         lon,
+	})
+	if err != nil {
+		log.Error("could not execute statement", "err", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func where(args map[string]any) string {
+	w := ""
+
+	for k, v := range args {
+		if w != "" {
+			w += "and "
+		}
+
+		if _, ok := v.(string); ok {
+			w += fmt.Sprintf("%s=@%s ", k, k)
+		}
+
+		if _, ok := v.([]string); ok {
+			w += fmt.Sprintf("%s=any(@%s) ", k, k)
+		}
+	}
+
+	if w == "" {
+		return w
+	}
+
+	return "where " + w
+}
+
+func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
+	if len(conditions) == 0 {
+		return nil, fmt.Errorf("query contains no conditions")
+	}
+
+	log := logging.GetFromContext(ctx)
+
+	args := pgx.NamedArgs{
+		"tenant": getAllowedTenantsFromContext(ctx),
+	}
+
+	for _, condition := range conditions {
+		condition(args)
+	}
+
+	query := "select entity_id, entity_type, entity_location, tenant from entities " + where(args)
+
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return nil, err
+	}
+
+	entities := make([]entity, 0)
+	var entity_id, entity_type, tenant string
+	var entity_location pgtype.Point
+
+	_, err = pgx.ForEachRow(rows, []any{&entity_id, &entity_type, &entity_location, &tenant}, func() error {
+		entities = append(entities, entity{
+			Id:   entity_id,
+			Type: entity_type,
+			Location: location{
+				Latitude:  entity_location.P.Y,
+				Longitude: entity_location.P.X,
+			},
+			Tenant: tenant,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	b, err := json.Marshal(entities)
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
+}
+
+func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error) {
+	if entityId == "" {
+		return nil, "", fmt.Errorf("no id for entity provided")
+	}
+
+	log := logging.GetFromContext(ctx)
+
+	args := pgx.NamedArgs{
+		"entity_id": entityId,
+		"tenant":    getAllowedTenantsFromContext(ctx),
+	}
+
+	var entityData json.RawMessage
+	var entityType string
+
+	query := "select entity_data, entity_type from entities " + where(args)
+
+	err := db.pool.QueryRow(ctx, query, args).Scan(&entityData, &entityType)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return nil, "", err
+	}
+
+	return entityData, entityType, nil
 }
 
 func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) error {
@@ -113,183 +278,23 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 
 	insert := `INSERT INTO entity_relations(parent, child)
 			   VALUES (
-				(SELECT node_id FROM entities WHERE entity_id=$1 LIMIT 1), 
-				(SELECT node_id FROM entities WHERE entity_id=$2 LIMIT 1)
+				(SELECT node_id FROM entities WHERE entity_id=@entity_id LIMIT 1), 
+				(SELECT node_id FROM entities WHERE entity_id=@related_id LIMIT 1)
 			   );`
 
-	_, err = db.pool.Exec(ctx, insert, entityId, related.Id)
+	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
+		"entity_id":  entityId,
+		"related_id": related.Id,
+	})
 	if err != nil {
-		if IsDuplicateKeyErr(err) {
+		if isDuplicateKeyErr(err) {
 			return nil
 		}
 
-		logError(log, err)
+		log.Error("could not execute statement", "err", err.Error())
 	}
 
 	return err
-}
-
-func IsDuplicateKeyErr(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		if pgErr.Code == "23505" { // duplicate key value violates unique constraint
-			return true
-		}
-	}
-	return false
-}
-
-func (db Db) CreateEntity(ctx context.Context, v []byte) error {
-	log := logging.GetFromContext(ctx)
-
-	entity, err := unmarshalEntity(v)
-	if err != nil {
-		log.Error("could not unmarshal entity", "err", err.Error())
-		return fmt.Errorf("could not unmarshal entity")
-	}
-
-	lat := entity.Location.Latitude
-	lon := entity.Location.Longitude
-
-	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data, tenant) VALUES ($1, $2, point($3,$4), $5, $6);`
-	_, err = db.pool.Exec(ctx, insert, entity.Id, entity.Type, lon, lat, string(v), entity.Tenant)
-	if err != nil {
-		logError(log, err) //23505
-		if IsDuplicateKeyErr(err) {
-			return ErrAlreadyExists
-		}
-	}
-
-	return err
-}
-
-func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
-	log := logging.GetFromContext(ctx)
-
-	entity, err := unmarshalEntity(v)
-	if err != nil {
-		log.Error("could not unmarshal entity", "err", err.Error())
-		return fmt.Errorf("could not unmarshal entity")
-	}
-
-	lat := entity.Location.Latitude
-	lon := entity.Location.Longitude
-
-	update := `UPDATE entities SET entity_location=point($1,$2), entity_data=$3, modified_on=$4 WHERE entity_id=$5;`
-	_, err = db.pool.Exec(ctx, update, lon, lat, string(v), time.Now(), entity.Id)
-	if err != nil {
-		logError(log, err)
-	}
-
-	return err
-}
-
-func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
-	if len(conditions) == 0 {
-		return nil, fmt.Errorf("query contains no conditions")
-	}
-
-	log := logging.GetFromContext(ctx)
-
-	query := `select entity_id, entity_type, entity_location from entities `
-	queryParams := newQueryParams(conditions)
-
-	rows, err := db.pool.Query(ctx, query+queryParams.Where, queryParams.Values...)
-	if err != nil {
-		logError(log, err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	entities := make([]entity, 0)
-
-	for rows.Next() {
-		var entity_id, entity_type string
-		var entity_location pgtype.Point
-
-		err := rows.Scan(&entity_id, &entity_type, &entity_location)
-		if err != nil {
-			logError(log, err)
-			return nil, err
-		}
-
-		entities = append(entities, entity{
-			Id:   entity_id,
-			Type: entity_type,
-			Location: location{
-				Latitude:  entity_location.P.Y,
-				Longitude: entity_location.P.X,
-			},
-		})
-	}
-
-	b, err := json.Marshal(entities)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
-}
-
-func newQueryParams(conditions []ConditionFunc) queryParams {
-	m := make(map[string]any)
-	for _, f := range conditions {
-		m = f(m)
-	}
-
-	where := `where`
-
-	i := 1
-	for k := range m {
-		where = fmt.Sprintf("%s %s=$%d and", where, k, i)
-		i++
-	}
-	where, _ = strings.CutSuffix(where, "and")
-	k, v := keyValues(m)
-
-	return queryParams{
-		Where:  where,
-		Keys:   k,
-		Values: v,
-	}
-}
-
-type queryParams struct {
-	Where  string
-	Keys   []string
-	Values []any
-}
-
-func keyValues[M ~map[K]V, K comparable, V any](m M) ([]K, []V) {
-	r := make([]V, 0, len(m))
-	t := make([]K, 0, len(m))
-	for k, v := range m {
-		r = append(r, v)
-		t = append(t, k)
-	}
-	return t, r
-}
-
-func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error) {
-	if entityId == "" {
-		return nil, "", fmt.Errorf("no id for entity provided")
-	}
-
-	log := logging.GetFromContext(ctx)
-
-	query := `select entity_data, entity_type from entities where entity_id=$1`
-	row := db.pool.QueryRow(ctx, query, entityId)
-
-	var entityData json.RawMessage
-	var entityType string
-
-	err := row.Scan(&entityData, &entityType)
-	if err != nil {
-		logError(log, err)
-		return nil, "", err
-	}
-
-	return entityData, entityType, nil
 }
 
 func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
@@ -300,7 +305,7 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 	log := logging.GetFromContext(ctx)
 
 	query := `
-		select entity_id, entity_type, entity_location from entities where node_id IN 
+		select entity_id, entity_type, entity_location, tenant from entities where node_id IN 
 		(
 			select distinct node_id from 
 			(
@@ -318,23 +323,15 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 
 	rows, err := db.pool.Query(ctx, query, entityId)
 	if err != nil {
-		logError(log, err)
+		log.Error("could not execute query", "err", err.Error())
 		return nil, err
 	}
-	defer rows.Close()
 
 	entities := make([]entity, 0)
+	var entity_id, entity_type, tenant string
+	var entity_location pgtype.Point
 
-	for rows.Next() {
-		var entity_id, entity_type string
-		var entity_location pgtype.Point
-
-		err := rows.Scan(&entity_id, &entity_type, &entity_location)
-		if err != nil {
-			logError(log, err)
-			return nil, err
-		}
-
+	_, err = pgx.ForEachRow(rows, []any{&entity_id, &entity_type, &entity_location, &tenant}, func() error {
 		entities = append(entities, entity{
 			Id:   entity_id,
 			Type: entity_type,
@@ -342,7 +339,12 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 				Latitude:  entity_location.P.Y,
 				Longitude: entity_location.P.X,
 			},
+			Tenant: tenant,
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	b, err := json.Marshal(entities)
@@ -353,11 +355,27 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 	return b, nil
 }
 
+func getAllowedTenantsFromContext(ctx context.Context) []string {
+	allowed := auth.GetAllowedTenantsFromContext(ctx)
+	return allowed
+}
+
+func isDuplicateKeyErr(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if pgErr.Code == "23505" { // duplicate key value violates unique constraint
+			return true
+		}
+	}
+	return false
+}
+
 func unmarshalEntity(v []byte) (entity, error) {
 	e := struct {
 		Id       *string   `json:"id,omitempty"`
 		Type_    *string   `json:"type,omitempty"`
 		Location *location `json:"location,omitempty"`
+		Tenant   *string   `json:"tenant,omitempty"`
 	}{}
 
 	err := json.Unmarshal(v, &e)
@@ -371,10 +389,14 @@ func unmarshalEntity(v []byte) (entity, error) {
 	if e.Type_ == nil {
 		return entity{}, fmt.Errorf("data contains no entity type")
 	}
+	if e.Tenant == nil {
+		return entity{}, fmt.Errorf("data contains no tenant information")
+	}
 
 	entity := entity{
-		Id:   *e.Id,
-		Type: *e.Type_,
+		Id:     *e.Id,
+		Type:   *e.Type_,
+		Tenant: *e.Tenant,
 	}
 
 	if e.Location != nil {
@@ -384,16 +406,14 @@ func unmarshalEntity(v []byte) (entity, error) {
 	return entity, nil
 }
 
-type entity struct {
-	Id       string   `json:"id"`
-	Type     string   `json:"type"`
-	Location location `json:"location"`
-	Tenant   string   `json:"tenant"`
-}
-
-type location struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
+func keyValues[M ~map[K]V, K comparable, V any](m M) ([]K, []V) {
+	r := make([]V, 0, len(m))
+	t := make([]K, 0, len(m))
+	for k, v := range m {
+		r = append(r, v)
+		t = append(t, k)
+	}
+	return t, r
 }
 
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
@@ -423,20 +443,20 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		logError(log, err)
+		log.Error("could not begin transaction", "err", err.Error())
 		return err
 	}
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
-		logError(log, err)
+		log.Error("could not execute ddl statement", "err", err.Error())
 		tx.Rollback(ctx)
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		logError(log, err)
+		log.Error("could not commit transaction", "err", err.Error())
 		return err
 	}
 

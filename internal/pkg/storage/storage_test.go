@@ -3,15 +3,19 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/diwise/iot-entities/internal/pkg/presentation/auth"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/matryer/is"
 )
 
 func new() (Db, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx = auth.WithAllowedTenants(ctx, []string{"default"})
 
 	db, err := New(ctx, Config{
 		host:     "localhost",
@@ -150,6 +154,19 @@ func TestAddRelatedEntity(t *testing.T) {
 	is.NoErr(err)
 }
 
+func TestWhere(t *testing.T) {
+	is := is.New(t)
+
+	args := pgx.NamedArgs{}
+	EntityID("id")(args)
+	EntityType("type")(args)
+
+	w := where(args)
+
+	is.Equal("where entity_id=@entity_id and entity_type=@entity_type", strings.Trim(w, " "))
+	is.Equal("type", args["entity_type"])
+}
+
 func createEnity(args ...string) []byte {
 	type_ := "WasteContainer"
 	if len(args) > 1 {
@@ -163,6 +180,7 @@ func createEnity(args ...string) []byte {
 			Latitude:  17.2,
 			Longitude: 64.3,
 		},
+		Tenant: "default",
 	}
 
 	b, _ := json.Marshal(e)
