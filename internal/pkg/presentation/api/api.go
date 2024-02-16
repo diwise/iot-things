@@ -297,7 +297,7 @@ func updateEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 
 		err = app.UpdateEntity(ctx, b)
 		if err != nil {
-			logger.Error("could not create entity", "err", err.Error())
+			logger.Error("could not update entity", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
