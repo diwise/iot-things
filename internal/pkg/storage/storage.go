@@ -415,16 +415,6 @@ func unmarshalEntity(v []byte) (entity, error) {
 	return entity, nil
 }
 
-func keyValues[M ~map[K]V, K comparable, V any](m M) ([]K, []V) {
-	r := make([]V, 0, len(m))
-	t := make([]K, 0, len(m))
-	for k, v := range m {
-		r = append(r, v)
-		t = append(t, k)
-	}
-	return t, r
-}
-
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 	log := logging.GetFromContext(ctx)
 
