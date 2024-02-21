@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/diwise/iot-entities/internal/pkg/presentation/auth"
 	"github.com/diwise/iot-entities/internal/pkg/storage"
 )
 
@@ -111,9 +112,13 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			return err
 		}
 
-		err = a.CreateOrUpdateEntity(ctx, be)
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{d.Tenant})
+
+		err = a.CreateOrUpdateEntity(ctxWithTenant, be)
 		if err != nil {
-			return err
+			if !errors.Is(err, ErrAlreadyExists) {
+				return err
+			}
 		}
 
 		if d.Id != "" {
@@ -122,7 +127,7 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 				return err
 			}
 
-			err = a.AddRelatedEntity(ctx, e.Id, bd)
+			err = a.AddRelatedEntity(ctxWithTenant, e.Id, bd)
 			if err != nil {
 				return err
 			}
@@ -173,7 +178,13 @@ func (a App) CreateOrUpdateEntity(ctx context.Context, data []byte) error {
 
 	_, _, err = a.storage.RetrieveEntity(ctx, id)
 	if err != nil {
-		return a.storage.CreateEntity(ctx, data)
+		err := a.storage.CreateEntity(ctx, data)
+		if err != nil {
+			if errors.Is(err, storage.ErrAlreadyExists) {
+				return ErrAlreadyExists
+			}
+			return err
+		}
 	}
 
 	return a.storage.UpdateEntity(ctx, data)

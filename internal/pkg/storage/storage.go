@@ -57,6 +57,7 @@ func EntityID(id string) ConditionFunc {
 }
 
 var ErrAlreadyExists error = fmt.Errorf("entity already exists")
+var ErrNotExist error = fmt.Errorf("entity does not exists")
 
 type entity struct {
 	Id       string   `json:"id"`
@@ -245,6 +246,10 @@ func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, strin
 
 	err := db.pool.QueryRow(ctx, query, args).Scan(&entityData, &entityType)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Debug("entity does not exists", "entity_id", entityId, "err", err.Error())
+			return nil, "", ErrNotExist
+		}
 		log.Error("could not execute query", "err", err.Error())
 		return nil, "", err
 	}
@@ -269,9 +274,13 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 
 	_, _, err = db.RetrieveEntity(ctx, related.Id)
 	if err != nil {
-		log.Debug("related entity does not exist, will create it", "id", related.Id)
-		err := db.CreateEntity(ctx, v)
-		if err != nil {
+		if errors.Is(err, ErrNotExist) {
+			log.Debug("related entity does not exist, will create it", "id", related.Id)
+			err := db.CreateEntity(ctx, v)
+			if err != nil {
+				return err
+			}
+		} else {
 			return err
 		}
 	}
