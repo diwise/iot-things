@@ -301,9 +301,10 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 		}
 
 		log.Error("could not execute statement", "err", err.Error())
+		return err
 	}
 
-	return err
+	return nil
 }
 
 func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
