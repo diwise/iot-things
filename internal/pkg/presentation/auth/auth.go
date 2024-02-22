@@ -21,7 +21,7 @@ type tenantsContextKey struct {
 
 var allowedTenantsCtxKey = &tenantsContextKey{"allowed-tenants"}
 
-var tracer = otel.Tracer("iot-entities/authz")
+var tracer = otel.Tracer("iot-things/authz")
 
 func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Reader) (func(http.Handler) http.Handler, error) {
 	module, err := io.ReadAll(policies)
@@ -120,6 +120,11 @@ func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Read
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+func WithAllowedTenants(ctx context.Context, tenants []string) context.Context {
+	ctx = context.WithValue(ctx, allowedTenantsCtxKey, tenants)
+	return ctx
 }
 
 // GetAllowedTenantsFromContext extracts the names of allowed tenants, if any, from the provided context

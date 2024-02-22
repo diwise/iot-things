@@ -3,15 +3,19 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/matryer/is"
 )
 
 func new() (Db, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx = auth.WithAllowedTenants(ctx, []string{"default"})
 
 	db, err := New(ctx, Config{
 		host:     "localhost",
@@ -35,7 +39,7 @@ func TestConnectAndInitialize(t *testing.T) {
 	}
 }
 
-func TestCreateEntity(t *testing.T) {
+func TestCreateThing(t *testing.T) {
 	is := is.New(t)
 
 	db, ctx, cancel, err := new()
@@ -48,11 +52,11 @@ func TestCreateEntity(t *testing.T) {
 
 	id := getUuid()
 
-	err = db.CreateEntity(ctx, createEnity(id, "WasteContainer"))
+	err = db.CreateThing(ctx, createEnity(id, "WasteContainer"))
 	is.NoErr(err)
 }
 
-func TestUpdateEntity(t *testing.T) {
+func TestUpdateThing(t *testing.T) {
 	is := is.New(t)
 
 	db, ctx, cancel, err := new()
@@ -65,14 +69,14 @@ func TestUpdateEntity(t *testing.T) {
 
 	id := getUuid()
 
-	err = db.CreateEntity(ctx, createEnity(id, "WasteContainer"))
+	err = db.CreateThing(ctx, createEnity(id, "WasteContainer"))
 	is.NoErr(err)
 
-	err = db.UpdateEntity(ctx, createEnity(id, "WasteContainer"))
+	err = db.UpdateThing(ctx, createEnity(id, "WasteContainer"))
 	is.NoErr(err)
 }
 
-func TestQueryEntities(t *testing.T) {
+func TestQueryThings(t *testing.T) {
 	is := is.New(t)
 
 	db, ctx, cancel, err := new()
@@ -86,26 +90,26 @@ func TestQueryEntities(t *testing.T) {
 	id := getUuid()
 	wasteContainer := createEnity(id, "WasteContainer")
 
-	err = db.CreateEntity(ctx, wasteContainer)
+	err = db.CreateThing(ctx, wasteContainer)
 	is.NoErr(err)
 
 	q := make([]ConditionFunc, 0)
-	q = append(q, EntityID(id))
-	q = append(q, EntityType("WasteContainer"))
+	q = append(q, WithThingID(id))
+	q = append(q, WithThingType("WasteContainer"))
 
-	e, err := db.QueryEntities(ctx, q...)
+	e, err := db.QueryThings(ctx, q...)
 	is.NoErr(err)
 
-	entities := make([]entity, 0)
-	json.Unmarshal(e, &entities)
+	things := make([]thing, 0)
+	json.Unmarshal(e, &things)
 
-	is.Equal(1, len(entities))
-	is.Equal(id, entities[0].Id)
-	is.Equal(float64(17.2), entities[0].Location.Latitude)
-	is.Equal(float64(64.3), entities[0].Location.Longitude)
+	is.Equal(1, len(things))
+	is.Equal(id, things[0].Id)
+	is.Equal(float64(17.2), things[0].Location.Latitude)
+	is.Equal(float64(64.3), things[0].Location.Longitude)
 }
 
-func TestRetrieveEntity(t *testing.T) {
+func TestRetrieveThing(t *testing.T) {
 	is := is.New(t)
 
 	db, ctx, cancel, err := new()
@@ -118,18 +122,18 @@ func TestRetrieveEntity(t *testing.T) {
 
 	id := getUuid()
 
-	err = db.CreateEntity(ctx, createEnity(id, "WasteContainer"))
+	err = db.CreateThing(ctx, createEnity(id, "WasteContainer"))
 	is.NoErr(err)
 
-	b, et, err := db.RetrieveEntity(ctx, id)
+	b, et, err := db.RetrieveThing(ctx, id)
 	is.NoErr(err)
 	is.Equal("WasteContainer", et)
-	var e entity
+	var e thing
 	json.Unmarshal(b, &e)
 	is.Equal(id, e.Id)
 }
 
-func TestAddRelatedEntity(t *testing.T) {
+func TestAddRelatedThing(t *testing.T) {
 	is := is.New(t)
 	db, ctx, cancel, err := new()
 	defer cancel()
@@ -141,13 +145,26 @@ func TestAddRelatedEntity(t *testing.T) {
 
 	wasteContainerId := getUuid()
 
-	err = db.CreateEntity(ctx, createEnity(wasteContainerId, "WasteContainer"))
+	err = db.CreateThing(ctx, createEnity(wasteContainerId, "WasteContainer"))
 	is.NoErr(err)
 
 	deviceId := getUuid()
 
-	err = db.AddRelatedEntity(ctx, wasteContainerId, createEnity(deviceId, "Device"))
+	err = db.AddRelatedThing(ctx, wasteContainerId, createEnity(deviceId, "Device"))
 	is.NoErr(err)
+}
+
+func TestWhere(t *testing.T) {
+	is := is.New(t)
+
+	args := pgx.NamedArgs{}
+	WithThingID("id")(args)
+	WithThingType("type")(args)
+
+	w := where(args)
+
+	is.Equal("where thing_id=@thing_id and thing_type=@thing_type", strings.Trim(w, " "))
+	is.Equal("type", args["thing_type"])
 }
 
 func createEnity(args ...string) []byte {
@@ -156,13 +173,14 @@ func createEnity(args ...string) []byte {
 		type_ = args[1]
 	}
 
-	e := entity{
+	e := thing{
 		Id:   args[0],
 		Type: type_,
 		Location: location{
 			Latitude:  17.2,
 			Longitude: 64.3,
 		},
+		Tenant: "default",
 	}
 
 	b, _ := json.Marshal(e)

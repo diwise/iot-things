@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
-	"github.com/diwise/iot-entities/internal/pkg/storage"
+	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
+	"github.com/diwise/iot-things/internal/pkg/storage"
 )
 
 type App struct {
@@ -19,12 +21,12 @@ type App struct {
 
 //go:generate moq -rm -out storage_mock.go . Storage
 type Storage interface {
-	CreateEntity(ctx context.Context, v []byte) error
-	UpdateEntity(ctx context.Context, v []byte) error
-	AddRelatedEntity(ctx context.Context, entityId string, v []byte) error
-	QueryEntities(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
-	RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error)
-	RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error)
+	CreateThing(ctx context.Context, v []byte) error
+	UpdateThing(ctx context.Context, v []byte) error
+	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
+	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
+	RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error)
+	RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error)
 }
 
 func New(s Storage) App {
@@ -33,39 +35,45 @@ func New(s Storage) App {
 	}
 }
 
-func (a App) AddRelatedEntity(ctx context.Context, entityId string, data []byte) error {
-	return a.storage.AddRelatedEntity(ctx, entityId, data)
+func (a App) AddRelatedThing(ctx context.Context, thingId string, data []byte) error {
+	return a.storage.AddRelatedThing(ctx, thingId, data)
 }
 
-func (a App) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
-	return a.storage.RetrieveRelatedEntities(ctx, entityId)
+func (a App) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
+	return a.storage.RetrieveRelatedThings(ctx, thingId)
 }
 
-func (a App) QueryEntities(ctx context.Context, conditions map[string][]string) ([]byte, error) {
+func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([]byte, error) {
 	q := make([]storage.ConditionFunc, 0)
 
-	if v, ok := conditions["entity_id"]; ok {
-		q = append(q, storage.EntityID(v[0]))
+	if v, ok := conditions["thing_id"]; ok {
+		q = append(q, storage.WithThingID(v[0]))
 	}
 
 	if v, ok := conditions["type"]; ok {
-		q = append(q, storage.EntityType(v[0]))
+		q = append(q, storage.WithThingType(v[0]))
 	}
 
-	return a.storage.QueryEntities(ctx, q...)
+	return a.storage.QueryThings(ctx, q...)
 }
 
-func (a App) RetrieveEntity(ctx context.Context, entityId string) ([]byte, error) {
-	b, _, err := a.storage.RetrieveEntity(ctx, entityId)
+func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
+	b, _, err := a.storage.RetrieveThing(ctx, thingId)
 	return b, err
 }
 
-func (a App) CreateEntity(ctx context.Context, data []byte) error {
-	return a.storage.CreateEntity(ctx, data)
+var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
+
+func (a App) CreateThing(ctx context.Context, data []byte) error {
+	err := a.storage.CreateThing(ctx, data)
+	if errors.Is(err, storage.ErrAlreadyExists) {
+		return ErrAlreadyExists
+	}
+	return err
 }
 
-func (a App) IsValidEntity(data []byte) (bool, error) {
-	_, _, err := unmarshalEntity(data)
+func (a App) IsValidThing(data []byte) (bool, error) {
+	_, _, err := unmarshalThing(data)
 	return err == nil, err
 }
 
@@ -85,16 +93,18 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			continue
 		}
 
-		e := entity{
+		e := Thing{
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
+			Tenant:   record[5],
 		}
 
-		d := entity{
+		d := Thing{
 			Id:       record[3],
 			Type:     "Device",
 			Location: parseLocation(record[4]),
+			Tenant:   record[5],
 		}
 
 		be, err := json.Marshal(e)
@@ -102,9 +112,13 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			return err
 		}
 
-		err = a.CreateOrUpdate(ctx, be)
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{d.Tenant})
+
+		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
-			return err
+			if !errors.Is(err, ErrAlreadyExists) {
+				return err
+			}
 		}
 
 		if d.Id != "" {
@@ -113,7 +127,7 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 				return err
 			}
 
-			err = a.AddRelatedEntity(ctx, e.Id, bd)
+			err = a.AddRelatedThing(ctxWithTenant, e.Id, bd)
 			if err != nil {
 				return err
 			}
@@ -124,10 +138,11 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 	return nil
 }
 
-type entity struct {
+type Thing struct {
 	Id       string   `json:"id"`
 	Type     string   `json:"type"`
 	Location location `json:"location"`
+	Tenant   string   `json:"tenant"`
 }
 
 type location struct {
@@ -155,21 +170,41 @@ func parseLocation(s string) location {
 	}
 }
 
-func (a App) CreateOrUpdate(ctx context.Context, data []byte) error {
-	id, _, err := unmarshalEntity(data)
+func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
+	id, _, err := unmarshalThing(data)
 	if err != nil {
 		return err
 	}
 
-	_, _, err = a.storage.RetrieveEntity(ctx, id)
+	_, _, err = a.storage.RetrieveThing(ctx, id)
 	if err != nil {
-		return a.storage.CreateEntity(ctx, data)
+		err := a.storage.CreateThing(ctx, data)
+		if err != nil {
+			if errors.Is(err, storage.ErrAlreadyExists) {
+				return ErrAlreadyExists
+			}
+			return err
+		}
 	}
 
-	return a.storage.UpdateEntity(ctx, data)
+	return a.storage.UpdateThing(ctx, data)
 }
 
-func unmarshalEntity(data []byte) (string, string, error) {
+func (a App) UpdateThing(ctx context.Context, data []byte) error {
+	id, _, err := unmarshalThing(data)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = a.storage.RetrieveThing(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return a.storage.UpdateThing(ctx, data)
+}
+
+func unmarshalThing(data []byte) (string, string, error) {
 	var d struct {
 		Id   *string `json:"id,omitempty"`
 		Type *string `json:"type,omitempty"`
@@ -180,10 +215,10 @@ func unmarshalEntity(data []byte) (string, string, error) {
 	}
 
 	if d.Id == nil {
-		return "", "", fmt.Errorf("data contains no entity id")
+		return "", "", fmt.Errorf("data contains no Thing id")
 	}
 	if d.Type == nil {
-		return "", "", fmt.Errorf("data contains no entity type")
+		return "", "", fmt.Errorf("data contains no Thing type")
 	}
 
 	return *d.Id, *d.Type, nil

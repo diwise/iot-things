@@ -2,20 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 
-	"github.com/diwise/iot-entities/internal/pkg/application"
-	"github.com/diwise/iot-entities/internal/pkg/presentation/api"
-	"github.com/diwise/iot-entities/internal/pkg/storage"
+	"github.com/diwise/iot-things/internal/pkg/application"
+	"github.com/diwise/iot-things/internal/pkg/presentation/api"
+	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/go-chi/chi/v5"
 )
 
-const serviceName string = "iot-entities"
+const serviceName string = "iot-things"
 
 func main() {
 	serviceVersion := buildinfo.SourceVersion()
@@ -23,8 +25,9 @@ func main() {
 	ctx, log, cleanup := o11y.Init(context.Background(), serviceName, serviceVersion)
 	defer cleanup()
 
-	var opaFilePath string
+	var opaFilePath, thingsFilePath string
 	flag.StringVar(&opaFilePath, "policies", "/opt/diwise/config/authz.rego", "An authorization policy file")
+	flag.StringVar(&thingsFilePath, "things", "/opt/diwise/config/things.csv", "A file with things")
 	flag.Parse()
 
 	db, err := storage.New(ctx, storage.LoadConfiguration(ctx))
@@ -38,6 +41,12 @@ func main() {
 	r, err := setupRouter(ctx, opaFilePath, app)
 	if err != nil {
 		log.Error("could not setup router", "err", err.Error())
+		os.Exit(1)
+	}
+
+	err = seedThings(ctx, thingsFilePath, app)
+	if err != nil {
+		log.Error("file with things found but could not seed data", "err", err.Error())
 		os.Exit(1)
 	}
 
@@ -61,4 +70,16 @@ func setupRouter(ctx context.Context, opaFilePath string, app application.App) (
 	}
 
 	return r, nil
+}
+
+func seedThings(ctx context.Context, thingsFilePath string, app application.App) error {
+	e, err := os.ReadFile(thingsFilePath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+
+	return app.Seed(ctx, e)
 }

@@ -5,7 +5,7 @@ package application
 
 import (
 	"context"
-	"github.com/diwise/iot-entities/internal/pkg/storage"
+	"github.com/diwise/iot-things/internal/pkg/storage"
 	"sync"
 )
 
@@ -19,23 +19,23 @@ var _ Storage = &StorageMock{}
 //
 //		// make and configure a mocked Storage
 //		mockedStorage := &StorageMock{
-//			AddRelatedEntityFunc: func(ctx context.Context, entityId string, v []byte) error {
-//				panic("mock out the AddRelatedEntity method")
+//			AddRelatedThingFunc: func(ctx context.Context, thingId string, v []byte) error {
+//				panic("mock out the AddRelatedThing method")
 //			},
-//			CreateEntityFunc: func(ctx context.Context, v []byte) error {
-//				panic("mock out the CreateEntity method")
+//			CreateThingFunc: func(ctx context.Context, v []byte) error {
+//				panic("mock out the CreateThing method")
 //			},
-//			QueryEntitiesFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
-//				panic("mock out the QueryEntities method")
+//			QueryThingsFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
+//				panic("mock out the QueryThings method")
 //			},
-//			RetrieveEntityFunc: func(ctx context.Context, entityId string) ([]byte, string, error) {
-//				panic("mock out the RetrieveEntity method")
+//			RetrieveRelatedThingsFunc: func(ctx context.Context, thingId string) ([]byte, error) {
+//				panic("mock out the RetrieveRelatedThings method")
 //			},
-//			RetrieveRelatedEntitiesFunc: func(ctx context.Context, entityId string) ([]byte, error) {
-//				panic("mock out the RetrieveRelatedEntities method")
+//			RetrieveThingFunc: func(ctx context.Context, thingId string) ([]byte, string, error) {
+//				panic("mock out the RetrieveThing method")
 //			},
-//			UpdateEntityFunc: func(ctx context.Context, v []byte) error {
-//				panic("mock out the UpdateEntity method")
+//			UpdateThingFunc: func(ctx context.Context, v []byte) error {
+//				panic("mock out the UpdateThing method")
 //			},
 //		}
 //
@@ -44,123 +44,123 @@ var _ Storage = &StorageMock{}
 //
 //	}
 type StorageMock struct {
-	// AddRelatedEntityFunc mocks the AddRelatedEntity method.
-	AddRelatedEntityFunc func(ctx context.Context, entityId string, v []byte) error
+	// AddRelatedThingFunc mocks the AddRelatedThing method.
+	AddRelatedThingFunc func(ctx context.Context, thingId string, v []byte) error
 
-	// CreateEntityFunc mocks the CreateEntity method.
-	CreateEntityFunc func(ctx context.Context, v []byte) error
+	// CreateThingFunc mocks the CreateThing method.
+	CreateThingFunc func(ctx context.Context, v []byte) error
 
-	// QueryEntitiesFunc mocks the QueryEntities method.
-	QueryEntitiesFunc func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
+	// QueryThingsFunc mocks the QueryThings method.
+	QueryThingsFunc func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
 
-	// RetrieveEntityFunc mocks the RetrieveEntity method.
-	RetrieveEntityFunc func(ctx context.Context, entityId string) ([]byte, string, error)
+	// RetrieveRelatedThingsFunc mocks the RetrieveRelatedThings method.
+	RetrieveRelatedThingsFunc func(ctx context.Context, thingId string) ([]byte, error)
 
-	// RetrieveRelatedEntitiesFunc mocks the RetrieveRelatedEntities method.
-	RetrieveRelatedEntitiesFunc func(ctx context.Context, entityId string) ([]byte, error)
+	// RetrieveThingFunc mocks the RetrieveThing method.
+	RetrieveThingFunc func(ctx context.Context, thingId string) ([]byte, string, error)
 
-	// UpdateEntityFunc mocks the UpdateEntity method.
-	UpdateEntityFunc func(ctx context.Context, v []byte) error
+	// UpdateThingFunc mocks the UpdateThing method.
+	UpdateThingFunc func(ctx context.Context, v []byte) error
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// AddRelatedEntity holds details about calls to the AddRelatedEntity method.
-		AddRelatedEntity []struct {
+		// AddRelatedThing holds details about calls to the AddRelatedThing method.
+		AddRelatedThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// EntityId is the entityId argument value.
-			EntityId string
+			// ThingId is the thingId argument value.
+			ThingId string
 			// V is the v argument value.
 			V []byte
 		}
-		// CreateEntity holds details about calls to the CreateEntity method.
-		CreateEntity []struct {
+		// CreateThing holds details about calls to the CreateThing method.
+		CreateThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// V is the v argument value.
 			V []byte
 		}
-		// QueryEntities holds details about calls to the QueryEntities method.
-		QueryEntities []struct {
+		// QueryThings holds details about calls to the QueryThings method.
+		QueryThings []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Conditions is the conditions argument value.
 			Conditions []storage.ConditionFunc
 		}
-		// RetrieveEntity holds details about calls to the RetrieveEntity method.
-		RetrieveEntity []struct {
+		// RetrieveRelatedThings holds details about calls to the RetrieveRelatedThings method.
+		RetrieveRelatedThings []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// EntityId is the entityId argument value.
-			EntityId string
+			// ThingId is the thingId argument value.
+			ThingId string
 		}
-		// RetrieveRelatedEntities holds details about calls to the RetrieveRelatedEntities method.
-		RetrieveRelatedEntities []struct {
+		// RetrieveThing holds details about calls to the RetrieveThing method.
+		RetrieveThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// EntityId is the entityId argument value.
-			EntityId string
+			// ThingId is the thingId argument value.
+			ThingId string
 		}
-		// UpdateEntity holds details about calls to the UpdateEntity method.
-		UpdateEntity []struct {
+		// UpdateThing holds details about calls to the UpdateThing method.
+		UpdateThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// V is the v argument value.
 			V []byte
 		}
 	}
-	lockAddRelatedEntity        sync.RWMutex
-	lockCreateEntity            sync.RWMutex
-	lockQueryEntities           sync.RWMutex
-	lockRetrieveEntity          sync.RWMutex
-	lockRetrieveRelatedEntities sync.RWMutex
-	lockUpdateEntity            sync.RWMutex
+	lockAddRelatedThing       sync.RWMutex
+	lockCreateThing           sync.RWMutex
+	lockQueryThings           sync.RWMutex
+	lockRetrieveRelatedThings sync.RWMutex
+	lockRetrieveThing         sync.RWMutex
+	lockUpdateThing           sync.RWMutex
 }
 
-// AddRelatedEntity calls AddRelatedEntityFunc.
-func (mock *StorageMock) AddRelatedEntity(ctx context.Context, entityId string, v []byte) error {
-	if mock.AddRelatedEntityFunc == nil {
-		panic("StorageMock.AddRelatedEntityFunc: method is nil but Storage.AddRelatedEntity was just called")
+// AddRelatedThing calls AddRelatedThingFunc.
+func (mock *StorageMock) AddRelatedThing(ctx context.Context, thingId string, v []byte) error {
+	if mock.AddRelatedThingFunc == nil {
+		panic("StorageMock.AddRelatedThingFunc: method is nil but Storage.AddRelatedThing was just called")
 	}
 	callInfo := struct {
-		Ctx      context.Context
-		EntityId string
-		V        []byte
+		Ctx     context.Context
+		ThingId string
+		V       []byte
 	}{
-		Ctx:      ctx,
-		EntityId: entityId,
-		V:        v,
+		Ctx:     ctx,
+		ThingId: thingId,
+		V:       v,
 	}
-	mock.lockAddRelatedEntity.Lock()
-	mock.calls.AddRelatedEntity = append(mock.calls.AddRelatedEntity, callInfo)
-	mock.lockAddRelatedEntity.Unlock()
-	return mock.AddRelatedEntityFunc(ctx, entityId, v)
+	mock.lockAddRelatedThing.Lock()
+	mock.calls.AddRelatedThing = append(mock.calls.AddRelatedThing, callInfo)
+	mock.lockAddRelatedThing.Unlock()
+	return mock.AddRelatedThingFunc(ctx, thingId, v)
 }
 
-// AddRelatedEntityCalls gets all the calls that were made to AddRelatedEntity.
+// AddRelatedThingCalls gets all the calls that were made to AddRelatedThing.
 // Check the length with:
 //
-//	len(mockedStorage.AddRelatedEntityCalls())
-func (mock *StorageMock) AddRelatedEntityCalls() []struct {
-	Ctx      context.Context
-	EntityId string
-	V        []byte
+//	len(mockedStorage.AddRelatedThingCalls())
+func (mock *StorageMock) AddRelatedThingCalls() []struct {
+	Ctx     context.Context
+	ThingId string
+	V       []byte
 } {
 	var calls []struct {
-		Ctx      context.Context
-		EntityId string
-		V        []byte
+		Ctx     context.Context
+		ThingId string
+		V       []byte
 	}
-	mock.lockAddRelatedEntity.RLock()
-	calls = mock.calls.AddRelatedEntity
-	mock.lockAddRelatedEntity.RUnlock()
+	mock.lockAddRelatedThing.RLock()
+	calls = mock.calls.AddRelatedThing
+	mock.lockAddRelatedThing.RUnlock()
 	return calls
 }
 
-// CreateEntity calls CreateEntityFunc.
-func (mock *StorageMock) CreateEntity(ctx context.Context, v []byte) error {
-	if mock.CreateEntityFunc == nil {
-		panic("StorageMock.CreateEntityFunc: method is nil but Storage.CreateEntity was just called")
+// CreateThing calls CreateThingFunc.
+func (mock *StorageMock) CreateThing(ctx context.Context, v []byte) error {
+	if mock.CreateThingFunc == nil {
+		panic("StorageMock.CreateThingFunc: method is nil but Storage.CreateThing was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -169,17 +169,17 @@ func (mock *StorageMock) CreateEntity(ctx context.Context, v []byte) error {
 		Ctx: ctx,
 		V:   v,
 	}
-	mock.lockCreateEntity.Lock()
-	mock.calls.CreateEntity = append(mock.calls.CreateEntity, callInfo)
-	mock.lockCreateEntity.Unlock()
-	return mock.CreateEntityFunc(ctx, v)
+	mock.lockCreateThing.Lock()
+	mock.calls.CreateThing = append(mock.calls.CreateThing, callInfo)
+	mock.lockCreateThing.Unlock()
+	return mock.CreateThingFunc(ctx, v)
 }
 
-// CreateEntityCalls gets all the calls that were made to CreateEntity.
+// CreateThingCalls gets all the calls that were made to CreateThing.
 // Check the length with:
 //
-//	len(mockedStorage.CreateEntityCalls())
-func (mock *StorageMock) CreateEntityCalls() []struct {
+//	len(mockedStorage.CreateThingCalls())
+func (mock *StorageMock) CreateThingCalls() []struct {
 	Ctx context.Context
 	V   []byte
 } {
@@ -187,16 +187,16 @@ func (mock *StorageMock) CreateEntityCalls() []struct {
 		Ctx context.Context
 		V   []byte
 	}
-	mock.lockCreateEntity.RLock()
-	calls = mock.calls.CreateEntity
-	mock.lockCreateEntity.RUnlock()
+	mock.lockCreateThing.RLock()
+	calls = mock.calls.CreateThing
+	mock.lockCreateThing.RUnlock()
 	return calls
 }
 
-// QueryEntities calls QueryEntitiesFunc.
-func (mock *StorageMock) QueryEntities(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
-	if mock.QueryEntitiesFunc == nil {
-		panic("StorageMock.QueryEntitiesFunc: method is nil but Storage.QueryEntities was just called")
+// QueryThings calls QueryThingsFunc.
+func (mock *StorageMock) QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
+	if mock.QueryThingsFunc == nil {
+		panic("StorageMock.QueryThingsFunc: method is nil but Storage.QueryThings was just called")
 	}
 	callInfo := struct {
 		Ctx        context.Context
@@ -205,17 +205,17 @@ func (mock *StorageMock) QueryEntities(ctx context.Context, conditions ...storag
 		Ctx:        ctx,
 		Conditions: conditions,
 	}
-	mock.lockQueryEntities.Lock()
-	mock.calls.QueryEntities = append(mock.calls.QueryEntities, callInfo)
-	mock.lockQueryEntities.Unlock()
-	return mock.QueryEntitiesFunc(ctx, conditions...)
+	mock.lockQueryThings.Lock()
+	mock.calls.QueryThings = append(mock.calls.QueryThings, callInfo)
+	mock.lockQueryThings.Unlock()
+	return mock.QueryThingsFunc(ctx, conditions...)
 }
 
-// QueryEntitiesCalls gets all the calls that were made to QueryEntities.
+// QueryThingsCalls gets all the calls that were made to QueryThings.
 // Check the length with:
 //
-//	len(mockedStorage.QueryEntitiesCalls())
-func (mock *StorageMock) QueryEntitiesCalls() []struct {
+//	len(mockedStorage.QueryThingsCalls())
+func (mock *StorageMock) QueryThingsCalls() []struct {
 	Ctx        context.Context
 	Conditions []storage.ConditionFunc
 } {
@@ -223,88 +223,88 @@ func (mock *StorageMock) QueryEntitiesCalls() []struct {
 		Ctx        context.Context
 		Conditions []storage.ConditionFunc
 	}
-	mock.lockQueryEntities.RLock()
-	calls = mock.calls.QueryEntities
-	mock.lockQueryEntities.RUnlock()
+	mock.lockQueryThings.RLock()
+	calls = mock.calls.QueryThings
+	mock.lockQueryThings.RUnlock()
 	return calls
 }
 
-// RetrieveEntity calls RetrieveEntityFunc.
-func (mock *StorageMock) RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error) {
-	if mock.RetrieveEntityFunc == nil {
-		panic("StorageMock.RetrieveEntityFunc: method is nil but Storage.RetrieveEntity was just called")
+// RetrieveRelatedThings calls RetrieveRelatedThingsFunc.
+func (mock *StorageMock) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
+	if mock.RetrieveRelatedThingsFunc == nil {
+		panic("StorageMock.RetrieveRelatedThingsFunc: method is nil but Storage.RetrieveRelatedThings was just called")
 	}
 	callInfo := struct {
-		Ctx      context.Context
-		EntityId string
+		Ctx     context.Context
+		ThingId string
 	}{
-		Ctx:      ctx,
-		EntityId: entityId,
+		Ctx:     ctx,
+		ThingId: thingId,
 	}
-	mock.lockRetrieveEntity.Lock()
-	mock.calls.RetrieveEntity = append(mock.calls.RetrieveEntity, callInfo)
-	mock.lockRetrieveEntity.Unlock()
-	return mock.RetrieveEntityFunc(ctx, entityId)
+	mock.lockRetrieveRelatedThings.Lock()
+	mock.calls.RetrieveRelatedThings = append(mock.calls.RetrieveRelatedThings, callInfo)
+	mock.lockRetrieveRelatedThings.Unlock()
+	return mock.RetrieveRelatedThingsFunc(ctx, thingId)
 }
 
-// RetrieveEntityCalls gets all the calls that were made to RetrieveEntity.
+// RetrieveRelatedThingsCalls gets all the calls that were made to RetrieveRelatedThings.
 // Check the length with:
 //
-//	len(mockedStorage.RetrieveEntityCalls())
-func (mock *StorageMock) RetrieveEntityCalls() []struct {
-	Ctx      context.Context
-	EntityId string
+//	len(mockedStorage.RetrieveRelatedThingsCalls())
+func (mock *StorageMock) RetrieveRelatedThingsCalls() []struct {
+	Ctx     context.Context
+	ThingId string
 } {
 	var calls []struct {
-		Ctx      context.Context
-		EntityId string
+		Ctx     context.Context
+		ThingId string
 	}
-	mock.lockRetrieveEntity.RLock()
-	calls = mock.calls.RetrieveEntity
-	mock.lockRetrieveEntity.RUnlock()
+	mock.lockRetrieveRelatedThings.RLock()
+	calls = mock.calls.RetrieveRelatedThings
+	mock.lockRetrieveRelatedThings.RUnlock()
 	return calls
 }
 
-// RetrieveRelatedEntities calls RetrieveRelatedEntitiesFunc.
-func (mock *StorageMock) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
-	if mock.RetrieveRelatedEntitiesFunc == nil {
-		panic("StorageMock.RetrieveRelatedEntitiesFunc: method is nil but Storage.RetrieveRelatedEntities was just called")
+// RetrieveThing calls RetrieveThingFunc.
+func (mock *StorageMock) RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error) {
+	if mock.RetrieveThingFunc == nil {
+		panic("StorageMock.RetrieveThingFunc: method is nil but Storage.RetrieveThing was just called")
 	}
 	callInfo := struct {
-		Ctx      context.Context
-		EntityId string
+		Ctx     context.Context
+		ThingId string
 	}{
-		Ctx:      ctx,
-		EntityId: entityId,
+		Ctx:     ctx,
+		ThingId: thingId,
 	}
-	mock.lockRetrieveRelatedEntities.Lock()
-	mock.calls.RetrieveRelatedEntities = append(mock.calls.RetrieveRelatedEntities, callInfo)
-	mock.lockRetrieveRelatedEntities.Unlock()
-	return mock.RetrieveRelatedEntitiesFunc(ctx, entityId)
+	mock.lockRetrieveThing.Lock()
+	mock.calls.RetrieveThing = append(mock.calls.RetrieveThing, callInfo)
+	mock.lockRetrieveThing.Unlock()
+	return mock.RetrieveThingFunc(ctx, thingId)
 }
 
-// RetrieveRelatedEntitiesCalls gets all the calls that were made to RetrieveRelatedEntities.
+// RetrieveThingCalls gets all the calls that were made to RetrieveThing.
 // Check the length with:
 //
-//	len(mockedStorage.RetrieveRelatedEntitiesCalls())
-func (mock *StorageMock) RetrieveRelatedEntitiesCalls() []struct {
-	Ctx      context.Context
-	EntityId string
+//	len(mockedStorage.RetrieveThingCalls())
+func (mock *StorageMock) RetrieveThingCalls() []struct {
+	Ctx     context.Context
+	ThingId string
 } {
 	var calls []struct {
-		Ctx      context.Context
-		EntityId string
+		Ctx     context.Context
+		ThingId string
 	}
-	mock.lockRetrieveRelatedEntities.RLock()
-	calls = mock.calls.RetrieveRelatedEntities
-	mock.lockRetrieveRelatedEntities.RUnlock()
+	mock.lockRetrieveThing.RLock()
+	calls = mock.calls.RetrieveThing
+	mock.lockRetrieveThing.RUnlock()
 	return calls
 }
 
-// UpdateEntity calls UpdateEntityFunc.
-func (mock *StorageMock) UpdateEntity(ctx context.Context, v []byte) error {
-	if mock.UpdateEntityFunc == nil {
-		panic("StorageMock.UpdateEntityFunc: method is nil but Storage.UpdateEntity was just called")
+// UpdateThing calls UpdateThingFunc.
+func (mock *StorageMock) UpdateThing(ctx context.Context, v []byte) error {
+	if mock.UpdateThingFunc == nil {
+		panic("StorageMock.UpdateThingFunc: method is nil but Storage.UpdateThing was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -313,17 +313,17 @@ func (mock *StorageMock) UpdateEntity(ctx context.Context, v []byte) error {
 		Ctx: ctx,
 		V:   v,
 	}
-	mock.lockUpdateEntity.Lock()
-	mock.calls.UpdateEntity = append(mock.calls.UpdateEntity, callInfo)
-	mock.lockUpdateEntity.Unlock()
-	return mock.UpdateEntityFunc(ctx, v)
+	mock.lockUpdateThing.Lock()
+	mock.calls.UpdateThing = append(mock.calls.UpdateThing, callInfo)
+	mock.lockUpdateThing.Unlock()
+	return mock.UpdateThingFunc(ctx, v)
 }
 
-// UpdateEntityCalls gets all the calls that were made to UpdateEntity.
+// UpdateThingCalls gets all the calls that were made to UpdateThing.
 // Check the length with:
 //
-//	len(mockedStorage.UpdateEntityCalls())
-func (mock *StorageMock) UpdateEntityCalls() []struct {
+//	len(mockedStorage.UpdateThingCalls())
+func (mock *StorageMock) UpdateThingCalls() []struct {
 	Ctx context.Context
 	V   []byte
 } {
@@ -331,8 +331,8 @@ func (mock *StorageMock) UpdateEntityCalls() []struct {
 		Ctx context.Context
 		V   []byte
 	}
-	mock.lockUpdateEntity.RLock()
-	calls = mock.calls.UpdateEntity
-	mock.lockUpdateEntity.RUnlock()
+	mock.lockUpdateThing.RLock()
+	calls = mock.calls.UpdateThing
+	mock.lockUpdateThing.RUnlock()
 	return calls
 }
