@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/diwise/iot-entities/internal/pkg/presentation/auth"
+	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
@@ -42,24 +42,24 @@ func (c Config) ConnStr() string {
 
 type ConditionFunc func(map[string]any) map[string]any
 
-func EntityType(t string) ConditionFunc {
+func WithThingType(t string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
-		q["entity_type"] = t
+		q["thing_type"] = t
 		return q
 	}
 }
 
-func EntityID(id string) ConditionFunc {
+func WithThingID(id string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
-		q["entity_id"] = id
+		q["thing_id"] = id
 		return q
 	}
 }
 
-var ErrAlreadyExists error = fmt.Errorf("entity already exists")
-var ErrNotExist error = fmt.Errorf("entity does not exists")
+var ErrAlreadyExists error = fmt.Errorf("thing already exists")
+var ErrNotExist error = fmt.Errorf("thing does not exists")
 
-type entity struct {
+type thing struct {
 	Id       string   `json:"id"`
 	Type     string   `json:"type"`
 	Location location `json:"location"`
@@ -91,26 +91,26 @@ func New(ctx context.Context, cfg Config) (Db, error) {
 	}, nil
 }
 
-func (db Db) CreateEntity(ctx context.Context, v []byte) error {
+func (db Db) CreateThing(ctx context.Context, v []byte) error {
 	log := logging.GetFromContext(ctx)
 
-	entity, err := unmarshalEntity(v)
+	thing, err := unmarshalThing(v)
 	if err != nil {
-		log.Error("could not unmarshal entity", "err", err.Error())
-		return fmt.Errorf("could not unmarshal entity")
+		log.Error("could not unmarshal thing", "err", err.Error())
+		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	lat := entity.Location.Latitude
-	lon := entity.Location.Longitude
+	lat := thing.Location.Latitude
+	lon := thing.Location.Longitude
 
-	insert := `INSERT INTO entities(entity_id, entity_type, entity_location, entity_data, tenant) VALUES (@entity_id, @entity_type, point(@lon,@lat), @entity_data, @tenant);`
+	insert := `INSERT INTO things(thing_id, thing_type, thing_location, thing_data, tenant) VALUES (@thing_id, @thing_type, point(@lon,@lat), @thing_data, @tenant);`
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"entity_id":   entity.Id,
-		"entity_type": entity.Type,
-		"lon":         lon,
-		"lat":         lat,
-		"entity_data": string(v),
-		"tenant":      entity.Tenant,
+		"thing_id":   thing.Id,
+		"thing_type": thing.Type,
+		"lon":        lon,
+		"lat":        lat,
+		"thing_data": string(v),
+		"tenant":     thing.Tenant,
 	})
 	if err != nil {
 		if isDuplicateKeyErr(err) {
@@ -124,23 +124,23 @@ func (db Db) CreateEntity(ctx context.Context, v []byte) error {
 	return nil
 }
 
-func (db Db) UpdateEntity(ctx context.Context, v []byte) error {
+func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 	log := logging.GetFromContext(ctx)
 
-	entity, err := unmarshalEntity(v)
+	thing, err := unmarshalThing(v)
 	if err != nil {
-		log.Error("could not unmarshal entity", "err", err.Error())
-		return fmt.Errorf("could not unmarshal entity")
+		log.Error("could not unmarshal thing", "err", err.Error())
+		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	lat := entity.Location.Latitude
-	lon := entity.Location.Longitude
+	lat := thing.Location.Latitude
+	lon := thing.Location.Longitude
 
-	update := `UPDATE entities SET entity_location=point(@lon,@lat), entity_data=@entity_data, modified_on=@modified_on WHERE entity_id=@entity_id;`
+	update := `UPDATE things SET thing_location=point(@lon,@lat), thing_data=@thing_data, modified_on=@modified_on WHERE thing_id=@thing_id;`
 	_, err = db.pool.Exec(ctx, update, pgx.NamedArgs{
-		"entity_id":   entity.Id,
+		"thing_id":    thing.Id,
 		"modified_on": time.Now(),
-		"entity_data": string(v),
+		"thing_data":  string(v),
 		"lon":         lat,
 		"lat":         lon,
 	})
@@ -176,7 +176,7 @@ func where(args map[string]any) string {
 	return "where " + w
 }
 
-func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
+func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
 	if len(conditions) == 0 {
 		return nil, fmt.Errorf("query contains no conditions")
 	}
@@ -191,7 +191,7 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 		condition(args)
 	}
 
-	query := "select entity_id, entity_type, entity_location, tenant from entities " + where(args)
+	query := "select thing_id, thing_type, thing_location, tenant from things " + where(args)
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
@@ -199,17 +199,17 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 		return nil, err
 	}
 
-	entities := make([]entity, 0)
-	var entity_id, entity_type, tenant string
-	var entity_location pgtype.Point
+	things := make([]thing, 0)
+	var thing_id, thing_type, tenant string
+	var thing_location pgtype.Point
 
-	_, err = pgx.ForEachRow(rows, []any{&entity_id, &entity_type, &entity_location, &tenant}, func() error {
-		entities = append(entities, entity{
-			Id:   entity_id,
-			Type: entity_type,
+	_, err = pgx.ForEachRow(rows, []any{&thing_id, &thing_type, &thing_location, &tenant}, func() error {
+		things = append(things, thing{
+			Id:   thing_id,
+			Type: thing_type,
 			Location: location{
-				Latitude:  entity_location.P.Y,
-				Longitude: entity_location.P.X,
+				Latitude:  thing_location.P.Y,
+				Longitude: thing_location.P.X,
 			},
 			Tenant: tenant,
 		})
@@ -219,7 +219,7 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 		return nil, err
 	}
 
-	b, err := json.Marshal(entities)
+	b, err := json.Marshal(things)
 	if err != nil {
 		return nil, err
 	}
@@ -227,56 +227,56 @@ func (db Db) QueryEntities(ctx context.Context, conditions ...ConditionFunc) ([]
 	return b, nil
 }
 
-func (db Db) RetrieveEntity(ctx context.Context, entityId string) ([]byte, string, error) {
-	if entityId == "" {
-		return nil, "", fmt.Errorf("no id for entity provided")
+func (db Db) RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error) {
+	if thingId == "" {
+		return nil, "", fmt.Errorf("no id for thing provided")
 	}
 
 	log := logging.GetFromContext(ctx)
 
 	args := pgx.NamedArgs{
-		"entity_id": entityId,
-		"tenant":    getAllowedTenantsFromContext(ctx),
+		"thing_id": thingId,
+		"tenant":   getAllowedTenantsFromContext(ctx),
 	}
 
-	var entityData json.RawMessage
-	var entityType string
+	var thingData json.RawMessage
+	var thingType string
 
-	query := "select entity_data, entity_type from entities " + where(args)
+	query := "select thing_data, thing_type from things " + where(args)
 
-	err := db.pool.QueryRow(ctx, query, args).Scan(&entityData, &entityType)
+	err := db.pool.QueryRow(ctx, query, args).Scan(&thingData, &thingType)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Debug("entity does not exists", "entity_id", entityId, "err", err.Error())
+			log.Debug("thing does not exists", "thing_id", thingId, "err", err.Error())
 			return nil, "", ErrNotExist
 		}
 		log.Error("could not execute query", "err", err.Error())
 		return nil, "", err
 	}
 
-	return entityData, entityType, nil
+	return thingData, thingType, nil
 }
 
-func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) error {
+func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) error {
 	log := logging.GetFromContext(ctx)
 
-	related, err := unmarshalEntity(v)
+	related, err := unmarshalThing(v)
 	if err != nil {
-		log.Error("could not unmarshal entity", "err", err.Error())
-		return fmt.Errorf("could not unmarshal entity")
+		log.Error("could not unmarshal thing", "err", err.Error())
+		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	_, _, err = db.RetrieveEntity(ctx, entityId)
+	_, _, err = db.RetrieveThing(ctx, thingId)
 	if err != nil {
-		log.Error("could not retrieve current entity", "err", err.Error())
-		return fmt.Errorf("coult not retrieve current entity")
+		log.Error("could not retrieve current thing", "err", err.Error())
+		return fmt.Errorf("coult not retrieve current thing")
 	}
 
-	_, _, err = db.RetrieveEntity(ctx, related.Id)
+	_, _, err = db.RetrieveThing(ctx, related.Id)
 	if err != nil {
 		if errors.Is(err, ErrNotExist) {
-			log.Debug("related entity does not exist, will create it", "id", related.Id)
-			err := db.CreateEntity(ctx, v)
+			log.Debug("related thing does not exist, will create it", "id", related.Id)
+			err := db.CreateThing(ctx, v)
 			if err != nil {
 				return err
 			}
@@ -285,14 +285,14 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 		}
 	}
 
-	insert := `INSERT INTO entity_relations(parent, child)
+	insert := `INSERT INTO thing_relations(parent, child)
 			   VALUES (
-				(SELECT node_id FROM entities WHERE entity_id=@entity_id LIMIT 1), 
-				(SELECT node_id FROM entities WHERE entity_id=@related_id LIMIT 1)
+				(SELECT node_id FROM things WHERE thing_id=@thing_id LIMIT 1), 
+				(SELECT node_id FROM things WHERE thing_id=@related_id LIMIT 1)
 			   );`
 
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"entity_id":  entityId,
+		"thing_id":   thingId,
 		"related_id": related.Id,
 	})
 	if err != nil {
@@ -307,47 +307,47 @@ func (db Db) AddRelatedEntity(ctx context.Context, entityId string, v []byte) er
 	return nil
 }
 
-func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]byte, error) {
-	if entityId == "" {
-		return nil, fmt.Errorf("no id for entity provided")
+func (db Db) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
+	if thingId == "" {
+		return nil, fmt.Errorf("no id for thing provided")
 	}
 
 	log := logging.GetFromContext(ctx)
 
 	query := `
-		select entity_id, entity_type, entity_location, tenant from entities where node_id IN 
+		select thing_id, thing_type, thing_location, tenant from things where node_id IN 
 		(
 			select distinct node_id from 
 			(
 				select child as node_id
-				from entity_relations er
-				join entities e on er.parent = e.node_id
-				where e.entity_id=$1
+				from thing_relations er
+				join things e on er.parent = e.node_id
+				where e.thing_id=$1
 				union
 				select parent as node_id
-				from entity_relations er
-				join entities e on er.child = e.node_id
-				where e.entity_id=$1
+				from thing_relations er
+				join things e on er.child = e.node_id
+				where e.thing_id=$1
 			) as related
 		)`
 
-	rows, err := db.pool.Query(ctx, query, entityId)
+	rows, err := db.pool.Query(ctx, query, thingId)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return nil, err
 	}
 
-	entities := make([]entity, 0)
-	var entity_id, entity_type, tenant string
-	var entity_location pgtype.Point
+	things := make([]thing, 0)
+	var thing_id, thing_type, tenant string
+	var thing_location pgtype.Point
 
-	_, err = pgx.ForEachRow(rows, []any{&entity_id, &entity_type, &entity_location, &tenant}, func() error {
-		entities = append(entities, entity{
-			Id:   entity_id,
-			Type: entity_type,
+	_, err = pgx.ForEachRow(rows, []any{&thing_id, &thing_type, &thing_location, &tenant}, func() error {
+		things = append(things, thing{
+			Id:   thing_id,
+			Type: thing_type,
 			Location: location{
-				Latitude:  entity_location.P.Y,
-				Longitude: entity_location.P.X,
+				Latitude:  thing_location.P.Y,
+				Longitude: thing_location.P.X,
 			},
 			Tenant: tenant,
 		})
@@ -357,7 +357,7 @@ func (db Db) RetrieveRelatedEntities(ctx context.Context, entityId string) ([]by
 		return nil, err
 	}
 
-	b, err := json.Marshal(entities)
+	b, err := json.Marshal(things)
 	if err != nil {
 		return nil, err
 	}
@@ -380,61 +380,61 @@ func isDuplicateKeyErr(err error) bool {
 	return false
 }
 
-func unmarshalEntity(v []byte) (entity, error) {
-	e := struct {
+func unmarshalThing(v []byte) (thing, error) {
+	t := struct {
 		Id       *string   `json:"id,omitempty"`
 		Type_    *string   `json:"type,omitempty"`
 		Location *location `json:"location,omitempty"`
 		Tenant   *string   `json:"tenant,omitempty"`
 	}{}
 
-	err := json.Unmarshal(v, &e)
+	err := json.Unmarshal(v, &t)
 	if err != nil {
-		return entity{}, err
+		return thing{}, err
 	}
 
-	if e.Id == nil {
-		return entity{}, fmt.Errorf("data contains no entity id")
+	if t.Id == nil {
+		return thing{}, fmt.Errorf("data contains no thing id")
 	}
-	if e.Type_ == nil {
-		return entity{}, fmt.Errorf("data contains no entity type")
+	if t.Type_ == nil {
+		return thing{}, fmt.Errorf("data contains no thing type")
 	}
-	if e.Tenant == nil {
-		return entity{}, fmt.Errorf("data contains no tenant information")
-	}
-
-	entity := entity{
-		Id:     *e.Id,
-		Type:   *e.Type_,
-		Tenant: *e.Tenant,
+	if t.Tenant == nil {
+		return thing{}, fmt.Errorf("data contains no tenant information")
 	}
 
-	if e.Location != nil {
-		entity.Location = *e.Location
+	thing := thing{
+		Id:     *t.Id,
+		Type:   *t.Type_,
+		Tenant: *t.Tenant,
 	}
 
-	return entity, nil
+	if t.Location != nil {
+		thing.Location = *t.Location
+	}
+
+	return thing, nil
 }
 
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 	log := logging.GetFromContext(ctx)
 
 	ddl := `
-		CREATE TABLE IF NOT EXISTS entities (		
+		CREATE TABLE IF NOT EXISTS things (		
 			node_id     	BIGSERIAL,	
-			entity_id		TEXT 	NOT NULL UNIQUE,			
-			entity_type 	TEXT 	NOT NULL,
-			entity_location POINT 	NULL,
-			entity_data 	JSONB	NULL,	
+			thing_id		TEXT 	NOT NULL UNIQUE,			
+			thing_type 		TEXT 	NOT NULL,
+			thing_location 	POINT 	NULL,
+			thing_data 		JSONB	NULL,	
 			tenant			TEXT 	NOT NULL,	
 			created_on 		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
 			modified_on		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,	
 			PRIMARY KEY (node_id)
 		);			
 		
-		CREATE INDEX IF NOT EXISTS entity_location_idx ON entities USING GIST(entity_location);
+		CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(thing_location);
 		
-		CREATE TABLE IF NOT EXISTS  entity_relations (
+		CREATE TABLE IF NOT EXISTS  thing_relations (
 			parent        BIGINT NOT NULL,
 			child         BIGINT NOT NULL,
 			PRIMARY KEY (parent, child)

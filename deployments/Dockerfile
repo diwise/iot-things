@@ -10,7 +10,7 @@ RUN go mod download
 
 COPY . .
 
-WORKDIR /app/cmd/iot-entities
+WORKDIR /app/cmd/iot-things
 
 ARG TARGETARCH
 ARG TARGETOS
@@ -20,11 +20,11 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 WORKDIR /opt/diwise
 
-COPY --from=builder --chown=1001 /app/cmd/iot-entities/iot-entities /opt/diwise
+COPY --from=builder --chown=1001 /app/cmd/iot-things/iot-things /opt/diwise
 
 RUN chown 1001 /opt/diwise
 
 EXPOSE 8080
 USER 1001
 
-ENTRYPOINT ["/opt/diwise/iot-entities"]
+ENTRYPOINT ["/opt/diwise/iot-things"]

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diwise/iot-entities/internal/pkg/application"
-	"github.com/diwise/iot-entities/internal/pkg/presentation/auth"
+	"github.com/diwise/iot-things/internal/pkg/application"
+	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
@@ -21,7 +21,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-var tracer = otel.Tracer("iot-entities/api/entities")
+var tracer = otel.Tracer("iot-things/api/things")
 
 func Register(ctx context.Context, app application.App, policies io.Reader) (*chi.Mux, error) {
 	log := logging.GetFromContext(ctx)
@@ -43,13 +43,13 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 		r.Group(func(r chi.Router) {
 			r.Use(authenticator)
 
-			r.Route("/entities", func(r chi.Router) {
-				r.Get("/", queryEntitiesHandler(log, app))
-				r.Post("/", createEntityHandler(log, app))
-				r.Get("/{id}", retrieveEntityHandler(log, app))
-				r.Put("/{id}", updateEntityHandler(log, app))
-				r.Get("/{id}/related", retrieveRelatedEntitiesHandler(log, app))
-				r.Post("/{id}/related", addRelatedEntityHandler(log, app))
+			r.Route("/things", func(r chi.Router) {
+				r.Get("/", queryThingsHandler(log, app))
+				r.Post("/", createThingHandler(log, app))
+				r.Get("/{id}", retrieveThingHandler(log, app))
+				r.Put("/{id}", updateThingHandler(log, app))
+				r.Get("/{id}/related", retrieveRelatedThingsHandler(log, app))
+				r.Post("/{id}/related", addRelatedThingHandler(log, app))
 
 				r.Post("/seed", seedHandler(log, app))
 			})
@@ -63,24 +63,24 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 	return r, nil
 }
 
-func retrieveRelatedEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func retrieveRelatedThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
-		ctx, span := tracer.Start(r.Context(), "retrieve-relative-entities")
+		ctx, span := tracer.Start(r.Context(), "retrieve-relative-things")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		entityId := chi.URLParam(r, "id")
-		if entityId == "" {
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
 			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		b, err := app.RetrieveRelatedEntities(ctx, entityId)
+		b, err := app.RetrieveRelatedThings(ctx, thingId)
 		if err != nil {
-			logger.Error("could not query entities", "err", err.Error())
+			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -92,17 +92,17 @@ func retrieveRelatedEntitiesHandler(log *slog.Logger, app application.App) http.
 	}
 }
 
-func addRelatedEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
 
-		ctx, span := tracer.Start(r.Context(), "add-related-entity")
+		ctx, span := tracer.Start(r.Context(), "add-related-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		entityId := chi.URLParam(r, "id")
-		if entityId == "" {
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
 			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -115,15 +115,15 @@ func addRelatedEntityHandler(log *slog.Logger, app application.App) http.Handler
 			return
 		}
 
-		if valid, err := app.IsValidEntity(b); !valid {
-			logger.Error("invalid entity", "err", err.Error())
+		if valid, err := app.IsValidThing(b); !valid {
+			logger.Error("invalid thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		err = app.AddRelatedEntity(ctx, entityId, b)
+		err = app.AddRelatedThing(ctx, thingId, b)
 		if err != nil {
-			logger.Error("could not add related entity", "err", err.Error())
+			logger.Error("could not add related thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -132,17 +132,17 @@ func addRelatedEntityHandler(log *slog.Logger, app application.App) http.Handler
 	}
 }
 
-func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
-		ctx, span := tracer.Start(r.Context(), "query-all-entities")
+		ctx, span := tracer.Start(r.Context(), "query-all-things")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		b, err := app.QueryEntities(ctx, r.URL.Query())
+		b, err := app.QueryThings(ctx, r.URL.Query())
 		if err != nil {
-			logger.Error("could not query entities", "err", err.Error())
+			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -160,7 +160,7 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 		}
 
 		if contentType == "application/geo+json" {
-			entities := []struct {
+			things := []struct {
 				Id       string `json:"id"`
 				Type     string `json:"type"`
 				Location struct {
@@ -169,9 +169,9 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 				} `json:"location"`
 			}{}
 
-			err = json.Unmarshal(b, &entities)
+			err = json.Unmarshal(b, &things)
 			if err != nil {
-				logger.Error("could not query entities", "err", err.Error())
+				logger.Error("could not query things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -179,7 +179,7 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 			fc := FeatureCollection{
 				Type: "FeatureCollection",
 			}
-			for _, e := range entities {
+			for _, e := range things {
 				fc.Features = append(fc.Features, Feature{
 					ID:   e.Id,
 					Type: "Feature",
@@ -195,7 +195,7 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 
 			b, err = json.Marshal(fc)
 			if err != nil {
-				logger.Error("could not marshal entities", "err", err.Error())
+				logger.Error("could not marshal things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -207,40 +207,40 @@ func queryEntitiesHandler(log *slog.Logger, app application.App) http.HandlerFun
 	}
 }
 
-func retrieveEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
-		ctx, span := tracer.Start(r.Context(), "retrieve-entity")
+		ctx, span := tracer.Start(r.Context(), "retrieve-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		entityId := chi.URLParam(r, "id")
-		if entityId == "" {
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
 			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		entity, err := app.RetrieveEntity(ctx, entityId)
+		thing, err := app.RetrieveThing(ctx, thingId)
 		if err != nil {
-			logger.Info("could not find entity", "err", err.Error())
+			logger.Info("could not find thjing", "err", err.Error())
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(entity)
+		w.Write(thing)
 	}
 }
 
-func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
 
-		ctx, span := tracer.Start(r.Context(), "create-entity")
+		ctx, span := tracer.Start(r.Context(), "create-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
@@ -251,20 +251,20 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 			return
 		}
 
-		if valid, err := app.IsValidEntity(b); !valid {
-			logger.Error("invalid entity", "err", err.Error())
+		if valid, err := app.IsValidThing(b); !valid {
+			logger.Error("invalid thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		err = app.CreateEntity(ctx, b)
+		err = app.CreateThing(ctx, b)
 		if err != nil && errors.Is(err, application.ErrAlreadyExists) {
-			logger.Info("entity already exists")
+			logger.Info("thing already exists")
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 		if err != nil {
-			logger.Error("could not create entity", "err", err.Error())
+			logger.Error("could not create thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -273,12 +273,12 @@ func createEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 	}
 }
 
-func updateEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
 
-		ctx, span := tracer.Start(r.Context(), "update-entity")
+		ctx, span := tracer.Start(r.Context(), "update-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
@@ -289,15 +289,15 @@ func updateEntityHandler(log *slog.Logger, app application.App) http.HandlerFunc
 			return
 		}
 
-		if valid, err := app.IsValidEntity(b); !valid {
-			logger.Error("invalid entity", "err", err.Error())
+		if valid, err := app.IsValidThing(b); !valid {
+			logger.Error("invalid thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		err = app.UpdateEntity(ctx, b)
+		err = app.UpdateThing(ctx, b)
 		if err != nil {
-			logger.Error("could not update entity", "err", err.Error())
+			logger.Error("could not update thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

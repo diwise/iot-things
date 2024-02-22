@@ -21,7 +21,7 @@ type tenantsContextKey struct {
 
 var allowedTenantsCtxKey = &tenantsContextKey{"allowed-tenants"}
 
-var tracer = otel.Tracer("iot-entities/authz")
+var tracer = otel.Tracer("iot-things/authz")
 
 func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Reader) (func(http.Handler) http.Handler, error) {
 	module, err := io.ReadAll(policies)

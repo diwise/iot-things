@@ -1,1 +1,1 @@
-# iot-entities
+# iot-things
