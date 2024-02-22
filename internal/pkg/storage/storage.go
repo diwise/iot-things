@@ -42,6 +42,12 @@ func (c Config) ConnStr() string {
 
 type ConditionFunc func(map[string]any) map[string]any
 
+type QueryResult struct {
+	Things     []byte
+	Count      int
+	TotalCount int64
+}
+
 func WithThingType(t string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
 		q["thing_type"] = t
@@ -52,6 +58,20 @@ func WithThingType(t string) ConditionFunc {
 func WithThingID(id string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
 		q["thing_id"] = id
+		return q
+	}
+}
+
+func WithOffset(v int) ConditionFunc {
+	return func(q map[string]any) map[string]any {
+		q["offset"] = v
+		return q
+	}
+}
+
+func WithLimit(v int) ConditionFunc {
+	return func(q map[string]any) map[string]any {
+		q["limit"] = v
 		return q
 	}
 }
@@ -152,33 +172,9 @@ func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 	return nil
 }
 
-func where(args map[string]any) string {
-	w := ""
-
-	for k, v := range args {
-		if w != "" {
-			w += "and "
-		}
-
-		if _, ok := v.(string); ok {
-			w += fmt.Sprintf("%s=@%s ", k, k)
-		}
-
-		if _, ok := v.([]string); ok {
-			w += fmt.Sprintf("%s=any(@%s) ", k, k)
-		}
-	}
-
-	if w == "" {
-		return w
-	}
-
-	return "where " + w
-}
-
-func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
+func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
 	if len(conditions) == 0 {
-		return nil, fmt.Errorf("query contains no conditions")
+		return QueryResult{}, fmt.Errorf("query contains no conditions")
 	}
 
 	log := logging.GetFromContext(ctx)
@@ -191,19 +187,36 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) ([]by
 		condition(args)
 	}
 
-	query := "select thing_id, thing_type, thing_location, tenant from things " + where(args)
+	if _, ok := args["offset"]; !ok {
+		args["offset"] = 0
+	}
+
+	if _, ok := args["limit"]; !ok {
+		args["limit"] = 1000
+	}
+
+	query := fmt.Sprintf(`
+			  select thing_id, thing_type, thing_location, tenant, count(*) OVER () AS total_count 
+	 		  from (
+				 select thing_id, thing_type, thing_location, tenant
+				 from things
+				 %s
+			  ) things
+			  limit @limit
+			  offset @offset;`, where(args))
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
-		return nil, err
+		return QueryResult{}, err
 	}
 
 	things := make([]thing, 0)
 	var thing_id, thing_type, tenant string
 	var thing_location pgtype.Point
+	var total_count int64
 
-	_, err = pgx.ForEachRow(rows, []any{&thing_id, &thing_type, &thing_location, &tenant}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&thing_id, &thing_type, &thing_location, &tenant, &total_count}, func() error {
 		things = append(things, thing{
 			Id:   thing_id,
 			Type: thing_type,
@@ -213,18 +226,25 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) ([]by
 			},
 			Tenant: tenant,
 		})
+
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return QueryResult{}, err
 	}
 
 	b, err := json.Marshal(things)
 	if err != nil {
-		return nil, err
+		return QueryResult{}, err
 	}
 
-	return b, nil
+	result := QueryResult{
+		Things:     b,
+		Count:      len(things),
+		TotalCount: total_count,
+	}
+
+	return result, nil
 }
 
 func (db Db) RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error) {
@@ -250,6 +270,7 @@ func (db Db) RetrieveThing(ctx context.Context, thingId string) ([]byte, string,
 			log.Debug("thing does not exists", "thing_id", thingId, "err", err.Error())
 			return nil, "", ErrNotExist
 		}
+
 		log.Error("could not execute query", "err", err.Error())
 		return nil, "", err
 	}
@@ -274,13 +295,13 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 
 	_, _, err = db.RetrieveThing(ctx, related.Id)
 	if err != nil {
-		if errors.Is(err, ErrNotExist) {
-			log.Debug("related thing does not exist, will create it", "id", related.Id)
-			err := db.CreateThing(ctx, v)
-			if err != nil {
-				return err
-			}
-		} else {
+		if !errors.Is(err, ErrNotExist) {
+			return err
+		}
+
+		log.Debug("related thing does not exist, will create it", "id", related.Id)
+		err := db.CreateThing(ctx, v)
+		if err != nil {
 			return err
 		}
 	}
@@ -351,6 +372,7 @@ func (db Db) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte,
 			},
 			Tenant: tenant,
 		})
+
 		return nil
 	})
 	if err != nil {
@@ -363,6 +385,34 @@ func (db Db) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte,
 	}
 
 	return b, nil
+}
+
+func where(args map[string]any) string {
+	w := ""
+
+	for k, v := range args {
+		if k == "offset" || k == "limit" {
+			continue
+		}
+
+		if w != "" {
+			w += "and "
+		}
+
+		if _, ok := v.(string); ok {
+			w += fmt.Sprintf("%s=@%s ", k, k)
+		}
+
+		if _, ok := v.([]string); ok {
+			w += fmt.Sprintf("%s=any(@%s) ", k, k)
+		}
+	}
+
+	if w == "" {
+		return w
+	}
+
+	return "where " + w
 }
 
 func getAllowedTenantsFromContext(ctx context.Context) []string {

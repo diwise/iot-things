@@ -148,7 +148,8 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		}
 
 		contentType := r.Header.Get("Accept")
-		if contentType == "" {
+
+		if !(contentType == "application/json" || contentType == "application/geo+json") {
 			contentType = "application/json"
 		}
 

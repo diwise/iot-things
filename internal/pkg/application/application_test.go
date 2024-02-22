@@ -10,10 +10,13 @@ import (
 func TestSeed(t *testing.T) {
 	is := is.New(t)
 
-	storage := &StorageMock{
+	reader := &ThingReaderMock{
 		RetrieveThingFunc: func(ctx context.Context, thingId string) ([]byte, string, error) {
 			return nil, "", nil
 		},
+	}
+
+	writer := &ThingWriterMock{
 		CreateThingFunc: func(ctx context.Context, v []byte) error {
 			return nil
 		},
@@ -25,7 +28,7 @@ func TestSeed(t *testing.T) {
 		},
 	}
 
-	app := New(storage)
+	app := New(reader, writer)
 	ctx := context.Background()
 
 	err := app.Seed(ctx, []byte(csvData))

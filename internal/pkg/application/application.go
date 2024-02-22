@@ -16,31 +16,37 @@ import (
 )
 
 type App struct {
-	storage Storage
+	w ThingWriter
+	r ThingReader
 }
 
-//go:generate moq -rm -out storage_mock.go . Storage
-type Storage interface {
-	CreateThing(ctx context.Context, v []byte) error
-	UpdateThing(ctx context.Context, v []byte) error
-	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
-	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
+//go:generate moq -rm -out reader_mock.go . ThingReader
+type ThingReader interface {
+	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 	RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error)
 	RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error)
 }
 
-func New(s Storage) App {
+//go:generate moq -rm -out writer_mock.go . ThingWriter
+type ThingWriter interface {
+	CreateThing(ctx context.Context, v []byte) error
+	UpdateThing(ctx context.Context, v []byte) error
+	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
+}
+
+func New(r ThingReader, w ThingWriter) App {
 	return App{
-		storage: s,
+		r: r,
+		w: w,
 	}
 }
 
 func (a App) AddRelatedThing(ctx context.Context, thingId string, data []byte) error {
-	return a.storage.AddRelatedThing(ctx, thingId, data)
+	return a.w.AddRelatedThing(ctx, thingId, data)
 }
 
 func (a App) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
-	return a.storage.RetrieveRelatedThings(ctx, thingId)
+	return a.r.RetrieveRelatedThings(ctx, thingId)
 }
 
 func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([]byte, error) {
@@ -54,18 +60,35 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([
 		q = append(q, storage.WithThingType(v[0]))
 	}
 
-	return a.storage.QueryThings(ctx, q...)
+	if v, ok := conditions["offset"]; ok {
+		i, err := strconv.Atoi(v[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid offset parameter")
+		}
+		q = append(q, storage.WithOffset(i))
+	}
+
+	if v, ok := conditions["limit"]; ok {
+		i, err := strconv.Atoi(v[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid limit parameter")
+		}
+		q = append(q, storage.WithLimit(i))
+	}
+
+	r, err := a.r.QueryThings(ctx, q...)
+	return r.Things, err
 }
 
 func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
-	b, _, err := a.storage.RetrieveThing(ctx, thingId)
+	b, _, err := a.r.RetrieveThing(ctx, thingId)
 	return b, err
 }
 
 var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
 
 func (a App) CreateThing(ctx context.Context, data []byte) error {
-	err := a.storage.CreateThing(ctx, data)
+	err := a.w.CreateThing(ctx, data)
 	if errors.Is(err, storage.ErrAlreadyExists) {
 		return ErrAlreadyExists
 	}
@@ -176,9 +199,13 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	_, _, err = a.storage.RetrieveThing(ctx, id)
+	_, _, err = a.r.RetrieveThing(ctx, id)
 	if err != nil {
-		err := a.storage.CreateThing(ctx, data)
+		if !errors.Is(err, storage.ErrNotExist) {
+			return err
+		}
+
+		err := a.w.CreateThing(ctx, data)
 		if err != nil {
 			if errors.Is(err, storage.ErrAlreadyExists) {
 				return ErrAlreadyExists
@@ -187,7 +214,7 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 		}
 	}
 
-	return a.storage.UpdateThing(ctx, data)
+	return a.w.UpdateThing(ctx, data)
 }
 
 func (a App) UpdateThing(ctx context.Context, data []byte) error {
@@ -196,12 +223,12 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	_, _, err = a.storage.RetrieveThing(ctx, id)
+	_, _, err = a.r.RetrieveThing(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	return a.storage.UpdateThing(ctx, data)
+	return a.w.UpdateThing(ctx, data)
 }
 
 func unmarshalThing(data []byte) (string, string, error) {
