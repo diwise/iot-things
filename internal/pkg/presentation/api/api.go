@@ -254,7 +254,7 @@ func L(result application.QueryResult, r *http.Request) *Links {
 			next = &n
 		}
 
-		if *result.Number-1 > 1 {
+		if *result.Number-1 >= 1 {
 			n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number-1, *result.Size)
 			prev = &n
 		}
