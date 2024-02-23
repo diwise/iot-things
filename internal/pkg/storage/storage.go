@@ -45,6 +45,8 @@ type ConditionFunc func(map[string]any) map[string]any
 type QueryResult struct {
 	Things     []byte
 	Count      int
+	Limit      int
+	Offset     int
 	TotalCount int64
 }
 
@@ -241,6 +243,8 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 	result := QueryResult{
 		Things:     b,
 		Count:      len(things),
+		Limit:      args["limit"].(int),
+		Offset:     args["offset"].(int),
 		TotalCount: total_count,
 	}
 

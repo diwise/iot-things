@@ -15,6 +15,8 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/storage"
 )
 
+var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
+
 type App struct {
 	w ThingWriter
 	r ThingReader
@@ -34,6 +36,16 @@ type ThingWriter interface {
 	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
 }
 
+type QueryResult struct {
+	Things     []byte
+	Count      int
+	Limit      int
+	Offset     int
+	Number     *int
+	Size       *int
+	TotalCount int64
+}
+
 func New(r ThingReader, w ThingWriter) App {
 	return App{
 		r: r,
@@ -49,7 +61,10 @@ func (a App) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte,
 	return a.r.RetrieveRelatedThings(ctx, thingId)
 }
 
-func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([]byte, error) {
+func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (QueryResult, error) {
+	var err error
+	var number, size *int
+
 	q := make([]storage.ConditionFunc, 0)
 
 	if v, ok := conditions["thing_id"]; ok {
@@ -60,32 +75,62 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([
 		q = append(q, storage.WithThingType(v[0]))
 	}
 
-	if v, ok := conditions["offset"]; ok {
-		i, err := strconv.Atoi(v[0])
-		if err != nil {
-			return nil, fmt.Errorf("invalid offset parameter")
+	if v, ok := conditions["page[size]"]; ok {
+		s, err := strconv.Atoi(v[0])
+		if err != nil || s < 1 {
+			return QueryResult{}, fmt.Errorf("invalid size parameter")
 		}
-		q = append(q, storage.WithOffset(i))
+		q = append(q, storage.WithLimit(s))
+		size = &s
+	}
+
+	if v, ok := conditions["page[number]"]; ok {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n < 1 {
+			return QueryResult{}, fmt.Errorf("invalid number parameter")
+		}
+		if size == nil {
+			s := 10
+			size = &s
+			q = append(q, storage.WithLimit(s))
+		}
+		q = append(q, storage.WithOffset((n-1)**size))
+		number = &n
+	}
+
+	if v, ok := conditions["offset"]; ok {
+		offset, err := strconv.Atoi(v[0])
+		if err != nil || offset < 0 {
+			return QueryResult{}, fmt.Errorf("invalid offset parameter")
+		}
+		q = append(q, storage.WithOffset(offset))
 	}
 
 	if v, ok := conditions["limit"]; ok {
-		i, err := strconv.Atoi(v[0])
-		if err != nil {
-			return nil, fmt.Errorf("invalid limit parameter")
+		limit, err := strconv.Atoi(v[0])
+		if err != nil || limit < 1 {
+			return QueryResult{}, fmt.Errorf("invalid limit parameter")
 		}
-		q = append(q, storage.WithLimit(i))
+		q = append(q, storage.WithLimit(limit))
 	}
 
 	r, err := a.r.QueryThings(ctx, q...)
-	return r.Things, err
+
+	return QueryResult{
+		Things:     r.Things,
+		Count:      r.Count,
+		Limit:      r.Limit,
+		Offset:     r.Offset,
+		Number:     number,
+		Size:       size,
+		TotalCount: r.TotalCount,
+	}, err
 }
 
 func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
 	b, _, err := a.r.RetrieveThing(ctx, thingId)
 	return b, err
 }
-
-var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
 
 func (a App) CreateThing(ctx context.Context, data []byte) error {
 	err := a.w.CreateThing(ctx, data)
