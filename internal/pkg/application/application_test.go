@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -31,7 +32,7 @@ func TestSeed(t *testing.T) {
 	app := New(reader, writer)
 	ctx := context.Background()
 
-	err := app.Seed(ctx, []byte(csvData))
+	err := app.Seed(ctx, bytes.NewReader([]byte(csvData)))
 	is.NoErr(err)
 }
 

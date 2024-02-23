@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -173,8 +172,8 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 	return a.w.UpdateThing(ctx, data)
 }
 
-func (a App) Seed(ctx context.Context, data []byte) error {
-	r := csv.NewReader(bytes.NewReader(data))
+func (a App) Seed(ctx context.Context, data io.Reader) error {
+	r := csv.NewReader(data)
 	r.Comma = ';'
 	rowNum := 0
 
