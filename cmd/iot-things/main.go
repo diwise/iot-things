@@ -52,7 +52,7 @@ func main() {
 
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {
-		log.Error("could listen and serve", "err", err.Error())
+		log.Error("could not listen and serve", "err", err.Error())
 		os.Exit(1)
 	}
 }
