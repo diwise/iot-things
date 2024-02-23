@@ -53,20 +53,27 @@ Add this to launch.json
 Accept headers
 
 **application/vnd.api+json** (1) + (2)
+
 **application/geo+json** (1)
+
 **application/json** (1) + (2)
+
 
 Add Authorization header with **any** Bearer token
 
 #### Paging
 
 page[number] - page number to fetch
+
 page[size] - number of rows per page
 
+
 offset - skip n rows
+
 limit - limit response to n rows
 
 _links_ object added to **application/vnd.api+json** response
+
 _Link_ headers added to **application/geo+json** response
 
 ### Example response
