@@ -15,35 +15,46 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/storage"
 )
 
+var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
+
 type App struct {
-	storage Storage
+	w ThingWriter
+	r ThingReader
 }
 
-//go:generate moq -rm -out storage_mock.go . Storage
-type Storage interface {
-	CreateThing(ctx context.Context, v []byte) error
-	UpdateThing(ctx context.Context, v []byte) error
-	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
-	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
+//go:generate moq -rm -out reader_mock.go . ThingReader
+type ThingReader interface {
+	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 	RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error)
 	RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error)
 }
 
-func New(s Storage) App {
+//go:generate moq -rm -out writer_mock.go . ThingWriter
+type ThingWriter interface {
+	CreateThing(ctx context.Context, v []byte) error
+	UpdateThing(ctx context.Context, v []byte) error
+	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
+}
+
+func New(r ThingReader, w ThingWriter) App {
 	return App{
-		storage: s,
+		r: r,
+		w: w,
 	}
 }
 
 func (a App) AddRelatedThing(ctx context.Context, thingId string, data []byte) error {
-	return a.storage.AddRelatedThing(ctx, thingId, data)
+	return a.w.AddRelatedThing(ctx, thingId, data)
 }
 
 func (a App) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
-	return a.storage.RetrieveRelatedThings(ctx, thingId)
+	return a.r.RetrieveRelatedThings(ctx, thingId)
 }
 
-func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([]byte, error) {
+func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (QueryResult, error) {
+	var err error
+	var number, size *int
+
 	q := make([]storage.ConditionFunc, 0)
 
 	if v, ok := conditions["thing_id"]; ok {
@@ -54,18 +65,65 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) ([
 		q = append(q, storage.WithThingType(v[0]))
 	}
 
-	return a.storage.QueryThings(ctx, q...)
+	if v, ok := conditions["page[size]"]; ok {
+		s, err := strconv.Atoi(v[0])
+		if err != nil || s < 1 {
+			return QueryResult{}, fmt.Errorf("invalid size parameter")
+		}
+		q = append(q, storage.WithLimit(s))
+		size = &s
+	}
+
+	if v, ok := conditions["page[number]"]; ok {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n < 1 {
+			return QueryResult{}, fmt.Errorf("invalid number parameter")
+		}
+		if size == nil {
+			s := 10
+			size = &s
+			q = append(q, storage.WithLimit(s))
+		}
+		q = append(q, storage.WithOffset((n-1)**size))
+		number = &n
+	}
+
+	if v, ok := conditions["offset"]; ok {
+		offset, err := strconv.Atoi(v[0])
+		if err != nil || offset < 0 {
+			return QueryResult{}, fmt.Errorf("invalid offset parameter")
+		}
+		q = append(q, storage.WithOffset(offset))
+	}
+
+	if v, ok := conditions["limit"]; ok {
+		limit, err := strconv.Atoi(v[0])
+		if err != nil || limit < 1 {
+			return QueryResult{}, fmt.Errorf("invalid limit parameter")
+		}
+		q = append(q, storage.WithLimit(limit))
+	}
+
+	r, err := a.r.QueryThings(ctx, q...)
+
+	return QueryResult{
+		Things:     r.Things,
+		Count:      r.Count,
+		Limit:      r.Limit,
+		Offset:     r.Offset,
+		Number:     number,
+		Size:       size,
+		TotalCount: r.TotalCount,
+	}, err
 }
 
 func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
-	b, _, err := a.storage.RetrieveThing(ctx, thingId)
+	b, _, err := a.r.RetrieveThing(ctx, thingId)
 	return b, err
 }
 
-var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
-
 func (a App) CreateThing(ctx context.Context, data []byte) error {
-	err := a.storage.CreateThing(ctx, data)
+	err := a.w.CreateThing(ctx, data)
 	if errors.Is(err, storage.ErrAlreadyExists) {
 		return ErrAlreadyExists
 	}
@@ -77,10 +135,68 @@ func (a App) IsValidThing(data []byte) (bool, error) {
 	return err == nil, err
 }
 
+func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
+	id, _, err := unmarshalThing(data)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = a.r.RetrieveThing(ctx, id)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotExist) {
+			return err
+		}
+
+		err := a.w.CreateThing(ctx, data)
+		if err != nil {
+			if errors.Is(err, storage.ErrAlreadyExists) {
+				return ErrAlreadyExists
+			}
+			return err
+		}
+	}
+
+	return a.w.UpdateThing(ctx, data)
+}
+
+func (a App) UpdateThing(ctx context.Context, data []byte) error {
+	id, _, err := unmarshalThing(data)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = a.r.RetrieveThing(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return a.w.UpdateThing(ctx, data)
+}
+
 func (a App) Seed(ctx context.Context, data []byte) error {
 	r := csv.NewReader(bytes.NewReader(data))
 	r.Comma = ';'
 	rowNum := 0
+
+	parseLocation := func(s string) Location {
+		parts := strings.Split(s, ",")
+		if len(parts) != 2 {
+			return Location{}
+		}
+
+		parse := func(s string) float64 {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return 0.0
+			}
+			return f
+		}
+
+		return Location{
+			Latitude:  parse(parts[0]),
+			Longitude: parse(parts[1]),
+		}
+	}
 
 	for {
 		record, err := r.Read()
@@ -93,26 +209,26 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			continue
 		}
 
-		e := Thing{
+		t := Thing{
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
-			Tenant:   record[5],
+			Tenant:   record[6],
 		}
 
-		d := Thing{
+		fnct := Thing{
 			Id:       record[3],
-			Type:     "Device",
-			Location: parseLocation(record[4]),
-			Tenant:   record[5],
+			Type:     record[4],
+			Location: parseLocation(record[5]),
+			Tenant:   record[6],
 		}
 
-		be, err := json.Marshal(e)
+		be, err := json.Marshal(t)
 		if err != nil {
 			return err
 		}
 
-		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{d.Tenant})
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
@@ -121,13 +237,13 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 			}
 		}
 
-		if d.Id != "" {
-			bd, err := json.Marshal(d)
+		if fnct.Id != "" {
+			bd, err := json.Marshal(fnct)
 			if err != nil {
 				return err
 			}
 
-			err = a.AddRelatedThing(ctxWithTenant, e.Id, bd)
+			err = a.AddRelatedThing(ctxWithTenant, t.Id, bd)
 			if err != nil {
 				return err
 			}
@@ -136,72 +252,6 @@ func (a App) Seed(ctx context.Context, data []byte) error {
 	}
 
 	return nil
-}
-
-type Thing struct {
-	Id       string   `json:"id"`
-	Type     string   `json:"type"`
-	Location location `json:"location"`
-	Tenant   string   `json:"tenant"`
-}
-
-type location struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-}
-
-func parseLocation(s string) location {
-	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return location{}
-	}
-
-	parse := func(s string) float64 {
-		f, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			return 0.0
-		}
-		return f
-	}
-
-	return location{
-		Latitude:  parse(parts[0]),
-		Longitude: parse(parts[1]),
-	}
-}
-
-func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
-	id, _, err := unmarshalThing(data)
-	if err != nil {
-		return err
-	}
-
-	_, _, err = a.storage.RetrieveThing(ctx, id)
-	if err != nil {
-		err := a.storage.CreateThing(ctx, data)
-		if err != nil {
-			if errors.Is(err, storage.ErrAlreadyExists) {
-				return ErrAlreadyExists
-			}
-			return err
-		}
-	}
-
-	return a.storage.UpdateThing(ctx, data)
-}
-
-func (a App) UpdateThing(ctx context.Context, data []byte) error {
-	id, _, err := unmarshalThing(data)
-	if err != nil {
-		return err
-	}
-
-	_, _, err = a.storage.RetrieveThing(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	return a.storage.UpdateThing(ctx, data)
 }
 
 func unmarshalThing(data []byte) (string, string, error) {

@@ -97,11 +97,11 @@ func TestQueryThings(t *testing.T) {
 	q = append(q, WithThingID(id))
 	q = append(q, WithThingType("WasteContainer"))
 
-	e, err := db.QueryThings(ctx, q...)
+	result, err := db.QueryThings(ctx, q...)
 	is.NoErr(err)
 
 	things := make([]thing, 0)
-	json.Unmarshal(e, &things)
+	json.Unmarshal(result.Things, &things)
 
 	is.Equal(1, len(things))
 	is.Equal(id, things[0].Id)

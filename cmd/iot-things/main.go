@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := application.New(db)
+	app := application.New(db, db)
 
 	r, err := setupRouter(ctx, opaFilePath, app)
 	if err != nil {

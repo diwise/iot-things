@@ -73,7 +73,7 @@ func retrieveRelatedThingsHandler(log *slog.Logger, app application.App) http.Ha
 
 		thingId := chi.URLParam(r, "id")
 		if thingId == "" {
-			logger.Error("could not read body", "err", err.Error())
+			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -88,7 +88,6 @@ func retrieveRelatedThingsHandler(log *slog.Logger, app application.App) http.Ha
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
-
 	}
 }
 
@@ -103,7 +102,7 @@ func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerF
 
 		thingId := chi.URLParam(r, "id")
 		if thingId == "" {
-			logger.Error("could not read body", "err", err.Error())
+			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -136,28 +135,32 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
-		ctx, span := tracer.Start(r.Context(), "query-all-things")
+		ctx, span := tracer.Start(r.Context(), "query-things")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		b, err := app.QueryThings(ctx, r.URL.Query())
+		result, err := app.QueryThings(ctx, r.URL.Query())
 		if err != nil {
 			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		contentType := r.Header.Get("Accept")
-		if contentType == "" {
-			contentType = "application/json"
+		accept := r.Header.Get("Accept")
+		contentType := "application/vnd.api+json"
+
+		if accept == "application/geo+json" || accept == "application/json" {
+			contentType = accept
 		}
 
-		if len(b) == 0 {
+		if result.Count == 0 {
 			w.Header().Set("Content-Type", contentType)
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("[]"))
 			return
 		}
+
+		b := result.Things
 
 		if contentType == "application/geo+json" {
 			things := []struct {
@@ -169,7 +172,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 				} `json:"location"`
 			}{}
 
-			err = json.Unmarshal(b, &things)
+			err = json.Unmarshal(result.Things, &things)
 			if err != nil {
 				logger.Error("could not query things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -199,11 +202,97 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+
+			links := L(result, r)
+			if links != nil {
+				w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="self"; type="application/geo+json"`, links.Self))
+				if links.Next != nil {
+					w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="next"; type="application/geo+json"`, *links.Next))
+				}
+				if links.Prev != nil {
+					w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="prev"; type="application/geo+json"`, *links.Prev))
+				}
+			}
+		}
+
+		if contentType == "application/vnd.api+json" {
+			response := JsonApiResponse{
+				Data:  result.Things,
+				Links: L(result, r),
+			}
+
+			b, err = json.Marshal(response)
+			if err != nil {
+				logger.Error("could not marshal query response", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
+	}
+}
+
+func L(result application.QueryResult, r *http.Request) *Links {
+	var prev *string
+	var next *string
+
+	q := r.URL.Query()
+	delete(q, "page[number]")
+	delete(q, "page[size]")
+	delete(q, "offset")
+	delete(q, "limit")
+
+	url := fmt.Sprintf("%s?%s", r.URL.Path, q.Encode())
+
+	if result.Size != nil && result.Number != nil {
+		lastPage := result.TotalCount / int64(*result.Size)
+		if *result.Number+1 <= int(lastPage) {
+			n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number+1, *result.Size)
+			next = &n
+		}
+
+		if *result.Number-1 > 1 {
+			n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number-1, *result.Size)
+			prev = &n
+		}
+
+		return &Links{
+			Self:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number, *result.Size),
+			First: fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, 1, *result.Size),
+			Last:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, lastPage, *result.Size),
+			Prev:  prev,
+			Next:  next,
+		}
+	}
+
+	if result.Offset-result.Limit >= 0  {
+		n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset-result.Limit, result.Limit)
+		prev = &n
+	}
+
+	if !(int64(result.Offset)+int64(result.Limit) > result.TotalCount) {
+		n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset+result.Limit, result.Limit)
+		next = &n
+	}
+
+	var last int64 = 1
+
+	for {
+		if last*int64(result.Limit) >= result.TotalCount {
+			break
+		}
+		last++
+	}
+
+	return &Links{
+		Self:  fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset, result.Limit),
+		First: fmt.Sprintf("%s&offset=%d&limit=%d", url, 0, result.Limit),
+		Last:  fmt.Sprintf("%s&offset=%d&limit=%d", url, (last-1)*int64(result.Limit), result.Limit),
+		Prev:  prev,
+		Next:  next,
 	}
 }
 
@@ -217,21 +306,59 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 
 		thingId := chi.URLParam(r, "id")
 		if thingId == "" {
-			logger.Error("could not read body", "err", err.Error())
+			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		thing, err := app.RetrieveThing(ctx, thingId)
+		accept := r.Header.Get("Accept")
+		contentType := "application/vnd.api+json"
+
+		if accept == "application/json" {
+			contentType = accept
+		}
+
+		b, err := app.RetrieveThing(ctx, thingId)
 		if err != nil {
-			logger.Info("could not find thjing", "err", err.Error())
+			logger.Info("could not find thing", "err", err.Error())
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		if contentType == "application/vnd.api+json" {
+			response := JsonApiResponse{
+				Data: b,
+			}
+
+			r, err := app.RetrieveRelatedThings(ctx, thingId)
+			if err != nil {
+				logger.Error("could not fetch related things", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			related := []Resource{}
+			err = json.Unmarshal(r, &related)
+			if err != nil {
+				logger.Error("could not marshal query response", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if len(related) > 0 {
+				response.Included = related
+			}
+
+			b, err = json.Marshal(response)
+			if err != nil {
+				logger.Error("could not marshal query response", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(http.StatusOK)
-		w.Write(thing)
+		w.Write(b)
 	}
 }
 
@@ -315,7 +442,7 @@ func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
 		if !isMultipartFormData(r) {
-			logger.Error("could not read body", "err", err.Error())
+			logger.Error("Content-Type is not multipart/form-data")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -349,19 +476,4 @@ func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 func isMultipartFormData(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
 	return strings.Contains(contentType, "multipart/form-data")
-}
-
-type FeatureCollection struct {
-	Type     string    `json:"type"`
-	Features []Feature `json:"features"`
-}
-type Feature struct {
-	ID         string   `json:"id"`
-	Type       string   `json:"type"`
-	Geometry   Geometry `json:"geometry"`
-	Properties map[string]any
-}
-type Geometry struct {
-	Type        string    `json:"type"`
-	Coordinates []float64 `json:"coordinates"`
 }
