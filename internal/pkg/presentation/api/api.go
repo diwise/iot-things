@@ -48,6 +48,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Post("/", createThingHandler(log, app))
 				r.Get("/{id}", retrieveThingHandler(log, app))
 				r.Put("/{id}", updateThingHandler(log, app))
+				r.Patch("/{id}", patchThingHandler(log, app))
 				r.Get("/{id}/related", retrieveRelatedThingsHandler(log, app))
 				r.Post("/{id}/related", addRelatedThingHandler(log, app))
 
@@ -397,6 +398,74 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func patchThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		ctx, span := tracer.Start(r.Context(), "patch-thing")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error("could not read body", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		patch := make(map[string]any)
+		err = json.Unmarshal(b, &patch)
+		if err != nil {
+			logger.Error("could not unmarshal patch", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		thing, err := app.RetrieveThing(ctx, thingId)
+		if err != nil {
+			logger.Error("could not find thing to patch", "err", err.Error())
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		current := make(map[string]any)
+		err = json.Unmarshal(thing, &current)
+		if err != nil {
+			logger.Error("could not unmarshal current thing to map", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		for k, v := range patch {
+			current[k] = v
+		}
+
+		patchedThing, err := json.Marshal(current)
+		if err != nil {
+			logger.Error("could not marshal patched thing", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		err = app.UpdateThing(ctx, patchedThing)
+		if err != nil {
+			logger.Error("could not update patched thing", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
