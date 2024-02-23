@@ -202,73 +202,23 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+
+			links := L(result, r)
+			if links != nil {
+				w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="self"; type="application/geo+json"`, links.Self))
+				if links.Next != nil {
+					w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="next"; type="application/geo+json"`, *links.Next))
+				}
+				if links.Prev != nil {
+					w.Header().Add("Link", fmt.Sprintf(`<%s>; rel="prev"; type="application/geo+json"`, *links.Prev))
+				}
+			}
 		}
 
 		if contentType == "application/vnd.api+json" {
-			links := func() *Links {
-				var prev *string
-				var next *string
-
-				q := r.URL.Query()
-				delete(q, "page[number]")
-				delete(q, "page[size]")
-				delete(q, "offset")
-				delete(q, "limit")
-
-				url := fmt.Sprintf("%s?%s", r.URL.Path, q.Encode())
-
-				if result.Size != nil && result.Number != nil {
-					lastPage := result.TotalCount / int64(*result.Size)
-					if *result.Number+1 <= int(lastPage) {
-						n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number+1, *result.Size)
-						next = &n
-					}
-
-					if *result.Number-1 > 1 {
-						n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number-1, *result.Size)
-						prev = &n
-					}
-
-					return &Links{
-						Self:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number, *result.Size),
-						First: fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, 1, *result.Size),
-						Last:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, lastPage, *result.Size),
-						Prev:  prev,
-						Next:  next,
-					}
-				}
-
-				if result.Offset-result.Limit > 0 && result.Offset-result.Limit > result.Limit {
-					n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset-result.Limit, result.Limit)
-					prev = &n
-				}
-
-				if !(int64(result.Offset)+int64(result.Limit) > result.TotalCount) {
-					n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset+result.Limit, result.Limit)
-					next = &n
-				}
-
-				var last int64 = 1
-
-				for {
-					if last*int64(result.Limit) >= result.TotalCount {
-						break
-					}
-					last++
-				}
-
-				return &Links{
-					Self:  fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset, result.Limit),
-					First: fmt.Sprintf("%s&offset=%d&limit=%d", url, 0, result.Limit),
-					Last:  fmt.Sprintf("%s&offset=%d&limit=%d", url, (last-1)*int64(result.Limit), result.Limit),
-					Prev:  prev,
-					Next:  next,
-				}
-			}
-
 			response := JsonApiResponse{
 				Data:  result.Things,
-				Links: links(),
+				Links: L(result, r),
 			}
 
 			b, err = json.Marshal(response)
@@ -282,6 +232,67 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
+	}
+}
+
+func L(result application.QueryResult, r *http.Request) *Links {
+	var prev *string
+	var next *string
+
+	q := r.URL.Query()
+	delete(q, "page[number]")
+	delete(q, "page[size]")
+	delete(q, "offset")
+	delete(q, "limit")
+
+	url := fmt.Sprintf("%s?%s", r.URL.Path, q.Encode())
+
+	if result.Size != nil && result.Number != nil {
+		lastPage := result.TotalCount / int64(*result.Size)
+		if *result.Number+1 <= int(lastPage) {
+			n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number+1, *result.Size)
+			next = &n
+		}
+
+		if *result.Number-1 > 1 {
+			n := fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number-1, *result.Size)
+			prev = &n
+		}
+
+		return &Links{
+			Self:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, *result.Number, *result.Size),
+			First: fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, 1, *result.Size),
+			Last:  fmt.Sprintf("%s&page[number]=%d&page[size]=%d", url, lastPage, *result.Size),
+			Prev:  prev,
+			Next:  next,
+		}
+	}
+
+	if result.Offset-result.Limit >= 0  {
+		n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset-result.Limit, result.Limit)
+		prev = &n
+	}
+
+	if !(int64(result.Offset)+int64(result.Limit) > result.TotalCount) {
+		n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset+result.Limit, result.Limit)
+		next = &n
+	}
+
+	var last int64 = 1
+
+	for {
+		if last*int64(result.Limit) >= result.TotalCount {
+			break
+		}
+		last++
+	}
+
+	return &Links{
+		Self:  fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset, result.Limit),
+		First: fmt.Sprintf("%s&offset=%d&limit=%d", url, 0, result.Limit),
+		Last:  fmt.Sprintf("%s&offset=%d&limit=%d", url, (last-1)*int64(result.Limit), result.Limit),
+		Prev:  prev,
+		Next:  next,
 	}
 }
 
@@ -319,7 +330,23 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 				Data: b,
 			}
 
-			// TODO: add related things
+			r, err := app.RetrieveRelatedThings(ctx, thingId)
+			if err != nil {
+				logger.Error("could not fetch related things", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			related := []Resource{}
+			err = json.Unmarshal(r, &related)
+			if err != nil {
+				logger.Error("could not marshal query response", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if len(related) > 0 {
+				response.Included = related
+			}
 
 			b, err = json.Marshal(response)
 			if err != nil {

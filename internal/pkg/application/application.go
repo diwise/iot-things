@@ -36,16 +36,6 @@ type ThingWriter interface {
 	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
 }
 
-type QueryResult struct {
-	Things     []byte
-	Count      int
-	Limit      int
-	Offset     int
-	Number     *int
-	Size       *int
-	TotalCount int64
-}
-
 func New(r ThingReader, w ThingWriter) App {
 	return App{
 		r: r,
@@ -145,99 +135,6 @@ func (a App) IsValidThing(data []byte) (bool, error) {
 	return err == nil, err
 }
 
-func (a App) Seed(ctx context.Context, data []byte) error {
-	r := csv.NewReader(bytes.NewReader(data))
-	r.Comma = ';'
-	rowNum := 0
-
-	for {
-		record, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-
-		if rowNum == 0 {
-			rowNum++
-			continue
-		}
-
-		e := Thing{
-			Id:       record[0],
-			Type:     record[1],
-			Location: parseLocation(record[2]),
-			Tenant:   record[5],
-		}
-
-		d := Thing{
-			Id:       record[3],
-			Type:     "Device",
-			Location: parseLocation(record[4]),
-			Tenant:   record[5],
-		}
-
-		be, err := json.Marshal(e)
-		if err != nil {
-			return err
-		}
-
-		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{d.Tenant})
-
-		err = a.CreateOrUpdateThing(ctxWithTenant, be)
-		if err != nil {
-			if !errors.Is(err, ErrAlreadyExists) {
-				return err
-			}
-		}
-
-		if d.Id != "" {
-			bd, err := json.Marshal(d)
-			if err != nil {
-				return err
-			}
-
-			err = a.AddRelatedThing(ctxWithTenant, e.Id, bd)
-			if err != nil {
-				return err
-			}
-		}
-		rowNum++
-	}
-
-	return nil
-}
-
-type Thing struct {
-	Id       string   `json:"id"`
-	Type     string   `json:"type"`
-	Location location `json:"location"`
-	Tenant   string   `json:"tenant"`
-}
-
-type location struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-}
-
-func parseLocation(s string) location {
-	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return location{}
-	}
-
-	parse := func(s string) float64 {
-		f, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			return 0.0
-		}
-		return f
-	}
-
-	return location{
-		Latitude:  parse(parts[0]),
-		Longitude: parse(parts[1]),
-	}
-}
-
 func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 	id, _, err := unmarshalThing(data)
 	if err != nil {
@@ -274,6 +171,87 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 	}
 
 	return a.w.UpdateThing(ctx, data)
+}
+
+func (a App) Seed(ctx context.Context, data []byte) error {
+	r := csv.NewReader(bytes.NewReader(data))
+	r.Comma = ';'
+	rowNum := 0
+
+	parseLocation := func(s string) Location {
+		parts := strings.Split(s, ",")
+		if len(parts) != 2 {
+			return Location{}
+		}
+
+		parse := func(s string) float64 {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return 0.0
+			}
+			return f
+		}
+
+		return Location{
+			Latitude:  parse(parts[0]),
+			Longitude: parse(parts[1]),
+		}
+	}
+
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+
+		if rowNum == 0 {
+			rowNum++
+			continue
+		}
+
+		t := Thing{
+			Id:       record[0],
+			Type:     record[1],
+			Location: parseLocation(record[2]),
+			Tenant:   record[6],
+		}
+
+		fnct := Thing{
+			Id:       record[3],
+			Type:     record[4],
+			Location: parseLocation(record[5]),
+			Tenant:   record[6],
+		}
+
+		be, err := json.Marshal(t)
+		if err != nil {
+			return err
+		}
+
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
+
+		err = a.CreateOrUpdateThing(ctxWithTenant, be)
+		if err != nil {
+			if !errors.Is(err, ErrAlreadyExists) {
+				return err
+			}
+		}
+
+		if fnct.Id != "" {
+			bd, err := json.Marshal(fnct)
+			if err != nil {
+				return err
+			}
+
+			err = a.AddRelatedThing(ctxWithTenant, t.Id, bd)
+			if err != nil {
+				return err
+			}
+		}
+		rowNum++
+	}
+
+	return nil
 }
 
 func unmarshalThing(data []byte) (string, string, error) {
