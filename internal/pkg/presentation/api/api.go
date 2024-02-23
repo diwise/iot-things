@@ -268,7 +268,7 @@ func L(result application.QueryResult, r *http.Request) *Links {
 		}
 	}
 
-	if result.Offset-result.Limit >= 0  {
+	if result.Offset-result.Limit >= 0 {
 		n := fmt.Sprintf("%s&offset=%d&limit=%d", url, result.Offset-result.Limit, result.Limit)
 		prev = &n
 	}
@@ -449,20 +449,13 @@ func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 
 		file, _, err := r.FormFile("fileupload")
 		if err != nil {
-			logger.Error("unable to read file", "err", err.Error())
+			logger.Error("unable to get file from fileupload", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
 
-		b, err := io.ReadAll(file)
-		if err != nil {
-			logger.Error("unable to read file upload", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		err = app.Seed(ctx, b)
+		err = app.Seed(ctx, file)
 		if err != nil {
 			logger.Error("could not seed", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)

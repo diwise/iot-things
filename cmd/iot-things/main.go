@@ -73,13 +73,14 @@ func setupRouter(ctx context.Context, opaFilePath string, app application.App) (
 }
 
 func seedThings(ctx context.Context, thingsFilePath string, app application.App) error {
-	e, err := os.ReadFile(thingsFilePath)
+	things, err := os.Open(thingsFilePath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
+	defer things.Close()
 
-	return app.Seed(ctx, e)
+	return app.Seed(ctx, things)
 }
