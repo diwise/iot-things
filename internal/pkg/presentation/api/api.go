@@ -49,10 +49,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Get("/{id}", retrieveThingHandler(log, app))
 				r.Put("/{id}", updateThingHandler(log, app))
 				r.Patch("/{id}", patchThingHandler(log, app))
-				r.Get("/{id}/related", retrieveRelatedThingsHandler(log, app))
-				r.Post("/{id}/related", addRelatedThingHandler(log, app))
-
-				r.Post("/seed", seedHandler(log, app))
+				r.Post("/{id}", addRelatedThingHandler(log, app))
 			})
 		})
 	})
@@ -62,74 +59,6 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 	})
 
 	return r, nil
-}
-
-func retrieveRelatedThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-
-		ctx, span := tracer.Start(r.Context(), "retrieve-relative-things")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
-
-		thingId := chi.URLParam(r, "id")
-		if thingId == "" {
-			logger.Error("no id parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		b, err := app.RetrieveRelatedThings(ctx, thingId)
-		if err != nil {
-			logger.Error("could not query things", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(b)
-	}
-}
-
-func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		defer r.Body.Close()
-
-		ctx, span := tracer.Start(r.Context(), "add-related-thing")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
-
-		thingId := chi.URLParam(r, "id")
-		if thingId == "" {
-			logger.Error("no id parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.Error("could not read body", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		if valid, err := app.IsValidThing(b); !valid {
-			logger.Error("invalid thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		err = app.AddRelatedThing(ctx, thingId, b)
-		if err != nil {
-			logger.Error("could not add related thing", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusCreated)
-	}
 }
 
 func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
@@ -297,6 +226,68 @@ func L(result application.QueryResult, r *http.Request) *Links {
 	}
 }
 
+func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		if isMultipartFormData(r) {
+			ctx, span := tracer.Start(r.Context(), "seed")
+			defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+			_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+			file, _, err := r.FormFile("fileupload")
+			if err != nil {
+				logger.Error("unable to get file from fileupload", "err", err.Error())
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			defer file.Close()
+
+			err = app.Seed(ctx, file)
+			if err != nil {
+				logger.Error("could not seed", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+
+		ctx, span := tracer.Start(r.Context(), "create-thing")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error("could not read body", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if valid, err := app.IsValidThing(b); !valid {
+			logger.Error("invalid thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = app.CreateThing(ctx, b)
+		if err != nil && errors.Is(err, application.ErrAlreadyExists) {
+			logger.Info("thing already exists")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if err != nil {
+			logger.Error("could not create thing", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
 func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -360,44 +351,6 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
-	}
-}
-
-func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		defer r.Body.Close()
-
-		ctx, span := tracer.Start(r.Context(), "create-thing")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
-
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.Error("could not read body", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		if valid, err := app.IsValidThing(b); !valid {
-			logger.Error("invalid thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		err = app.CreateThing(ctx, b)
-		if err != nil && errors.Is(err, application.ErrAlreadyExists) {
-			logger.Info("thing already exists")
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if err != nil {
-			logger.Error("could not create thing", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusCreated)
 	}
 }
 
@@ -502,31 +455,38 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 	}
 }
 
-func seedHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
+		defer r.Body.Close()
 
-		ctx, span := tracer.Start(r.Context(), "seed")
+		ctx, span := tracer.Start(r.Context(), "add-related-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		if !isMultipartFormData(r) {
-			logger.Error("Content-Type is not multipart/form-data")
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		file, _, err := r.FormFile("fileupload")
+		b, err := io.ReadAll(r.Body)
 		if err != nil {
-			logger.Error("unable to get file from fileupload", "err", err.Error())
+			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		defer file.Close()
 
-		err = app.Seed(ctx, file)
+		if valid, err := app.IsValidThing(b); !valid {
+			logger.Error("invalid thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = app.AddRelatedThing(ctx, thingId, b)
 		if err != nil {
-			logger.Error("could not seed", "err", err.Error())
+			logger.Error("could not add related thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
