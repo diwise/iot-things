@@ -266,7 +266,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 				}
 			}
 
-			response := QueryResponse{
+			response := JsonApiResponse{
 				Data:  result.Things,
 				Links: links(),
 			}
@@ -315,7 +315,7 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 		}
 
 		if contentType == "application/vnd.api+json" {
-			response := QueryResponse{
+			response := JsonApiResponse{
 				Data: b,
 			}
 

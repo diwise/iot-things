@@ -17,7 +17,7 @@ type Geometry struct {
 	Coordinates []float64 `json:"coordinates"`
 }
 
-type QueryResponse struct {
+type JsonApiResponse struct {
 	Data  json.RawMessage `json:"data"`
 	Links *Links          `json:"links,omitempty"`
 }
@@ -29,4 +29,3 @@ type Links struct {
 	Last  string  `json:"last"`
 	Next  *string `json:"next,omitempty"`
 }
-
