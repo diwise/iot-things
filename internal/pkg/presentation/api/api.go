@@ -377,44 +377,10 @@ func patchThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 			return
 		}
 
-		patch := make(map[string]any)
-		err = json.Unmarshal(b, &patch)
+		err = app.PatchThing(ctx, thingId, b)
 		if err != nil {
-			logger.Error("could not unmarshal patch", "err", err.Error())
+			logger.Error("could not patch thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		thing, err := app.RetrieveThing(ctx, thingId)
-		if err != nil {
-			logger.Error("could not find thing to patch", "err", err.Error())
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		current := make(map[string]any)
-		err = json.Unmarshal(thing, &current)
-		if err != nil {
-			logger.Error("could not unmarshal current thing to map", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		for k, v := range patch {
-			current[k] = v
-		}
-
-		patchedThing, err := json.Marshal(current)
-		if err != nil {
-			logger.Error("could not marshal patched thing", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		err = app.UpdateThing(ctx, patchedThing)
-		if err != nil {
-			logger.Error("could not update patched thing", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
