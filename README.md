@@ -126,3 +126,41 @@ _Link_ headers added to **application/geo+json** response
 ```
 
 _prev_ & _next_ only visible if valid
+
+### Connect things
+
+4: POST http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
+
+to connect (include) one thing with another. POST a valid "thing" object.
+
+```json
+{
+    "id": "level:001",
+    "type": "Level",
+    "location": {
+        "latitude": 17.306868,
+        "longitude": 62.390715
+    },
+}
+```
+
+### Update 
+
+5: PUT http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
+
+PUT update/replace a thing 
+
+### Update attribute
+
+5: PATCH http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
+
+PATCH update/replace a things attribute
+
+```json
+{
+    "attr":"value"
+}
+```
+
+Add or replace _attr_ attribute with _value_
+
