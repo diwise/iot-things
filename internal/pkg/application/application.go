@@ -172,6 +172,38 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 	return a.w.UpdateThing(ctx, data)
 }
 
+func (a App) PatchThing(ctx context.Context, thingId string, patch []byte) error {
+	var err error
+
+	p := make(map[string]any)
+	err = json.Unmarshal(patch, &p)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal patch, %w", err)
+	}
+
+	thing, _, err := a.r.RetrieveThing(ctx, thingId)
+	if err != nil {
+		return fmt.Errorf("could not find thing to patch, %w", err)
+	}
+
+	current := make(map[string]any)
+	err = json.Unmarshal(thing, &current)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal current thing to map, %w", err)
+	}
+
+	for k, v := range p {
+		current[k] = v
+	}
+
+	patchedThing, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("could not marshal patched thing, %w", err)
+	}
+
+	return a.w.UpdateThing(ctx, patchedThing)
+}
+
 func (a App) Seed(ctx context.Context, data io.Reader) error {
 	r := csv.NewReader(data)
 	r.Comma = ';'
