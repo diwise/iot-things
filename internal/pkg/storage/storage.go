@@ -474,25 +474,28 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 	log := logging.GetFromContext(ctx)
 
 	ddl := `
-		CREATE TABLE IF NOT EXISTS things (		
-			node_id     	BIGSERIAL,	
-			thing_id		TEXT 	NOT NULL UNIQUE,			
-			thing_type 		TEXT 	NOT NULL,
-			thing_location 	POINT 	NULL,
-			thing_data 		JSONB	NULL,	
-			tenant			TEXT 	NOT NULL,	
-			created_on 		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
-			modified_on		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,	
-			PRIMARY KEY (node_id)
-		);			
-		
-		CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(thing_location);
-		
-		CREATE TABLE IF NOT EXISTS  thing_relations (
-			parent        BIGINT NOT NULL,
-			child         BIGINT NOT NULL,
-			PRIMARY KEY (parent, child)
-		);
+	CREATE TABLE IF NOT EXISTS things (		
+		node_id     	BIGSERIAL,	
+		thing_id		TEXT 	NOT NULL,			
+		thing_type 		TEXT 	NOT NULL,
+		thing_location 	POINT 	NULL,
+		thing_data 		JSONB	NULL,	
+		tenant			TEXT 	NOT NULL,	
+		created_on 		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
+		modified_on		timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,	
+		PRIMARY KEY (node_id)
+	);			
+	
+	CREATE UNIQUE INDEX IF NOT EXISTS thing_id_idx ON things (lower(thing_id));
+	CREATE INDEX IF NOT EXISTS thing_type_idx ON things (thing_type);
+
+	CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(thing_location);
+	
+	CREATE TABLE IF NOT EXISTS  thing_relations (
+		parent        BIGINT NOT NULL,
+		child         BIGINT NOT NULL,
+		PRIMARY KEY (parent, child)
+	);
 	`
 
 	tx, err := pool.Begin(ctx)
