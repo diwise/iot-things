@@ -85,7 +85,7 @@ _Link_ headers added to **application/geo+json** response
         "tenant": "default",
         "location": {
             "latitude": 62.390715,
-            "longitude": 17.306868
+            "longitude": 17.316868
         }
     },
     "included": [
