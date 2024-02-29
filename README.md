@@ -106,7 +106,7 @@ _Link_ headers added to **application/geo+json** response
             "id": "c91149a8-256b-4d65-8ca8-fc00074485c8",
             "type": "WasteContainer",
             "location": {
-                "latitude": 17.306868,
+                "latitude": 17.305868,
                 "longitude": 62.390715
             },
             "tenant": "default"
