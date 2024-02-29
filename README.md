@@ -134,7 +134,7 @@ to connect (include) one thing with another. POST a valid "thing" object.
     "id": "level:001",
     "type": "Level",
     "location": {
-        "latitude": 17.306868,
+        "latitude": 17.306768,
         "longitude": 62.390715
     },
 }
