@@ -64,7 +64,6 @@ page[number] - page number to fetch
 
 page[size] - number of rows per page
 
-
 offset - skip n rows
 
 limit - limit response to n rows
