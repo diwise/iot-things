@@ -4,7 +4,7 @@
 
 ### Dependencies
 
-Start timescale and pgadmin
+Start timescale and pgadmin (keycloak in its own yaml)
 
 ```bash
 docker compose -f deployments/docker-compose.yaml up
