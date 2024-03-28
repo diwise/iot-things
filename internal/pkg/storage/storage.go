@@ -25,6 +25,17 @@ type Config struct {
 	sslmode  string
 }
 
+func NewConfig(host, user, password, port, dbname, sslmode string) Config {
+	return Config{
+		host:     host,
+		user:     user,
+		password: password,
+		port:     port,
+		dbname:   dbname,
+		sslmode:  sslmode,
+	}
+}
+
 func LoadConfiguration(ctx context.Context) Config {
 	return Config{
 		host:     env.GetVariableOrDefault(ctx, "POSTGRES_HOST", ""),
@@ -163,8 +174,8 @@ func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 		"thing_id":    thing.Id,
 		"modified_on": time.Now(),
 		"thing_data":  string(v),
-		"lon":         lat,
-		"lat":         lon,
+		"lon":         lon,
+		"lat":         lat,
 	})
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())

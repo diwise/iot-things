@@ -229,6 +229,39 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		}
 	}
 
+	parseProps := func(p string) map[string]any {
+		parts := strings.Split(p, ",")
+		if len(parts) == 0 {
+			return map[string]any{}
+		}
+
+		m := make(map[string]any)
+
+		for _, part := range parts {
+			keyValues := strings.Split(part, "=")
+			if len(keyValues) != 2 {
+				continue
+			}
+
+			key := keyValues[0]
+			value := keyValues[1]
+
+			if strings.HasPrefix(value, "'") {
+				m[key] = strings.Trim(value, "'")
+				continue
+			}
+
+			f, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				continue
+			}
+
+			m[key] = f
+		}
+
+		return m
+	}
+
 	for {
 		record, err := r.Read()
 		if err == io.EOF {
@@ -240,18 +273,21 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			continue
 		}
 
+		//     0      1          2      3      4           5          6       7
+		// thingId,thingType,location,props,relatedId,relatedType,location,tenant
+
 		t := Thing{
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
-			Tenant:   record[6],
+			Tenant:   record[7],
 		}
 
 		fnct := Thing{
-			Id:       record[3],
-			Type:     record[4],
-			Location: parseLocation(record[5]),
-			Tenant:   record[6],
+			Id:       record[4],
+			Type:     record[5],
+			Location: parseLocation(record[6]),
+			Tenant:   record[7],
 		}
 
 		be, err := json.Marshal(t)
@@ -265,6 +301,13 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		if err != nil {
 			if !errors.Is(err, ErrAlreadyExists) {
 				return err
+			}
+		}
+
+		props := parseProps(record[3])
+		if len(props) > 0 {
+			if b, err := json.Marshal(props); err == nil {
+				a.PatchThing(ctx, t.Id, b)
 			}
 		}
 
