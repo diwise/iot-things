@@ -229,7 +229,6 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		}
 	}
 
-	// props = key=1,key="1",key=1.0
 	parseProps := func(p string) map[string]any {
 		parts := strings.Split(p, ",")
 		if len(parts) == 0 {
@@ -252,21 +251,12 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 				continue
 			}
 
-			if strings.Contains(value, ".") {
-				f, err := strconv.ParseFloat(value, 64)
-				if err != nil {
-					continue
-				}
-				m[key] = f
-				continue
-			}
-
-			i, err := strconv.Atoi(value)
+			f, err := strconv.ParseFloat(value, 64)
 			if err != nil {
 				continue
 			}
 
-			m[key] = i
+			m[key] = f
 		}
 
 		return m

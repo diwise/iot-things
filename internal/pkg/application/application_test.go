@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -53,6 +54,17 @@ func TestSeedIntegrationTest(t *testing.T) {
 	app := New(db, db)
 	err = app.Seed(ctx, bytes.NewReader([]byte(things)))
 	is.NoErr(err)
+
+	b, err := app.RetrieveThing(ctx, "35")
+	is.NoErr(err)
+
+	m := make(map[string]any)
+	err = json.Unmarshal(b, &m)
+	is.NoErr(err)
+
+	cap, ok := m["capacity"]
+	is.True(ok)
+	is.Equal(float64(160), cap.(float64))
 }
 
 func setupIntegrationTest() (storage.Db, context.Context, context.CancelFunc, error) {
