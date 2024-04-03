@@ -146,6 +146,11 @@ func (db Db) CreateThing(ctx context.Context, v []byte) error {
 		"tenant":     thing.Tenant,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			log.Debug("insert statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
+		}
+
 		if isDuplicateKeyErr(err) {
 			return ErrAlreadyExists
 		}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/iot-things/internal/pkg/storage"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 )
 
 var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
@@ -209,6 +210,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 	r.Comma = ';'
 	rowNum := 0
 
+	log := logging.GetFromContext(ctx)
+
 	parseLocation := func(s string) Location {
 		parts := strings.Split(s, ",")
 		if len(parts) != 2 {
@@ -299,7 +302,10 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
+			log.Error("could not create or update thing", "err", err.Error())
+
 			if !errors.Is(err, ErrAlreadyExists) {
+				log.Debug("error is not ErrAlreadyExists", "err", err.Error())
 				return err
 			}
 		}
