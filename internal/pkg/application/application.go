@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -298,6 +299,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			return err
 		}
 
+		l := log.With(slog.String("thing_id", t.Id), slog.String("tenant", t.Tenant), slog.String("fnct_id", fnct.Id))
+		ctx := logging.NewContextWithLogger(ctx, l)
 		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
