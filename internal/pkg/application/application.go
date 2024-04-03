@@ -303,6 +303,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		ctx := logging.NewContextWithLogger(ctx, l)
 		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
 
+		l.Debug("seed")
+
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
 			log.Error("could not create or update thing", "err", err.Error())
