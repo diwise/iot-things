@@ -318,7 +318,10 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		props := parseProps(record[3])
 		if len(props) > 0 {
 			if b, err := json.Marshal(props); err == nil {
-				a.PatchThing(ctx, t.Id, b)
+				err := a.PatchThing(ctx, t.Id, b)
+				if err != nil {
+					log.Error("patch thing failed", "err", err.Error())
+				}
 			}
 		}
 
@@ -330,6 +333,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 
 			err = a.AddRelatedThing(ctxWithTenant, t.Id, bd)
 			if err != nil {
+				log.Debug("could not add related thing")
 				return err
 			}
 		}
