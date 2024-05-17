@@ -4,7 +4,7 @@
 
 ### Dependencies
 
-Start timescale and pgadmin
+Start timescale and pgadmin (keycloak in its own yaml)
 
 ```bash
 docker compose -f deployments/docker-compose.yaml up
@@ -16,9 +16,6 @@ Add this to launch.json
 
 ```json
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -67,7 +64,6 @@ page[number] - page number to fetch
 
 page[size] - number of rows per page
 
-
 offset - skip n rows
 
 limit - limit response to n rows
@@ -88,7 +84,7 @@ _Link_ headers added to **application/geo+json** response
         "tenant": "default",
         "location": {
             "latitude": 62.390715,
-            "longitude": 17.306868
+            "longitude": 17.316868
         }
     },
     "included": [
@@ -109,7 +105,7 @@ _Link_ headers added to **application/geo+json** response
             "id": "c91149a8-256b-4d65-8ca8-fc00074485c8",
             "type": "WasteContainer",
             "location": {
-                "latitude": 17.306868,
+                "latitude": 17.305868,
                 "longitude": 62.390715
             },
             "tenant": "default"
@@ -138,7 +134,7 @@ to connect (include) one thing with another. POST a valid "thing" object.
     "id": "level:001",
     "type": "Level",
     "location": {
-        "latitude": 17.306868,
+        "latitude": 17.306768,
         "longitude": 62.390715
     },
 }

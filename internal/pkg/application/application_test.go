@@ -89,5 +89,6 @@ c91149a8-256b-4d65-8ca8-fc00074485c8;WasteContainer;62.390715,,17.306868;;ebc174
 d74a9652-afe6-46ea-8bf1-f4e11d5e02c6;WasteContainer;62.390715,,17.306868;;;;;default`
 
 const things = `thingID;thingType;location;props;relatedId;relatedType;location;tenant
-35;WasteContainer;64.1234,15.1234;capacity=160;level:35;level;64.1234,15.1234;default
-35;WasteContainer;64.1234,15.1234;capacity=160;device:35;Device;64.1234,15.1234;default`
+35;WasteContainer;62.39040978,17.30775705;capacity=160;level:35;level;62.39040978,17.30775705;default
+36;WasteContainer;62.39080222,17.31036154;capacity=160;level:36;level;62.39080222,17.31036154;default
+49;WasteContainer;62.27082193,17.37153332;capacity=60;level:49;level;62.27082193,17.37153332;default`

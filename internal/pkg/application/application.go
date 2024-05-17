@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/iot-things/internal/pkg/storage"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 )
 
 var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
@@ -209,6 +211,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 	r.Comma = ';'
 	rowNum := 0
 
+	log := logging.GetFromContext(ctx)
+
 	parseLocation := func(s string) Location {
 		parts := strings.Split(s, ",")
 		if len(parts) != 2 {
@@ -301,11 +305,18 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			return err
 		}
 
-		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{thing.Tenant})
+		l := log.With(slog.String("thing_id", t.Id), slog.String("tenant", t.Tenant), slog.String("fnct_id", fnct.Id))
+		ctx := logging.NewContextWithLogger(ctx, l)
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
+
+		l.Debug("seed")
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
+			log.Error("could not create or update thing", "err", err.Error())
+
 			if !errors.Is(err, ErrAlreadyExists) {
+				log.Debug("error is not ErrAlreadyExists", "err", err.Error())
 				return err
 			}
 		}
@@ -318,6 +329,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 
 			err = a.AddRelatedThing(ctxWithTenant, thing.Id, bd)
 			if err != nil {
+				log.Debug("could not add related thing")
 				return err
 			}
 		}

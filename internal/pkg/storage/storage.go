@@ -146,7 +146,13 @@ func (db Db) CreateThing(ctx context.Context, v []byte) error {
 		"tenant":     thing.Tenant,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			log.Debug("insert statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
+		}
+
 		if isDuplicateKeyErr(err) {
+			log.Debug("error is duplicate key")
 			return ErrAlreadyExists
 		}
 
@@ -305,7 +311,7 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 	_, _, err = db.RetrieveThing(ctx, thingId)
 	if err != nil {
 		log.Error("could not retrieve current thing", "err", err.Error())
-		return fmt.Errorf("coult not retrieve current thing")
+		return fmt.Errorf("could not retrieve current thing")
 	}
 
 	_, _, err = db.RetrieveThing(ctx, related.Id)
