@@ -276,26 +276,32 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		//     0      1          2      3      4           5          6       7
 		// thingId,thingType,location,props,relatedId,relatedType,location,tenant
 
-		t := Thing{
+		thing := Thing{
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
 			Tenant:   record[7],
 		}
 
-		fnct := Thing{
+		relatedThing := Thing{
 			Id:       record[4],
 			Type:     record[5],
 			Location: parseLocation(record[6]),
 			Tenant:   record[7],
 		}
 
-		be, err := json.Marshal(t)
+		m, err := toMap(thing)
+		if err != nil {
+			continue
+		}
+		m = appendMap(m, parseProps(record[3]))
+
+		be, err := json.Marshal(m)
 		if err != nil {
 			return err
 		}
 
-		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{thing.Tenant})
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
@@ -304,20 +310,13 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			}
 		}
 
-		props := parseProps(record[3])
-		if len(props) > 0 {
-			if b, err := json.Marshal(props); err == nil {
-				a.PatchThing(ctx, t.Id, b)
-			}
-		}
-
-		if fnct.Id != "" {
-			bd, err := json.Marshal(fnct)
+		if relatedThing.Id != "" {
+			bd, err := json.Marshal(relatedThing)
 			if err != nil {
 				return err
 			}
 
-			err = a.AddRelatedThing(ctxWithTenant, t.Id, bd)
+			err = a.AddRelatedThing(ctxWithTenant, thing.Id, bd)
 			if err != nil {
 				return err
 			}
@@ -326,6 +325,29 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 	}
 
 	return nil
+}
+
+func toMap(t Thing) (map[string]any, error) {
+	var err error
+	b, err := json.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+
+	p := make(map[string]any)
+	err = json.Unmarshal(b, &p)
+	if err != nil {
+		return nil, fmt.Errorf("could not unmarshal thing, %w", err)
+	}
+
+	return p, nil
+}
+
+func appendMap(m1 map[string]any, m2 map[string]any) map[string]any {
+	for k, v := range m2 {
+		m1[k] = v
+	}
+	return m1
 }
 
 func unmarshalThing(data []byte) (string, string, error) {
