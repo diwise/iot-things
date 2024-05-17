@@ -305,11 +305,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			return err
 		}
 
-		l := log.With(slog.String("thing_id", t.Id), slog.String("tenant", t.Tenant), slog.String("fnct_id", fnct.Id))
-		ctx := logging.NewContextWithLogger(ctx, l)
-		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{t.Tenant})
-
-		l.Debug("seed")
+		ctx := logging.NewContextWithLogger(ctx, log, slog.String("thing_id", thing.Id), slog.String("tenant", thing.Tenant), slog.String("related_thing_id", relatedThing.Id))
+		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{thing.Tenant})
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
 		if err != nil {
