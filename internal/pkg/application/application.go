@@ -26,7 +26,7 @@ type App struct {
 //go:generate moq -rm -out reader_mock.go . ThingReader
 type ThingReader interface {
 	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
-	RetrieveThing(ctx context.Context, thingId string) ([]byte, string, error)
+	RetrieveThing(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error)
 	RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error)
 }
 
@@ -58,12 +58,16 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 
 	q := make([]storage.ConditionFunc, 0)
 
+	if v,ok:=conditions["id"];ok {
+		q = append(q, storage.WithID(v[0]))
+	}
+
 	if v, ok := conditions["thing_id"]; ok {
 		q = append(q, storage.WithThingID(v[0]))
 	}
 
 	if v, ok := conditions["type"]; ok {
-		q = append(q, storage.WithThingType(v[0]))
+		q = append(q, storage.WithType(v[0]))
 	}
 
 	if v, ok := conditions["page[size]"]; ok {
@@ -119,7 +123,7 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 }
 
 func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
-	b, _, err := a.r.RetrieveThing(ctx, thingId)
+	b, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId))
 	return b, err
 }
 
@@ -137,12 +141,12 @@ func (a App) IsValidThing(data []byte) (bool, error) {
 }
 
 func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
-	id, _, err := unmarshalThing(data)
+	id, t, err := unmarshalThing(data)
 	if err != nil {
 		return err
 	}
 
-	_, _, err = a.r.RetrieveThing(ctx, id)
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t))
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotExist) {
 			return err
@@ -161,12 +165,12 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 }
 
 func (a App) UpdateThing(ctx context.Context, data []byte) error {
-	id, _, err := unmarshalThing(data)
+	id, t, err := unmarshalThing(data)
 	if err != nil {
 		return err
 	}
 
-	_, _, err = a.r.RetrieveThing(ctx, id)
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t))
 	if err != nil {
 		return err
 	}
@@ -183,7 +187,7 @@ func (a App) PatchThing(ctx context.Context, thingId string, patch []byte) error
 		return fmt.Errorf("could not unmarshal patch, %w", err)
 	}
 
-	thing, _, err := a.r.RetrieveThing(ctx, thingId)
+	thing, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId))
 	if err != nil {
 		return fmt.Errorf("could not find thing to patch, %w", err)
 	}
@@ -281,6 +285,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		// thingId,thingType,location,props,relatedId,relatedType,location,tenant
 
 		thing := Thing{
+			ThingID:  fmt.Sprintf("urn:diwise:%s:%s", record[1], record[0]),
 			Id:       record[0],
 			Type:     record[1],
 			Location: parseLocation(record[2]),
@@ -288,6 +293,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		}
 
 		relatedThing := Thing{
+			ThingID:  fmt.Sprintf("urn:diwise:%s:%s", record[5], record[4]),
 			Id:       record[4],
 			Type:     record[5],
 			Location: parseLocation(record[6]),
@@ -305,7 +311,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			return err
 		}
 
-		ctx := logging.NewContextWithLogger(ctx, log, slog.String("thing_id", thing.Id), slog.String("tenant", thing.Tenant), slog.String("related_thing_id", relatedThing.Id))
+		ctx := logging.NewContextWithLogger(ctx, log, slog.String("thing_id", thing.ThingID), slog.String("tenant", thing.Tenant), slog.String("related_thing_id", relatedThing.ThingID))
 		ctxWithTenant := auth.WithAllowedTenants(ctx, []string{thing.Tenant})
 
 		err = a.CreateOrUpdateThing(ctxWithTenant, be)
@@ -324,7 +330,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 				return err
 			}
 
-			err = a.AddRelatedThing(ctxWithTenant, thing.Id, bd)
+			err = a.AddRelatedThing(ctxWithTenant, thing.ThingID, bd)
 			if err != nil {
 				log.Debug("could not add related thing")
 				return err
@@ -360,9 +366,9 @@ func appendMap(m1 map[string]any, m2 map[string]any) map[string]any {
 }
 
 func unmarshalThing(data []byte) (string, string, error) {
-	var d struct {
-		Id   *string `json:"id,omitempty"`
-		Type *string `json:"type,omitempty"`
+	var d struct {		
+		Id      *string `json:"id,omitempty"`
+		Type    *string `json:"type,omitempty"`
 	}
 	err := json.Unmarshal(data, &d)
 	if err != nil {

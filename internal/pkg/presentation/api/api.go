@@ -73,6 +73,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		if err != nil {
 			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
@@ -106,6 +107,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			if err != nil {
 				logger.Error("could not query things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 
@@ -130,6 +132,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			if err != nil {
 				logger.Error("could not marshal things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 
@@ -155,6 +158,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			if err != nil {
 				logger.Error("could not marshal query response", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 		}
@@ -248,6 +252,7 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			if err != nil {
 				logger.Error("could not seed", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 
@@ -281,6 +286,7 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		if err != nil {
 			logger.Error("could not create thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
@@ -326,6 +332,7 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 			if err != nil {
 				logger.Error("could not fetch related things", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 
@@ -334,6 +341,7 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 			if err != nil {
 				logger.Error("could not marshal query response", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 			if len(related) > 0 {
@@ -344,6 +352,7 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 			if err != nil {
 				logger.Error("could not marshal query response", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
 				return
 			}
 		}
@@ -374,6 +383,7 @@ func patchThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 		if err != nil {
 			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
@@ -414,6 +424,7 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		if err != nil {
 			logger.Error("could not update thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
@@ -454,6 +465,7 @@ func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerF
 		if err != nil {
 			logger.Error("could not add related thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
