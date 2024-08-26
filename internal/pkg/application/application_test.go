@@ -16,7 +16,7 @@ func TestSeed(t *testing.T) {
 	is := is.New(t)
 
 	reader := &ThingReaderMock{
-		RetrieveThingFunc: func(ctx context.Context, thingId string) ([]byte, string, error) {
+		RetrieveThingFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error) {
 			return nil, "", nil
 		},
 	}
@@ -55,7 +55,7 @@ func TestSeedIntegrationTest(t *testing.T) {
 	err = app.Seed(ctx, bytes.NewReader([]byte(things)))
 	is.NoErr(err)
 
-	b, err := app.RetrieveThing(ctx, "35")
+	b, err := app.RetrieveThing(ctx, "urn:diwise:WasteContainer:35")
 	is.NoErr(err)
 
 	m := make(map[string]any)

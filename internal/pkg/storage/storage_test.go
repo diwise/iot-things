@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -94,8 +95,7 @@ func TestQueryThings(t *testing.T) {
 	is.NoErr(err)
 
 	q := make([]ConditionFunc, 0)
-	q = append(q, WithThingID(id))
-	q = append(q, WithThingType("WasteContainer"))
+	q = append(q, WithThingID(fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", id)))
 
 	result, err := db.QueryThings(ctx, q...)
 	is.NoErr(err)
@@ -104,7 +104,40 @@ func TestQueryThings(t *testing.T) {
 	json.Unmarshal(result.Things, &things)
 
 	is.Equal(1, len(things))
-	is.Equal(id, things[0].Id)
+	is.Equal(id, things[0].ID)
+	is.Equal(float64(17.2), things[0].Location.Latitude)
+	is.Equal(float64(64.3), things[0].Location.Longitude)
+}
+
+func TestQueryThingsIDAndType(t *testing.T) {
+	is := is.New(t)
+
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	id := getUuid()
+	wasteContainer := createEnity(id, "WasteContainer")
+
+	err = db.CreateThing(ctx, wasteContainer)
+	is.NoErr(err)
+
+	q := make([]ConditionFunc, 0)
+	q = append(q, WithID(id))
+	q = append(q, WithType("WasteContainer"))
+
+	result, err := db.QueryThings(ctx, q...)
+	is.NoErr(err)
+
+	things := make([]thing, 0)
+	json.Unmarshal(result.Things, &things)
+
+	is.Equal(1, len(things))
+	is.Equal(id, things[0].ID)
 	is.Equal(float64(17.2), things[0].Location.Latitude)
 	is.Equal(float64(64.3), things[0].Location.Longitude)
 }
@@ -125,12 +158,12 @@ func TestRetrieveThing(t *testing.T) {
 	err = db.CreateThing(ctx, createEnity(id, "WasteContainer"))
 	is.NoErr(err)
 
-	b, et, err := db.RetrieveThing(ctx, id)
+	b, et, err := db.RetrieveThing(ctx, WithThingID(fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", id)))
 	is.NoErr(err)
-	is.Equal("WasteContainer", et)
+	is.Equal("wastecontainer", et)
 	var e thing
 	json.Unmarshal(b, &e)
-	is.Equal(id, e.Id)
+	is.Equal(id, e.ID)
 }
 
 func TestAddRelatedThing(t *testing.T) {
@@ -150,7 +183,7 @@ func TestAddRelatedThing(t *testing.T) {
 
 	deviceId := getUuid()
 
-	err = db.AddRelatedThing(ctx, wasteContainerId, createEnity(deviceId, "Device"))
+	err = db.AddRelatedThing(ctx, fmt.Sprintf("urn:diwise:%s:%s","WasteContainer",wasteContainerId), createEnity(deviceId, "Device"))
 	is.NoErr(err)
 }
 
@@ -159,12 +192,12 @@ func TestWhere(t *testing.T) {
 
 	args := pgx.NamedArgs{}
 	WithThingID("id")(args)
-	WithThingType("type")(args)
+	WithType("type")(args)
 
 	w := where(args)
 
-	is.Equal("where thing_id=@thing_id and thing_type=@thing_type", strings.Trim(w, " "))
-	is.Equal("type", args["thing_type"])
+	is.Equal("where thing_id=@thing_id and type=@type", strings.Trim(w, " "))
+	is.Equal("type", args["type"])
 }
 
 func createEnity(args ...string) []byte {
@@ -174,7 +207,7 @@ func createEnity(args ...string) []byte {
 	}
 
 	e := thing{
-		Id:   args[0],
+		ID:   args[0],
 		Type: type_,
 		Location: location{
 			Latitude:  17.2,

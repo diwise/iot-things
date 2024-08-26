@@ -1,6 +1,7 @@
 package application
 
 type Thing struct {
+	ThingID  string   `json:"thing_id"`
 	Id       string   `json:"id"`
 	Type     string   `json:"type"`
 	Location Location `json:"location"`
