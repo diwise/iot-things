@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 var ErrAlreadyExists error = fmt.Errorf("thing already exists")
@@ -20,25 +21,25 @@ func (t thingMap) getString(key string) (string, bool) {
 }
 func (t thingMap) ThingID() string {
 	if thingId, ok := t.getString("thing_id"); ok {
-		return thingId
+		return strings.ToLower(thingId)
 	}
 	return ""
 }
 func (t thingMap) ID() string {
 	if id, ok := t.getString("id"); ok {
-		return id
+		return strings.ToLower(id)
 	}
 	return ""
 }
 func (t thingMap) Type() string {
 	if type_, ok := t.getString("type"); ok {
-		return type_
+		return strings.ToLower(type_)
 	}
 	return ""
 }
 func (t thingMap) Tenant() string {
-	if type_, ok := t.getString("tenant"); ok {
-		return type_
+	if tenant_, ok := t.getString("tenant"); ok {
+		return tenant_
 	}
 	return ""
 }
@@ -48,16 +49,16 @@ func (t thingMap) Location() (float64, float64, bool) {
 			var lat, lon float64
 			var latOk, lonOk bool
 			if lat_, latOk := loc_["latitude"].(float64); latOk {
-				lat = lat_				
+				lat = lat_
 			}
-			if lon_, lonOk := loc_["longitude"].(float64);lonOk {
+			if lon_, lonOk := loc_["longitude"].(float64); lonOk {
 				lon = lon_
 			}
-			
+
 			return lat, lon, latOk && lonOk
 		}
 	}
-	return 0,0,false
+	return 0, 0, false
 }
 func (t thingMap) Data() string {
 	b, _ := t.Bytes()

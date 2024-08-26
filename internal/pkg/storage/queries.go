@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
@@ -25,20 +26,20 @@ type QueryResult struct {
 
 func WithID(id string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
-		q["id"] = id
+		q["id"] = strings.ToLower(id)
 		return q
 	}
 }
 func WithType(t string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
-		q["type"] = t
+		q["type"] = strings.ToLower(t)
 		return q
 	}
 }
 
 func WithThingID(id string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
-		q["thing_id"] = id
+		q["thing_id"] = strings.ToLower(id)
 		return q
 	}
 }

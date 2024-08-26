@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
@@ -106,7 +107,7 @@ func (db Db) CreateThing(ctx context.Context, v []byte) error {
 		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	lat, lon, _ := thing.Location()	
+	lat, lon, _ := thing.Location()
 
 	insert := `INSERT INTO things(thing_id, id, type, location, data, tenant) VALUES (@thing_id, @id, @thing_type, point(@lon,@lat), @thing_data, @tenant);`
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
@@ -197,7 +198,7 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 			   );`
 
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"thing_id":   thingId,
+		"thing_id":   strings.ToLower(thingId),
 		"related_id": related.ThingID(),
 	})
 	if err != nil {
@@ -239,7 +240,7 @@ func unmarshalThing(v []byte) (thingMap, error) {
 	if t.Tenant() == "" {
 		return nil, fmt.Errorf("data contains no tenant information")
 	}
-	if t.ThingID() == ""  {
+	if t.ThingID() == "" {
 		t["thing_id"] = fmt.Sprintf("urn:diwise:%s:%s", t.Type(), t.ID())
 	}
 
