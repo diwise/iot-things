@@ -160,7 +160,7 @@ func TestRetrieveThing(t *testing.T) {
 
 	b, et, err := db.RetrieveThing(ctx, WithThingID(fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", id)))
 	is.NoErr(err)
-	is.Equal("WasteContainer", et)
+	is.Equal("wastecontainer", et)
 	var e thing
 	json.Unmarshal(b, &e)
 	is.Equal(id, e.ID)

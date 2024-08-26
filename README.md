@@ -60,9 +60,6 @@ Add Authorization header with **any** Bearer token
 
 #### Paging
 
-page[number] - page number to fetch
-
-page[size] - number of rows per page
 
 offset - skip n rows
 
@@ -96,7 +93,7 @@ _Link_ headers added to **application/geo+json** response
 }
 ```
 
-3: GET http://localhost:8080/api/v0/things?type=WasteContainer&page[number]=2&page[size]=1
+3: GET http://localhost:8080/api/v0/things?type=WasteContainer&offset=2&limit=1
 
 ```json
 {
@@ -112,11 +109,11 @@ _Link_ headers added to **application/geo+json** response
         }
     ],
     "links": {
-        "self": "/api/v0/things?type=WasteContainer&page[number]=2&page[size]=1",
-        "first": "/api/v0/things?type=WasteContainer&page[number]=1&page[size]=1",
-        "prev": "/api/v0/things?type=WasteContainer&page[number]=1&page[size]=1",
-        "last": "/api/v0/things?type=WasteContainer&page[number]=3&page[size]=1",
-        "next": "/api/v0/things?type=WasteContainer&page[number]=3&page[size]=1"
+        "self": "/api/v0/things?type=WasteContainer&offset=2&limit=1",
+        "first": "/api/v0/things?type=WasteContainer&offset=1&limit=1",
+        "prev": "/api/v0/things?type=WasteContainer&offset=1&limit=1",
+        "last": "/api/v0/things?type=WasteContainer&offset=3&limit=1",
+        "next": "/api/v0/things?type=WasteContainer&offset=3&limit=1"
     }
 }
 ```
