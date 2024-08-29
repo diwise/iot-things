@@ -1,6 +1,8 @@
 module github.com/diwise/iot-things
 
-go 1.22
+go 1.22.0
+
+toolchain go1.23.0
 
 require (
 	github.com/diwise/service-chassis v0.0.0-20240426080527-94892f253835
@@ -25,6 +27,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/rabbitmq/amqp091-go v1.9.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.1 // indirect
@@ -41,6 +44,8 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/diwise/messaging-golang v0.0.0-20240506092815-fc973e9e4a4f
+	github.com/diwise/senml v0.0.0-20240402140901-e4008e065e05
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
