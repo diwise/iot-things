@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/senml"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
@@ -29,7 +31,7 @@ type resource struct {
 	Type string `json:"type"`
 }
 
-func NewTopicMessageHandler(app App) messaging.TopicMessageHandler {
+func NewTopicMessageHandler(reader ThingReader, writer ThingWriter) messaging.TopicMessageHandler {
 	return func(ctx context.Context, d messaging.IncomingTopicMessage, logger *slog.Logger) {
 		var err error
 
@@ -59,9 +61,9 @@ func NewTopicMessageHandler(app App) messaging.TopicMessageHandler {
 			return
 		}
 
-		thingID := fmt.Sprintf("urn:diwise:device:%s", id)
+		deviceThingID := fmt.Sprintf("urn:diwise:device:%s", id)
 
-		b, err := app.RetrieveRelatedThings(ctx, thingID)
+		b, err := reader.RetrieveRelatedThings(ctx, storage.WithThingID(deviceThingID))
 		if err != nil {
 			log.Error("no releated thing found for device (1)", "err", err.Error(), "device_id", id)
 			return
@@ -75,33 +77,99 @@ func NewTopicMessageHandler(app App) messaging.TopicMessageHandler {
 		}
 
 		if len(included) == 0 {
-			log.Error("no releated thing found for device (3)", "err", err.Error(), "device_id", id)
+			log.Debug("no releated thing found for device (3)", "device_id", id)
 			return
 		}
 
-		
+		measurements, err := getMeasurements(ctx, m.Pack)
+		if err != nil {
+			log.Error("could not get measurements from pack", "err", err.Error(), "device_id", id)
+			return
+		}
 
+		for _, inc := range included {
+			thingID := fmt.Sprintf("urn:diwise:%s:%s", strings.ToLower(inc.Type), strings.ToLower(inc.ID))
+
+			thingBytes, _, err := reader.RetrieveThing(ctx, storage.WithThingID(thingID))
+			if err != nil {
+				log.Error("could not fetch thing to add values to", "err", err.Error(), "thing_id", thingID)
+				return
+			}
+
+			var thing Thing
+			err = json.Unmarshal(thingBytes, &thing)
+			if err != nil {
+				log.Error("could not unmarshal thing", "err", err.Error(), "thing_id", thingID)
+				return
+			}
+
+			update := false
+
+			if len(thing.Measurements) == 0 {
+				log.Debug("no current measurements found, add all in pack to thing", "thing_id", thingID)
+				thing.Measurements = measurements
+				update = true
+			} else {
+				for i, tm := range measurements {
+					id := slices.IndexFunc(thing.Measurements, func(mm Measurement) bool {
+						return strings.EqualFold(tm.ID, mm.ID)
+					})
+					if id > -1 {						
+						if measurements[i].Timestamp.After(thing.Measurements[id].Timestamp) {
+							continue
+						}
+
+						log.Debug("update existing measurement", "measurement_id", measurements[i].ID)
+						update = true
+						thing.Measurements[id] = measurements[i]
+					} else {
+						update = true
+						log.Debug("append new measurement", "measurement_id", measurements[i].ID)
+						thing.Measurements = append(thing.Measurements, tm)
+					}
+				}
+			}
+
+			if update {
+				var thingMap map[string]any
+				err = json.Unmarshal(thingBytes, &thingMap)
+				if err != nil {
+					log.Error("could not unmarshal thing to map[string]any", "err", err.Error())
+					return
+				}
+				thingMap["measurements"] = thing.Measurements
+
+				thingMapBytes, err := json.Marshal(thingMap)
+				if err != nil {
+					log.Error("could not marshal map", "err", err.Error())
+					return
+				}
+
+				err = writer.UpdateThing(ctx, thingMapBytes)
+				if err != nil {
+					log.Error("could not update thing with measurements", "err", err.Error())
+					return
+				}
+			}
+
+			log.Debug(fmt.Sprintf("%d measurement(s) added or updated on thing %s", len(measurements), thingID))
+		}
 	}
 }
 
-func getMeasurements(ctx context.Context, pack senml.Pack)([]Measurement,error) {
+func getMeasurements(ctx context.Context, pack senml.Pack) ([]Measurement, error) {
 	log := logging.GetFromContext(ctx)
 
 	header, ok := pack.GetRecord(senml.FindByName("0"))
 	if !ok {
-		return nil,fmt.Errorf("could not find header record (0)")
+		return nil, fmt.Errorf("could not find header record (0)")
 	}
 
-	tenant, ok := pack.GetStringValue(senml.FindByName("tenant"))
-	if !ok {
-		return nil,fmt.Errorf("could not find tenant record")
-	}
+	measurements := make([]Measurement, 0)
 
-	measurements := make([]Measurement,0)
-
-	deviceID := strings.Split(header.Name, "/")[0]
+	//deviceID := strings.Split(header.Name, "/")[0]
 	urn := header.StringValue
-	lat, lon, _ := pack.GetLatLon()
+	//lat, lon, _ := pack.GetLatLon()
 
 	var errs []error
 
@@ -121,16 +189,15 @@ func getMeasurements(ctx context.Context, pack senml.Pack)([]Measurement,error) 
 			continue
 		}
 
-		id := rec.Name
-		name := strconv.Itoa(n)
+		id := rec.Name		
 		ts, _ := rec.GetTime()
 
-		measurement := NewMeasurement(ts, id, deviceID, name, urn, tenant)
+		measurement := NewMeasurement(ts, id,  urn)
 		measurement.BoolValue = rec.BoolValue
 		measurement.Value = rec.Value
 		measurement.StringValue = rec.StringValue
-		measurement.Lat = lat
-		measurement.Lon = lon
+		//measurement.Lat = lat
+		//measurement.Lon = lon
 		measurement.Unit = rec.Unit
 
 		measurements = append(measurements, measurement)
@@ -139,58 +206,10 @@ func getMeasurements(ctx context.Context, pack senml.Pack)([]Measurement,error) 
 	return measurements, errors.Join(errs...)
 }
 
-func NewMeasurement(ts time.Time, id, deviceID, name, urn, tenant string) Measurement {
-	return Measurement{
-		DeviceID:  deviceID,
-		ID:        id,
-		Name:      name,
-		Tenant:    tenant,
-		Timestamp: ts,
-		Urn:       urn,
-	}
-}
-
-type Measurement struct {
-	DeviceID    string    `json:"deviceID"`
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Tenant      string    `json:"tenant"`
-	Timestamp   time.Time `json:"timestamp"`
-	Urn         string    `json:"urn"`
-	BoolValue   *bool     `json:"vb,omitempty"`
-	Lat         float64   `json:"lat"`
-	Lon         float64   `json:"lon"`
-	StringValue string    `json:"vs,omitempty"`
-	Unit        string    `json:"unit,omitempty"`
-	Value       *float64  `json:"v,omitempty"`
-}
-
 func getDeviceID(m senml.Pack) (string, bool) {
 	r, ok := m.GetRecord(senml.FindByName("0"))
 	if !ok {
 		return "", false
 	}
 	return strings.Split(r.Name, "/")[0], true
-}
-
-func getObjectURN(m senml.Pack) string {
-	r, ok := m.GetStringValue(senml.FindByName("0"))
-	if !ok {
-		return ""
-	}
-	return r
-}
-
-func getObjectID(m senml.Pack) string {
-	urn := getObjectURN(m)
-	if urn == "" {
-		return ""
-	}
-
-	if !strings.Contains(urn, ":") {
-		return ""
-	}
-
-	parts := strings.Split(urn, ":")
-	return parts[len(parts)-1]
 }

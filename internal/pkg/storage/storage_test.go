@@ -183,7 +183,9 @@ func TestAddRelatedThing(t *testing.T) {
 
 	deviceId := getUuid()
 
-	err = db.AddRelatedThing(ctx, fmt.Sprintf("urn:diwise:%s:%s","WasteContainer",wasteContainerId), createEnity(deviceId, "Device"))
+	thingID := fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", wasteContainerId)
+
+	err = db.AddRelatedThing(ctx, createEnity(deviceId, "Device"), WithThingID(thingID))
 	is.NoErr(err)
 }
 
@@ -198,6 +200,17 @@ func TestWhere(t *testing.T) {
 
 	is.Equal("where thing_id=@thing_id and type=@type", strings.Trim(w, " "))
 	is.Equal("type", args["type"])
+}
+
+func TestGetValueFromCondition(t *testing.T) {
+	is := is.New(t)
+	id, ok := getValueFromCondition[string]([]ConditionFunc{WithID("id")}, "id")
+	is.True(ok)
+	is.Equal("id", id)
+
+	tenants, ok := getValueFromCondition[[]string]([]ConditionFunc{WithTenants([]string{"default"})}, "tenant")
+	is.True(ok)
+	is.Equal("default", tenants[0])
 }
 
 func createEnity(args ...string) []byte {

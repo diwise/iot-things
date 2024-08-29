@@ -22,7 +22,7 @@ var _ ThingReader = &ThingReaderMock{}
 //			QueryThingsFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error) {
 //				panic("mock out the QueryThings method")
 //			},
-//			RetrieveRelatedThingsFunc: func(ctx context.Context, thingId string) ([]byte, error) {
+//			RetrieveRelatedThingsFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
 //				panic("mock out the RetrieveRelatedThings method")
 //			},
 //			RetrieveThingFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error) {
@@ -39,7 +39,7 @@ type ThingReaderMock struct {
 	QueryThingsFunc func(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 
 	// RetrieveRelatedThingsFunc mocks the RetrieveRelatedThings method.
-	RetrieveRelatedThingsFunc func(ctx context.Context, thingId string) ([]byte, error)
+	RetrieveRelatedThingsFunc func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
 
 	// RetrieveThingFunc mocks the RetrieveThing method.
 	RetrieveThingFunc func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error)
@@ -57,8 +57,8 @@ type ThingReaderMock struct {
 		RetrieveRelatedThings []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// ThingId is the thingId argument value.
-			ThingId string
+			// Conditions is the conditions argument value.
+			Conditions []storage.ConditionFunc
 		}
 		// RetrieveThing holds details about calls to the RetrieveThing method.
 		RetrieveThing []struct {
@@ -110,21 +110,21 @@ func (mock *ThingReaderMock) QueryThingsCalls() []struct {
 }
 
 // RetrieveRelatedThings calls RetrieveRelatedThingsFunc.
-func (mock *ThingReaderMock) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
+func (mock *ThingReaderMock) RetrieveRelatedThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error) {
 	if mock.RetrieveRelatedThingsFunc == nil {
 		panic("ThingReaderMock.RetrieveRelatedThingsFunc: method is nil but ThingReader.RetrieveRelatedThings was just called")
 	}
 	callInfo := struct {
-		Ctx     context.Context
-		ThingId string
+		Ctx        context.Context
+		Conditions []storage.ConditionFunc
 	}{
-		Ctx:     ctx,
-		ThingId: thingId,
+		Ctx:        ctx,
+		Conditions: conditions,
 	}
 	mock.lockRetrieveRelatedThings.Lock()
 	mock.calls.RetrieveRelatedThings = append(mock.calls.RetrieveRelatedThings, callInfo)
 	mock.lockRetrieveRelatedThings.Unlock()
-	return mock.RetrieveRelatedThingsFunc(ctx, thingId)
+	return mock.RetrieveRelatedThingsFunc(ctx, conditions...)
 }
 
 // RetrieveRelatedThingsCalls gets all the calls that were made to RetrieveRelatedThings.
@@ -132,12 +132,12 @@ func (mock *ThingReaderMock) RetrieveRelatedThings(ctx context.Context, thingId 
 //
 //	len(mockedThingReader.RetrieveRelatedThingsCalls())
 func (mock *ThingReaderMock) RetrieveRelatedThingsCalls() []struct {
-	Ctx     context.Context
-	ThingId string
+	Ctx        context.Context
+	Conditions []storage.ConditionFunc
 } {
 	var calls []struct {
-		Ctx     context.Context
-		ThingId string
+		Ctx        context.Context
+		Conditions []storage.ConditionFunc
 	}
 	mock.lockRetrieveRelatedThings.RLock()
 	calls = mock.calls.RetrieveRelatedThings

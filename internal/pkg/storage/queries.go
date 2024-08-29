@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,26 +35,50 @@ func WithType(t string) ConditionFunc {
 		return q
 	}
 }
-
 func WithThingID(id string) ConditionFunc {
 	return func(q map[string]any) map[string]any {
 		q["thing_id"] = strings.ToLower(id)
 		return q
 	}
 }
-
 func WithOffset(v int) ConditionFunc {
 	return func(q map[string]any) map[string]any {
 		q["offset"] = v
 		return q
 	}
 }
-
 func WithLimit(v int) ConditionFunc {
 	return func(q map[string]any) map[string]any {
 		q["limit"] = v
 		return q
 	}
+}
+func WithTenants(tenants []string) ConditionFunc {
+	return func(q map[string]any) map[string]any {
+		q["tenant"] = tenants
+		return q
+	}
+}
+
+func getValueFromCondition[T any](conditions []ConditionFunc, key string) (T, bool) {
+	m := make(map[string]any)
+	for _, c := range conditions {
+		c(m)
+	}
+
+	var v T
+
+	a, ok := m[key]
+	if !ok {
+		return v, false
+	}
+
+	v, ok = a.(T)
+	if !ok {
+		return v, false
+	}
+
+	return v, true
 }
 
 type thing struct {
@@ -78,9 +101,7 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 
 	log := logging.GetFromContext(ctx)
 
-	args := pgx.NamedArgs{
-		"tenant": getAllowedTenantsFromContext(ctx),
-	}
+	args := pgx.NamedArgs{}
 
 	for _, condition := range conditions {
 		condition(args)
@@ -156,9 +177,7 @@ func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]
 		return nil, "", fmt.Errorf("query contains no conditions")
 	}
 
-	args := pgx.NamedArgs{
-		"tenant": getAllowedTenantsFromContext(ctx),
-	}
+	args := pgx.NamedArgs{}
 
 	for _, condition := range conditions {
 		condition(args)
@@ -212,8 +231,9 @@ func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]
 	return d, t, nil
 }
 
-func (db Db) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
-	if thingId == "" {
+func (db Db) RetrieveRelatedThings(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
+	thingId, ok := getValueFromCondition[string](conditions, "thing_id") 
+	if !ok {
 		return nil, fmt.Errorf("no id for thing provided")
 	}
 
@@ -298,9 +318,4 @@ func where(args map[string]any) string {
 	}
 
 	return "where " + w
-}
-
-func getAllowedTenantsFromContext(ctx context.Context) []string {
-	allowed := auth.GetAllowedTenantsFromContext(ctx)
-	return allowed
 }

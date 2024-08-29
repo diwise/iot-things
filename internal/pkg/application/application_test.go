@@ -28,7 +28,7 @@ func TestSeed(t *testing.T) {
 		UpdateThingFunc: func(ctx context.Context, v []byte) error {
 			return nil
 		},
-		AddRelatedThingFunc: func(ctx context.Context, thingId string, v []byte) error {
+		AddRelatedThingFunc: func(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error {
 			return nil
 		},
 	}

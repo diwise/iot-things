@@ -62,7 +62,7 @@ func main() {
 
 	topic := env.GetVariableOrDefault(ctx, "RABBITMQ_TOPIC", "message.#")
 
-	messenger.RegisterTopicMessageHandler(topic, application.NewTopicMessageHandler(app))
+	messenger.RegisterTopicMessageHandler(topic, application.NewTopicMessageHandler(db, db))
 
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {
