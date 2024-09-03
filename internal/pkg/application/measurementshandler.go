@@ -17,10 +17,7 @@ import (
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
-	"go.opentelemetry.io/otel"
 )
-
-var tracer = otel.Tracer("iot-things")
 
 type message struct {
 	Pack      senml.Pack `json:"pack"`
@@ -31,7 +28,7 @@ type resource struct {
 	Type string `json:"type"`
 }
 
-func NewTopicMessageHandler(reader ThingReader, writer ThingWriter) messaging.TopicMessageHandler {
+func NewMeasurementsHandler(reader ThingReader, writer ThingWriter) messaging.TopicMessageHandler {
 	return func(ctx context.Context, d messaging.IncomingTopicMessage, logger *slog.Logger) {
 		var err error
 
@@ -90,7 +87,7 @@ func NewTopicMessageHandler(reader ThingReader, writer ThingWriter) messaging.To
 		for _, inc := range included {
 			thingID := fmt.Sprintf("urn:diwise:%s:%s", strings.ToLower(inc.Type), strings.ToLower(inc.ID))
 
-			thingBytes, _, err := reader.RetrieveThing(ctx, storage.WithThingID(thingID))
+			thingBytes, _, err := reader.RetrieveThing(ctx, storage.WithThingID(thingID), storage.WithMeasurements("true"), storage.WithState("true"))
 			if err != nil {
 				log.Error("could not fetch thing to add values to", "err", err.Error(), "thing_id", thingID)
 				return
@@ -103,49 +100,35 @@ func NewTopicMessageHandler(reader ThingReader, writer ThingWriter) messaging.To
 				return
 			}
 
-			update := false
+			changed := false
 
 			if len(thing.Measurements) == 0 {
 				log.Debug("no current measurements found, add all in pack to thing", "thing_id", thingID)
 				thing.Measurements = measurements
-				update = true
+				changed = true
 			} else {
 				for i, tm := range measurements {
 					id := slices.IndexFunc(thing.Measurements, func(mm Measurement) bool {
 						return strings.EqualFold(tm.ID, mm.ID)
 					})
-					if id > -1 {						
+					if id > -1 {
 						if measurements[i].Timestamp.After(thing.Measurements[id].Timestamp) {
 							continue
 						}
 
 						log.Debug("update existing measurement", "measurement_id", measurements[i].ID)
-						update = true
+						changed = true
 						thing.Measurements[id] = measurements[i]
 					} else {
-						update = true
+						changed = true
 						log.Debug("append new measurement", "measurement_id", measurements[i].ID)
 						thing.Measurements = append(thing.Measurements, tm)
 					}
 				}
 			}
 
-			if update {
-				var thingMap map[string]any
-				err = json.Unmarshal(thingBytes, &thingMap)
-				if err != nil {
-					log.Error("could not unmarshal thing to map[string]any", "err", err.Error())
-					return
-				}
-				thingMap["measurements"] = thing.Measurements
-
-				thingMapBytes, err := json.Marshal(thingMap)
-				if err != nil {
-					log.Error("could not marshal map", "err", err.Error())
-					return
-				}
-
-				err = writer.UpdateThing(ctx, thingMapBytes)
+			if changed {
+				err = update(ctx, writer, "measurements", thingBytes, thing.Measurements)
 				if err != nil {
 					log.Error("could not update thing with measurements", "err", err.Error())
 					return
@@ -189,10 +172,10 @@ func getMeasurements(ctx context.Context, pack senml.Pack) ([]Measurement, error
 			continue
 		}
 
-		id := rec.Name		
+		id := rec.Name
 		ts, _ := rec.GetTime()
 
-		measurement := NewMeasurement(ts, id,  urn)
+		measurement := NewMeasurement(ts, id, urn)
 		measurement.BoolValue = rec.BoolValue
 		measurement.Value = rec.Value
 		measurement.StringValue = rec.StringValue

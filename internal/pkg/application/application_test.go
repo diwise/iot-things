@@ -55,7 +55,7 @@ func TestSeedIntegrationTest(t *testing.T) {
 	err = app.Seed(ctx, bytes.NewReader([]byte(things)))
 	is.NoErr(err)
 
-	b, err := app.RetrieveThing(ctx, "urn:diwise:WasteContainer:35")
+	b, err := app.RetrieveThing(ctx, "urn:diwise:WasteContainer:35", map[string][]string{})
 	is.NoErr(err)
 
 	m := make(map[string]any)

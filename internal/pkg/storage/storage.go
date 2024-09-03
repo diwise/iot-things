@@ -172,8 +172,9 @@ func (db Db) AddRelatedThing(ctx context.Context, v []byte, conditions ...Condit
 		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	thingId, ok := getValueFromCondition[string](conditions, "thing_id")
-	if !ok {		
+	c := NewCondition(conditions...)
+
+	if c.ThingID == "" {
 		return fmt.Errorf("conditions contains no thing_id")
 	}
 
@@ -203,7 +204,7 @@ func (db Db) AddRelatedThing(ctx context.Context, v []byte, conditions ...Condit
 			   );`
 
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"thing_id":   strings.ToLower(thingId),
+		"thing_id":   strings.ToLower(c.ThingID),
 		"related_id": related.ThingID(),
 	})
 	if err != nil {

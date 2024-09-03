@@ -14,7 +14,6 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"
-	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/go-chi/chi/v5"
 )
@@ -60,9 +59,8 @@ func main() {
 	}
 	messenger.Start()
 
-	topic := env.GetVariableOrDefault(ctx, "RABBITMQ_TOPIC", "message.#")
-
-	messenger.RegisterTopicMessageHandler(topic, application.NewTopicMessageHandler(db, db))
+	messenger.RegisterTopicMessageHandler("message.#", application.NewMeasurementsHandler(db, db))
+	messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
 
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {

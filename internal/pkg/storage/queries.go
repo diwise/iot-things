@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type ConditionFunc func(map[string]any) map[string]any
+type ConditionFunc func(*Condition) *Condition
 
 type QueryResult struct {
 	Things     []byte
@@ -23,62 +23,145 @@ type QueryResult struct {
 	TotalCount int64
 }
 
+type Condition struct {
+	ID           string
+	Types        []string
+	ThingID      string
+	Offset       int
+	Limit        int
+	Tenants      []string
+	Measurements bool
+	State        bool
+}
+
+func NewCondition(conditions ...ConditionFunc) *Condition {
+	c := &Condition{
+		Offset: 0,
+		Limit:  100,
+	}
+	for _, condition := range conditions {
+		condition(c)
+	}
+	return c
+}
+func (c Condition) NamedArgs() pgx.NamedArgs {
+	args := pgx.NamedArgs{
+		"offset": c.Offset,
+		"limit":  c.Limit,
+	}
+
+	if c.ID != "" {
+		args["id"] = c.ID
+	}
+	if c.ThingID != "" {
+		args["thing_id"] = c.ThingID
+	}
+	if len(c.Types) > 0 {
+		if len(c.Types) == 1 {
+			args["type"] = c.Types[0]
+		} else {
+			args["type"] = c.Types
+		}
+	}
+	if len(c.Tenants) > 0 {
+		if len(c.Tenants) == 1 {
+			args["tenant"] = c.Tenants[0]
+		} else {
+			args["tenant"] = c.Tenants
+		}
+	}
+
+	if c.Offset == 0 {
+		args["offset"] = 0
+	}
+	if c.Limit == 0 {
+		args["limit"] = 100
+	}
+
+	return args
+}
+
+func (c Condition) Where() string {
+	w := "where "
+
+	if c.ID != "" {
+		w += "id=@id and "
+	}
+	if c.ThingID != "" {
+		w += "thing_id=@thing_id and "
+	}
+	if len(c.Types) == 1 {
+		w += "type=@type and "
+	}
+	if len(c.Types) > 1 {
+		w += "type=any(@type) and "
+	}
+	if len(c.Tenants) == 1 {
+		w += "tenant=@tenant and "
+	}
+	if len(c.Tenants) > 1 {
+		w += "tenant=any(@tenant) and "
+	}
+
+	return strings.TrimSuffix(w, " and ")
+}
+func (c Condition) Validate(fn func(c Condition) bool) error {
+	if !fn(c) {
+		return fmt.Errorf("condition is not valid")
+	}
+	return nil
+}
+
 func WithID(id string) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["id"] = strings.ToLower(id)
-		return q
+	return func(c *Condition) *Condition {
+		c.ID = strings.ToLower(id)
+		return c
 	}
 }
-func WithType(t string) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["type"] = strings.ToLower(t)
-		return q
+func WithType(types []string) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.Types = []string{}
+		for _, t := range types {
+			c.Types = append(c.Types, strings.ToLower(t))
+		}
+		return c
 	}
 }
-func WithThingID(id string) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["thing_id"] = strings.ToLower(id)
-		return q
+func WithThingID(thingID string) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.ThingID = strings.ToLower(thingID)
+		return c
 	}
 }
-func WithOffset(v int) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["offset"] = v
-		return q
+func WithOffset(offset int) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.Offset = offset
+		return c
 	}
 }
-func WithLimit(v int) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["limit"] = v
-		return q
+func WithLimit(limit int) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.Limit = limit
+		return c
 	}
 }
 func WithTenants(tenants []string) ConditionFunc {
-	return func(q map[string]any) map[string]any {
-		q["tenant"] = tenants
-		return q
+	return func(c *Condition) *Condition {
+		c.Tenants = tenants
+		return c
 	}
 }
-
-func getValueFromCondition[T any](conditions []ConditionFunc, key string) (T, bool) {
-	m := make(map[string]any)
-	for _, c := range conditions {
-		c(m)
+func WithMeasurements(withMeasurments string) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.Measurements = withMeasurments == "true"
+		return c
 	}
-
-	var v T
-
-	a, ok := m[key]
-	if !ok {
-		return v, false
+}
+func WithState(withState string) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.State = withState == "true"
+		return c
 	}
-
-	v, ok = a.(T)
-	if !ok {
-		return v, false
-	}
-
-	return v, true
 }
 
 type thing struct {
@@ -101,30 +184,23 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 
 	log := logging.GetFromContext(ctx)
 
-	args := pgx.NamedArgs{}
+	c := NewCondition(conditions...)
 
-	for _, condition := range conditions {
-		condition(args)
+	if c.Measurements || c.State {
+		return queryThingsIncludeData(ctx, db, c)
 	}
 
-	if _, ok := args["offset"]; !ok {
-		args["offset"] = 0
-	}
-
-	if _, ok := args["limit"]; !ok {
-		args["limit"] = 1000
-	}
-
+	where := c.Where()
+	innerSql := fmt.Sprintf("select thing_id, id, type, location, tenant from things %s", where)
 	query := fmt.Sprintf(`
 			  select thing_id, id, type, location, tenant, count(*) OVER () AS total_count 
 	 		  from (
-				 select thing_id, id, type, location, tenant
-				 from things
 				 %s
 			  ) things
 			  limit @limit
-			  offset @offset;`, where(args))
+			  offset @offset;`, innerSql)
 
+	args := c.NamedArgs()
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
 		log.Debug("query things", slog.String("sql", query), slog.Any("args", args))
@@ -171,42 +247,90 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 	return result, nil
 }
 
-func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]byte, string, error) {
+func queryThingsIncludeData(ctx context.Context, db Db, conditions *Condition) (QueryResult, error) {
+	log := logging.GetFromContext(ctx)
 
+	rmProps := ""
+	if !conditions.Measurements {
+		rmProps += " - 'measurements' "
+	}
+	if !conditions.State {
+		rmProps += " - 'state' "
+	}
+
+	where := conditions.Where()
+	innerSql := fmt.Sprintf("select data from things %s", where)
+	query := fmt.Sprintf(`
+			  select data %s, count(*) OVER () AS total_count 
+	 		  from (
+				 %s
+			  ) things
+			  limit @limit
+			  offset @offset;`, rmProps, innerSql)
+
+	args := conditions.NamedArgs()
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Debug("query things", slog.String("sql", query), slog.Any("args", args))
+		log.Error("could not execute query", "err", err.Error())
+		return QueryResult{}, err
+	}
+
+	var d json.RawMessage
+	var total int64
+	things := make([]json.RawMessage, 0)
+
+	_, err = pgx.ForEachRow(rows, []any{&d, &total}, func() error {
+		things = append(things, d)
+		return nil
+	})
+
+	if err != nil {
+		return QueryResult{}, err
+	}
+
+	b, err := json.Marshal(things)
+	if err != nil {
+		return QueryResult{}, err
+	}
+
+	result := QueryResult{
+		Things:     b,
+		Count:      len(things),
+		Limit:      args["limit"].(int),
+		Offset:     args["offset"].(int),
+		TotalCount: total,
+	}
+
+	return result, nil
+}
+
+func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]byte, string, error) {
 	if len(conditions) == 0 {
 		return nil, "", fmt.Errorf("query contains no conditions")
 	}
 
-	args := pgx.NamedArgs{}
+	c := NewCondition(conditions...)
 
-	for _, condition := range conditions {
-		condition(args)
+	rmProps := ""
+	if !c.Measurements {
+		rmProps += " - 'measurements' "
+	}
+	if !c.State {
+		rmProps += " - 'state' "
 	}
 
-	var thingId, id, thingType string
-
-	if _, ok := args["thing_id"]; ok {
-		if s, ok := args["thing_id"].(string); ok {
-			thingId = s
+	err := c.Validate(func(c Condition) bool {
+		if c.ID == "" && c.ThingID == "" {
+			return false
 		}
-	}
-	if _, ok := args["id"]; ok {
-		if s, ok := args["id"].(string); ok {
-			id = s
+		if c.ID != "" && len(c.Types) == 0 {
+			return false
 		}
-	}
-	if _, ok := args["type"]; ok {
-		if s, ok := args["type"].(string); ok {
-			thingType = s
-		}
-	}
-
-	if thingId == "" && id == "" && thingType == "" {
-		return nil, "", fmt.Errorf("no id for thing provided")
-	}
-
-	if id != "" && thingType == "" {
-		return nil, "", fmt.Errorf("id provided but not type")
+		return true
+	})
+	if err != nil {
+		return nil, "", err
 	}
 
 	log := logging.GetFromContext(ctx)
@@ -214,13 +338,15 @@ func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]
 	var d json.RawMessage
 	var t string
 
-	query := "select data, type from things " + where(args)
+	where := c.Where()
+	query := fmt.Sprintf("select data %s, type from things %s", rmProps, where)
 
-	err := db.pool.QueryRow(ctx, query, args).Scan(&d, &t)
+	args := c.NamedArgs()
+	err = db.pool.QueryRow(ctx, query, args).Scan(&d, &t)
 	if err != nil {
 		log.Debug("query things", slog.String("sql", query), slog.Any("args", args))
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Debug("thing does not exists", "thing_id", thingId, "err", err.Error())
+			log.Debug("thing does not exists", "thing_id", c.ThingID, "err", err.Error())
 			return nil, "", ErrNotExist
 		}
 
@@ -232,31 +358,30 @@ func (db Db) RetrieveThing(ctx context.Context, conditions ...ConditionFunc) ([]
 }
 
 func (db Db) RetrieveRelatedThings(ctx context.Context, conditions ...ConditionFunc) ([]byte, error) {
-	thingId, ok := getValueFromCondition[string](conditions, "thing_id") 
-	if !ok {
+	c := NewCondition(conditions...)
+
+	if c.ThingID == "" {
 		return nil, fmt.Errorf("no id for thing provided")
 	}
 
 	log := logging.GetFromContext(ctx)
 
 	query := `
-		select thing_id, id, type, location, tenant from things where node_id IN 
-		(
-			select distinct node_id from 
-			(
-				select child as node_id
-				from thing_relations er
-				join things e on er.parent = e.node_id
-				where e.thing_id=$1
-				union
-				select parent as node_id
-				from thing_relations er
-				join things e on er.child = e.node_id
-				where e.thing_id=$1
-			) as related
-		)`
+		WITH target_node AS (
+			SELECT node_id
+			FROM things
+			WHERE thing_id = $1
+		)
+		SELECT t.thing_id, t.id, t.type, t.location, t.tenant
+		FROM things t
+		INNER JOIN thing_relations tr 
+			ON t.node_id = tr.child OR t.node_id = tr.parent
+		WHERE (tr.child = (SELECT node_id FROM target_node) 
+			OR tr.parent = (SELECT node_id FROM target_node))
+		AND t.thing_id != $1;
+	`
 
-	rows, err := db.pool.Query(ctx, query, thingId)
+	rows, err := db.pool.Query(ctx, query, c.ThingID)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return nil, err
@@ -268,7 +393,7 @@ func (db Db) RetrieveRelatedThings(ctx context.Context, conditions ...ConditionF
 
 	_, err = pgx.ForEachRow(rows, []any{&thing_id, &id, &thing_type, &thing_location, &tenant}, func() error {
 		things = append(things, thing{
-			ThingID: thingId,
+			ThingID: thing_id,
 			ID:      id,
 			Type:    thing_type,
 			Location: location{
@@ -290,32 +415,4 @@ func (db Db) RetrieveRelatedThings(ctx context.Context, conditions ...ConditionF
 	}
 
 	return b, nil
-}
-
-func where(args map[string]any) string {
-	w := ""
-
-	for k, v := range args {
-		if k == "offset" || k == "limit" {
-			continue
-		}
-
-		if w != "" {
-			w += "and "
-		}
-
-		if _, ok := v.(string); ok {
-			w += fmt.Sprintf("%s=@%s ", k, k)
-		}
-
-		if _, ok := v.([]string); ok {
-			w += fmt.Sprintf("%s=any(@%s) ", k, k)
-		}
-	}
-
-	if w == "" {
-		return w
-	}
-
-	return "where " + w
 }

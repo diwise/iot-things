@@ -14,7 +14,10 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("iot-things")
 
 var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
 
@@ -66,7 +69,15 @@ func parseConditions(conditions map[string][]string, add ...storage.ConditionFun
 	}
 
 	if v, ok := conditions["type"]; ok {
-		q = append(q, storage.WithType(v[0]))
+		q = append(q, storage.WithType(v))
+	}
+
+	if v, ok := conditions["measurements"]; ok {
+		q = append(q, storage.WithMeasurements(v[0]))
+	}
+
+	if v, ok := conditions["state"]; ok {
+		q = append(q, storage.WithState(v[0]))
 	}
 
 	if v, ok := conditions["offset"]; ok {
@@ -116,9 +127,13 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 	}, err
 }
 
-func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
+func (a App) RetrieveThing(ctx context.Context, thingId string, conditions map[string][]string) ([]byte, error) {
 	tenant := getAllowedTenantsFromContext(ctx)
-	b, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId), storage.WithTenants(tenant))
+	q, err := parseConditions(conditions, storage.WithThingID(thingId), storage.WithTenants(tenant))
+	if err != nil {
+		return nil, err
+	}
+	b, _, err := a.r.RetrieveThing(ctx, q...)
 	return b, err
 }
 
@@ -142,7 +157,7 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 	}
 
 	tenant := getAllowedTenantsFromContext(ctx)
-	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t), storage.WithTenants(tenant))
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithTenants(tenant))
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotExist) {
 			return err
@@ -166,7 +181,7 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t))
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithMeasurements("true"), storage.WithState("true"))
 	if err != nil {
 		return err
 	}
@@ -183,7 +198,7 @@ func (a App) PatchThing(ctx context.Context, thingId string, patch []byte) error
 		return fmt.Errorf("could not unmarshal patch, %w", err)
 	}
 
-	thing, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId))
+	thing, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId), storage.WithMeasurements("true"), storage.WithState("true"))
 	if err != nil {
 		return fmt.Errorf("could not find thing to patch, %w", err)
 	}

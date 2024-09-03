@@ -23,8 +23,9 @@ type Geometry struct {
 }
 
 type Resource struct {
-	Id   string `json:"id"`
-	Type string `json:"type"`
+	ThingID string `json:"thing_id"`
+	Id      string `json:"id"`
+	Type    string `json:"type"`
 }
 
 /* - - - - - - - - - - */
