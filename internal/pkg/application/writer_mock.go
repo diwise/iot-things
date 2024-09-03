@@ -5,6 +5,7 @@ package application
 
 import (
 	"context"
+	"github.com/diwise/iot-things/internal/pkg/storage"
 	"sync"
 )
 
@@ -18,7 +19,7 @@ var _ ThingWriter = &ThingWriterMock{}
 //
 //		// make and configure a mocked ThingWriter
 //		mockedThingWriter := &ThingWriterMock{
-//			AddRelatedThingFunc: func(ctx context.Context, thingId string, v []byte) error {
+//			AddRelatedThingFunc: func(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error {
 //				panic("mock out the AddRelatedThing method")
 //			},
 //			CreateThingFunc: func(ctx context.Context, v []byte) error {
@@ -35,7 +36,7 @@ var _ ThingWriter = &ThingWriterMock{}
 //	}
 type ThingWriterMock struct {
 	// AddRelatedThingFunc mocks the AddRelatedThing method.
-	AddRelatedThingFunc func(ctx context.Context, thingId string, v []byte) error
+	AddRelatedThingFunc func(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error
 
 	// CreateThingFunc mocks the CreateThing method.
 	CreateThingFunc func(ctx context.Context, v []byte) error
@@ -49,10 +50,10 @@ type ThingWriterMock struct {
 		AddRelatedThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// ThingId is the thingId argument value.
-			ThingId string
 			// V is the v argument value.
 			V []byte
+			// Conditions is the conditions argument value.
+			Conditions []storage.ConditionFunc
 		}
 		// CreateThing holds details about calls to the CreateThing method.
 		CreateThing []struct {
@@ -75,23 +76,23 @@ type ThingWriterMock struct {
 }
 
 // AddRelatedThing calls AddRelatedThingFunc.
-func (mock *ThingWriterMock) AddRelatedThing(ctx context.Context, thingId string, v []byte) error {
+func (mock *ThingWriterMock) AddRelatedThing(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error {
 	if mock.AddRelatedThingFunc == nil {
 		panic("ThingWriterMock.AddRelatedThingFunc: method is nil but ThingWriter.AddRelatedThing was just called")
 	}
 	callInfo := struct {
-		Ctx     context.Context
-		ThingId string
-		V       []byte
+		Ctx        context.Context
+		V          []byte
+		Conditions []storage.ConditionFunc
 	}{
-		Ctx:     ctx,
-		ThingId: thingId,
-		V:       v,
+		Ctx:        ctx,
+		V:          v,
+		Conditions: conditions,
 	}
 	mock.lockAddRelatedThing.Lock()
 	mock.calls.AddRelatedThing = append(mock.calls.AddRelatedThing, callInfo)
 	mock.lockAddRelatedThing.Unlock()
-	return mock.AddRelatedThingFunc(ctx, thingId, v)
+	return mock.AddRelatedThingFunc(ctx, v, conditions...)
 }
 
 // AddRelatedThingCalls gets all the calls that were made to AddRelatedThing.
@@ -99,14 +100,14 @@ func (mock *ThingWriterMock) AddRelatedThing(ctx context.Context, thingId string
 //
 //	len(mockedThingWriter.AddRelatedThingCalls())
 func (mock *ThingWriterMock) AddRelatedThingCalls() []struct {
-	Ctx     context.Context
-	ThingId string
-	V       []byte
+	Ctx        context.Context
+	V          []byte
+	Conditions []storage.ConditionFunc
 } {
 	var calls []struct {
-		Ctx     context.Context
-		ThingId string
-		V       []byte
+		Ctx        context.Context
+		V          []byte
+		Conditions []storage.ConditionFunc
 	}
 	mock.lockAddRelatedThing.RLock()
 	calls = mock.calls.AddRelatedThing

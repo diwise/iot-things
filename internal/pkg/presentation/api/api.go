@@ -239,7 +239,7 @@ func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFun
 			return
 		}
 
-		thing, err := app.RetrieveThing(ctx, thingId)
+		thing, err := app.RetrieveThing(ctx, thingId, r.URL.Query())
 		if err != nil {
 			logger.Info("could not find thing", "err", err.Error())
 			w.WriteHeader(http.StatusNotFound)

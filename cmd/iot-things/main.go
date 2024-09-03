@@ -12,6 +12,7 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/application"
 	"github.com/diwise/iot-things/internal/pkg/presentation/api"
 	"github.com/diwise/iot-things/internal/pkg/storage"
+	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/go-chi/chi/v5"
@@ -49,6 +50,17 @@ func main() {
 		log.Error("file with things found but could not seed data", "err", err.Error())
 		os.Exit(1)
 	}
+
+	config := messaging.LoadConfiguration(ctx, serviceName, log)
+	messenger, err := messaging.Initialize(ctx, config)
+	if err != nil {
+		log.Error("failed to init messenger")
+		os.Exit(1)
+	}
+	messenger.Start()
+
+	messenger.RegisterTopicMessageHandler("message.#", application.NewMeasurementsHandler(db, db))
+	messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
 
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {

@@ -163,7 +163,7 @@ func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 	return nil
 }
 
-func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) error {
+func (db Db) AddRelatedThing(ctx context.Context, v []byte, conditions ...ConditionFunc) error {
 	log := logging.GetFromContext(ctx)
 
 	related, err := unmarshalThing(v)
@@ -172,7 +172,13 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 		return fmt.Errorf("could not unmarshal thing")
 	}
 
-	_, _, err = db.RetrieveThing(ctx, WithThingID(thingId))
+	c := NewCondition(conditions...)
+
+	if c.ThingID == "" {
+		return fmt.Errorf("conditions contains no thing_id")
+	}
+
+	_, _, err = db.RetrieveThing(ctx, conditions...)
 	if err != nil {
 		log.Error("could not retrieve current thing", "err", err.Error())
 		return fmt.Errorf("could not retrieve current thing")
@@ -198,7 +204,7 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 			   );`
 
 	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"thing_id":   strings.ToLower(thingId),
+		"thing_id":   strings.ToLower(c.ThingID),
 		"related_id": related.ThingID(),
 	})
 	if err != nil {
@@ -216,9 +222,7 @@ func (db Db) AddRelatedThing(ctx context.Context, thingId string, v []byte) erro
 func isDuplicateKeyErr(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		if pgErr.Code == "23505" { // duplicate key value violates unique constraint
-			return true
-		}
+		return pgErr.Code == "23505" // duplicate key value violates unique constraint
 	}
 	return false
 }

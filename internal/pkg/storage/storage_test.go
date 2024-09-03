@@ -10,7 +10,6 @@ import (
 
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/matryer/is"
 )
 
@@ -128,7 +127,7 @@ func TestQueryThingsIDAndType(t *testing.T) {
 
 	q := make([]ConditionFunc, 0)
 	q = append(q, WithID(id))
-	q = append(q, WithType("WasteContainer"))
+	q = append(q, WithType([]string{"WasteContainer"}))
 
 	result, err := db.QueryThings(ctx, q...)
 	is.NoErr(err)
@@ -183,21 +182,27 @@ func TestAddRelatedThing(t *testing.T) {
 
 	deviceId := getUuid()
 
-	err = db.AddRelatedThing(ctx, fmt.Sprintf("urn:diwise:%s:%s","WasteContainer",wasteContainerId), createEnity(deviceId, "Device"))
+	thingID := fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", wasteContainerId)
+
+	err = db.AddRelatedThing(ctx, createEnity(deviceId, "Device"), WithThingID(thingID))
 	is.NoErr(err)
 }
 
 func TestWhere(t *testing.T) {
 	is := is.New(t)
 
-	args := pgx.NamedArgs{}
-	WithThingID("id")(args)
-	WithType("type")(args)
+	c := &Condition{}
+	WithThingID("id")(c)
+	WithType([]string{"type"})(c)
+	WithTenants([]string{"default","test"})(c)
 
-	w := where(args)
+	w := c.Where()
+	args := c.NamedArgs()
 
-	is.Equal("where thing_id=@thing_id and type=@type", strings.Trim(w, " "))
-	is.Equal("type", args["type"])
+	is.Equal("where thing_id=@thing_id and type=@type and tenant=any(@tenant)", strings.Trim(w, " "))
+	is.Equal("type", args["type"].(string))
+	is.Equal("default", args["tenant"].([]string)[0])
+	is.Equal("test", args["tenant"].([]string)[1])
 }
 
 func createEnity(args ...string) []byte {

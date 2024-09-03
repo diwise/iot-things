@@ -28,7 +28,7 @@ func TestSeed(t *testing.T) {
 		UpdateThingFunc: func(ctx context.Context, v []byte) error {
 			return nil
 		},
-		AddRelatedThingFunc: func(ctx context.Context, thingId string, v []byte) error {
+		AddRelatedThingFunc: func(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error {
 			return nil
 		},
 	}
@@ -55,7 +55,7 @@ func TestSeedIntegrationTest(t *testing.T) {
 	err = app.Seed(ctx, bytes.NewReader([]byte(things)))
 	is.NoErr(err)
 
-	b, err := app.RetrieveThing(ctx, "urn:diwise:WasteContainer:35")
+	b, err := app.RetrieveThing(ctx, "urn:diwise:WasteContainer:35", map[string][]string{})
 	is.NoErr(err)
 
 	m := make(map[string]any)

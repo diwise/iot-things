@@ -14,7 +14,10 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("iot-things")
 
 var ErrAlreadyExists error = fmt.Errorf("Thing already exists")
 
@@ -27,14 +30,14 @@ type App struct {
 type ThingReader interface {
 	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 	RetrieveThing(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error)
-	RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error)
+	RetrieveRelatedThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
 }
 
 //go:generate moq -rm -out writer_mock.go . ThingWriter
 type ThingWriter interface {
 	CreateThing(ctx context.Context, v []byte) error
 	UpdateThing(ctx context.Context, v []byte) error
-	AddRelatedThing(ctx context.Context, thingId string, v []byte) error
+	AddRelatedThing(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error
 }
 
 func New(r ThingReader, w ThingWriter) App {
@@ -45,20 +48,19 @@ func New(r ThingReader, w ThingWriter) App {
 }
 
 func (a App) AddRelatedThing(ctx context.Context, thingId string, data []byte) error {
-	return a.w.AddRelatedThing(ctx, thingId, data)
+	tenant := getAllowedTenantsFromContext(ctx)
+	return a.w.AddRelatedThing(ctx, data, storage.WithThingID(thingId), storage.WithTenants(tenant))
 }
 
 func (a App) RetrieveRelatedThings(ctx context.Context, thingId string) ([]byte, error) {
-	return a.r.RetrieveRelatedThings(ctx, thingId)
+	tenant := getAllowedTenantsFromContext(ctx)
+	return a.r.RetrieveRelatedThings(ctx, storage.WithThingID(thingId), storage.WithTenants(tenant))
 }
 
-func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (QueryResult, error) {
-	var err error
-	var number, size *int
-
+func parseConditions(conditions map[string][]string, add ...storage.ConditionFunc) ([]storage.ConditionFunc, error) {
 	q := make([]storage.ConditionFunc, 0)
 
-	if v,ok:=conditions["id"];ok {
+	if v, ok := conditions["id"]; ok {
 		q = append(q, storage.WithID(v[0]))
 	}
 
@@ -67,36 +69,21 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 	}
 
 	if v, ok := conditions["type"]; ok {
-		q = append(q, storage.WithType(v[0]))
+		q = append(q, storage.WithType(v))
 	}
 
-	if v, ok := conditions["page[size]"]; ok {
-		s, err := strconv.Atoi(v[0])
-		if err != nil || s < 1 {
-			return QueryResult{}, fmt.Errorf("invalid size parameter")
-		}
-		q = append(q, storage.WithLimit(s))
-		size = &s
+	if v, ok := conditions["measurements"]; ok {
+		q = append(q, storage.WithMeasurements(v[0]))
 	}
 
-	if v, ok := conditions["page[number]"]; ok {
-		n, err := strconv.Atoi(v[0])
-		if err != nil || n < 1 {
-			return QueryResult{}, fmt.Errorf("invalid number parameter")
-		}
-		if size == nil {
-			s := 10
-			size = &s
-			q = append(q, storage.WithLimit(s))
-		}
-		q = append(q, storage.WithOffset((n-1)**size))
-		number = &n
+	if v, ok := conditions["state"]; ok {
+		q = append(q, storage.WithState(v[0]))
 	}
 
 	if v, ok := conditions["offset"]; ok {
 		offset, err := strconv.Atoi(v[0])
 		if err != nil || offset < 0 {
-			return QueryResult{}, fmt.Errorf("invalid offset parameter")
+			return nil, fmt.Errorf("invalid offset parameter")
 		}
 		q = append(q, storage.WithOffset(offset))
 	}
@@ -104,9 +91,27 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 	if v, ok := conditions["limit"]; ok {
 		limit, err := strconv.Atoi(v[0])
 		if err != nil || limit < 1 {
-			return QueryResult{}, fmt.Errorf("invalid limit parameter")
+			return nil, fmt.Errorf("invalid limit parameter")
 		}
 		q = append(q, storage.WithLimit(limit))
+	}
+
+	if len(add) > 0 {
+		q = append(q, add...)
+	}
+
+	return q, nil
+}
+
+func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (QueryResult, error) {
+	var err error
+	var number, size *int
+
+	tenant := getAllowedTenantsFromContext(ctx)
+
+	q, err := parseConditions(conditions, storage.WithTenants(tenant))
+	if err != nil {
+		return QueryResult{}, err
 	}
 
 	r, err := a.r.QueryThings(ctx, q...)
@@ -122,8 +127,13 @@ func (a App) QueryThings(ctx context.Context, conditions map[string][]string) (Q
 	}, err
 }
 
-func (a App) RetrieveThing(ctx context.Context, thingId string) ([]byte, error) {
-	b, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId))
+func (a App) RetrieveThing(ctx context.Context, thingId string, conditions map[string][]string) ([]byte, error) {
+	tenant := getAllowedTenantsFromContext(ctx)
+	q, err := parseConditions(conditions, storage.WithThingID(thingId), storage.WithTenants(tenant))
+	if err != nil {
+		return nil, err
+	}
+	b, _, err := a.r.RetrieveThing(ctx, q...)
 	return b, err
 }
 
@@ -146,7 +156,8 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t))
+	tenant := getAllowedTenantsFromContext(ctx)
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithTenants(tenant))
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotExist) {
 			return err
@@ -170,7 +181,7 @@ func (a App) UpdateThing(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType(t))
+	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithMeasurements("true"), storage.WithState("true"))
 	if err != nil {
 		return err
 	}
@@ -187,7 +198,7 @@ func (a App) PatchThing(ctx context.Context, thingId string, patch []byte) error
 		return fmt.Errorf("could not unmarshal patch, %w", err)
 	}
 
-	thing, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId))
+	thing, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingId), storage.WithMeasurements("true"), storage.WithState("true"))
 	if err != nil {
 		return fmt.Errorf("could not find thing to patch, %w", err)
 	}
@@ -366,9 +377,9 @@ func appendMap(m1 map[string]any, m2 map[string]any) map[string]any {
 }
 
 func unmarshalThing(data []byte) (string, string, error) {
-	var d struct {		
-		Id      *string `json:"id,omitempty"`
-		Type    *string `json:"type,omitempty"`
+	var d struct {
+		Id   *string `json:"id,omitempty"`
+		Type *string `json:"type,omitempty"`
 	}
 	err := json.Unmarshal(data, &d)
 	if err != nil {
@@ -383,4 +394,9 @@ func unmarshalThing(data []byte) (string, string, error) {
 	}
 
 	return *d.Id, *d.Type, nil
+}
+
+func getAllowedTenantsFromContext(ctx context.Context) []string {
+	allowed := auth.GetAllowedTenantsFromContext(ctx)
+	return allowed
 }
