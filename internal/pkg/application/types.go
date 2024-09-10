@@ -18,28 +18,20 @@ type Location struct {
 
 func NewMeasurement(ts time.Time, id, urn string) Measurement {
 	return Measurement{
-		//DeviceID:  deviceID,
 		ID: id,
-		//Name:      name,
-		//Tenant:    tenant,
 		Timestamp: ts,
 		Urn:       urn,
 	}
 }
 
 type Measurement struct {
-	//DeviceID    string    `json:"deviceID"`
-	ID string `json:"id"`
-	//Name        string    `json:"name"`
-	//Tenant      string    `json:"tenant"`
-	Timestamp time.Time `json:"timestamp"`
-	Urn       string    `json:"urn"`
-	BoolValue *bool     `json:"vb,omitempty"`
-	//Lat         float64   `json:"lat"`
-	//Lon         float64   `json:"lon"`
-	StringValue string   `json:"vs,omitempty"`
-	Unit        string   `json:"unit,omitempty"`
-	Value       *float64 `json:"v,omitempty"`
+	ID          string    `json:"id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Urn         string    `json:"urn"`
+	BoolValue   *bool     `json:"vb,omitempty"`
+	StringValue string    `json:"vs,omitempty"`
+	Unit        string    `json:"unit,omitempty"`
+	Value       *float64  `json:"v,omitempty"`
 }
 
 type QueryResult struct {

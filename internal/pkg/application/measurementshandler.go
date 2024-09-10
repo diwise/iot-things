@@ -58,6 +58,7 @@ func NewMeasurementsHandler(reader ThingReader, writer ThingWriter) messaging.To
 			return
 		}
 
+		// a measurement package is always related to a device
 		deviceThingID := fmt.Sprintf("urn:diwise:device:%s", id)
 
 		b, err := reader.RetrieveRelatedThings(ctx, storage.WithThingID(deviceThingID))
@@ -112,7 +113,7 @@ func NewMeasurementsHandler(reader ThingReader, writer ThingWriter) messaging.To
 						return strings.EqualFold(tm.ID, mm.ID)
 					})
 					if id > -1 {
-						if measurements[i].Timestamp.After(thing.Measurements[id].Timestamp) {
+						if measurements[i].Timestamp.Before(thing.Measurements[id].Timestamp) {
 							continue
 						}
 
@@ -150,9 +151,7 @@ func getMeasurements(ctx context.Context, pack senml.Pack) ([]Measurement, error
 
 	measurements := make([]Measurement, 0)
 
-	//deviceID := strings.Split(header.Name, "/")[0]
 	urn := header.StringValue
-	//lat, lon, _ := pack.GetLatLon()
 
 	var errs []error
 
@@ -179,8 +178,6 @@ func getMeasurements(ctx context.Context, pack senml.Pack) ([]Measurement, error
 		measurement.BoolValue = rec.BoolValue
 		measurement.Value = rec.Value
 		measurement.StringValue = rec.StringValue
-		//measurement.Lat = lat
-		//measurement.Lon = lon
 		measurement.Unit = rec.Unit
 
 		measurements = append(measurements, measurement)
