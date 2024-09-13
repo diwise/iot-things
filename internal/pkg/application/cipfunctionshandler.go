@@ -59,7 +59,8 @@ func (s stateMap) ToMap() map[string]any {
 	delete(s, "type")
 	delete(s, "tenant")
 
-	//TODO: remove in cip-functions
+	//TODO: this is a temporary solution to remove the keys that are not needed
+	//      The state contains part of the thing, so this will be redundant
 	delete(s, "combinedsewageoverflow")
 	delete(s, "wastecontainer")
 	delete(s, "sewer")
