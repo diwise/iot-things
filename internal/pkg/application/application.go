@@ -163,7 +163,7 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 	}
 
 	tenant := getAllowedTenantsFromContext(ctx)
-	_, _, err = a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithTenants(tenant))
+	b, _, err := a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithTenants(tenant))
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotExist) {
 			return err
@@ -176,9 +176,35 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 			}
 			return err
 		}
+
+		return nil
 	}
 
-	return a.w.UpdateThing(ctx, data)
+	current := make(map[string]any)
+	err = json.Unmarshal(b, &current)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal current thing to map, %w", err)
+	}
+
+	new := make(map[string]any)
+	err = json.Unmarshal(data, &new)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal new thing to map, %w", err)
+	}
+
+	for k, v := range new {
+		if k == "thing_id" || k == "id" || k == "type" {
+			continue
+		}
+		current[k] = v
+	}
+
+	updated, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("could not marshal patched thing, %w", err)
+	}
+
+	return a.w.UpdateThing(ctx, updated)
 }
 
 func (a App) UpdateThing(ctx context.Context, data []byte) error {
