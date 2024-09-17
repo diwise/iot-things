@@ -31,6 +31,8 @@ type ThingReader interface {
 	QueryThings(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 	RetrieveThing(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error)
 	RetrieveRelatedThings(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, error)
+	GetTags(ctx context.Context, tenants []string) ([]string, error)
+	GetTypes(ctx context.Context, tenants []string) ([]string, error)
 }
 
 //go:generate moq -rm -out writer_mock.go . ThingWriter
@@ -94,6 +96,10 @@ func parseConditions(conditions map[string][]string, add ...storage.ConditionFun
 			return nil, fmt.Errorf("invalid limit parameter")
 		}
 		q = append(q, storage.WithLimit(limit))
+	}
+
+	if v, ok := conditions["tags"]; ok {
+		q = append(q, storage.WithTags(v))
 	}
 
 	if len(add) > 0 {
@@ -221,6 +227,26 @@ func (a App) PatchThing(ctx context.Context, thingId string, patch []byte) error
 	return a.w.UpdateThing(ctx, patchedThing)
 }
 
+func (a App) GetTags(ctx context.Context) ([]string, error) {
+	tenant := getAllowedTenantsFromContext(ctx)
+	tags, err := a.r.GetTags(ctx, tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	return tags, nil
+}
+
+func (a App) GetTypes(ctx context.Context) ([]string, error) {
+	tenant := getAllowedTenantsFromContext(ctx)
+	tags, err := a.r.GetTypes(ctx, tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	return tags, nil
+}
+
 func (a App) Seed(ctx context.Context, data io.Reader) error {
 	r := csv.NewReader(data)
 	r.Comma = ';'
@@ -281,6 +307,17 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 		return m
 	}
 
+	parseTags := func(t string) []string {
+		if t == "" {
+			return []string{}
+		}
+		if !strings.Contains(t, ",") {
+			return []string{t}
+		}
+		tags := strings.Split(t, ",")
+		return tags
+	}
+
 	for {
 		record, err := r.Read()
 		if err == io.EOF {
@@ -292,8 +329,8 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			continue
 		}
 
-		//     0      1          2      3      4           5          6       7
-		// thingId,thingType,location,props,relatedId,relatedType,location,tenant
+		//     0      1          2      3      4           5          6       7      8
+		// thingId,thingType,location,props,relatedId,relatedType,location,tenant, tags
 
 		thing := Thing{
 			ThingID:  fmt.Sprintf("urn:diwise:%s:%s", record[1], record[0]),
@@ -301,6 +338,7 @@ func (a App) Seed(ctx context.Context, data io.Reader) error {
 			Type:     record[1],
 			Location: parseLocation(record[2]),
 			Tenant:   record[7],
+			Tags:     parseTags(record[8]),
 		}
 
 		relatedThing := Thing{

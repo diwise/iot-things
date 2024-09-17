@@ -9,6 +9,7 @@ type Thing struct {
 	Location     Location      `json:"location"`
 	Tenant       string        `json:"tenant"`
 	Measurements []Measurement `json:"measurements,omitempty"`
+	Tags         []string      `json:"tags,omitempty"`
 }
 
 type Location struct {
@@ -18,7 +19,7 @@ type Location struct {
 
 func NewMeasurement(ts time.Time, id, urn string) Measurement {
 	return Measurement{
-		ID: id,
+		ID:        id,
 		Timestamp: ts,
 		Urn:       urn,
 	}

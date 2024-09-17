@@ -32,6 +32,7 @@ type Condition struct {
 	Tenants      []string
 	Measurements bool
 	State        bool
+	Tags         []string
 }
 
 func NewCondition(conditions ...ConditionFunc) *Condition {
@@ -70,6 +71,10 @@ func (c Condition) NamedArgs() pgx.NamedArgs {
 			args["tenant"] = c.Tenants
 		}
 	}
+	if len(c.Tags) > 0 {
+		b, _ := json.Marshal(c.Tags)
+		args["tags"] = string(b)
+	}
 
 	if c.Offset == 0 {
 		args["offset"] = 0
@@ -102,6 +107,9 @@ func (c Condition) Where() string {
 	if len(c.Tenants) > 1 {
 		w += "tenant=any(@tenant) and "
 	}
+	if len(c.Tags) > 0 {
+		w += "data ? 'tags' and data->'tags' @> (@tags) and "
+	}
 
 	return strings.TrimSuffix(w, " and ")
 }
@@ -110,6 +118,13 @@ func (c Condition) Validate(fn func(c Condition) bool) error {
 		return fmt.Errorf("condition is not valid")
 	}
 	return nil
+}
+
+func WithTags(tags []string) ConditionFunc {
+	return func(c *Condition) *Condition {
+		c.Tags = tags
+		return c
+	}
 }
 
 func WithID(id string) ConditionFunc {
@@ -170,6 +185,7 @@ type thing struct {
 	Type     string   `json:"type"`
 	Location location `json:"location"`
 	Tenant   string   `json:"tenant"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
 type location struct {
@@ -186,19 +202,20 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 
 	c := NewCondition(conditions...)
 
-	if c.Measurements || c.State {
-		return queryThingsIncludeData(ctx, db, c)
+	var rmProps string
+	if !c.Measurements {
+		rmProps += " - 'measurements' "
+	}
+	if !c.State {
+		rmProps += " - 'state' "
 	}
 
-	where := c.Where()
-	innerSql := fmt.Sprintf("select thing_id, id, type, location, tenant from things %s", where)
 	query := fmt.Sprintf(`
-			  select thing_id, id, type, location, tenant, count(*) OVER () AS total_count 
+			  select data %s, count(*) OVER () AS total_count 
 	 		  from (
-				 %s
+				 select data from things %s
 			  ) things
-			  limit @limit
-			  offset @offset;`, innerSql)
+			  offset @offset limit @limit;`, rmProps, c.Where())
 
 	args := c.NamedArgs()
 	rows, err := db.pool.Query(ctx, query, args)
@@ -208,23 +225,13 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 		return QueryResult{}, err
 	}
 
-	things := make([]thing, 0)
-	var thing_id, id, thing_type, tenant string
-	var thing_location pgtype.Point
+	things := make([]json.RawMessage, 0)
+
+	var data json.RawMessage
 	var total_count int64
 
-	_, err = pgx.ForEachRow(rows, []any{&thing_id, &id, &thing_type, &thing_location, &tenant, &total_count}, func() error {
-		things = append(things, thing{
-			ThingID: thing_id,
-			ID:      id,
-			Type:    thing_type,
-			Location: location{
-				Latitude:  thing_location.P.Y,
-				Longitude: thing_location.P.X,
-			},
-			Tenant: tenant,
-		})
-
+	_, err = pgx.ForEachRow(rows, []any{&data, &total_count}, func() error {
+		things = append(things, data)
 		return nil
 	})
 	if err != nil {
@@ -242,64 +249,6 @@ func (db Db) QueryThings(ctx context.Context, conditions ...ConditionFunc) (Quer
 		Limit:      args["limit"].(int),
 		Offset:     args["offset"].(int),
 		TotalCount: total_count,
-	}
-
-	return result, nil
-}
-
-func queryThingsIncludeData(ctx context.Context, db Db, conditions *Condition) (QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
-	rmProps := ""
-	if !conditions.Measurements {
-		rmProps += " - 'measurements' "
-	}
-	if !conditions.State {
-		rmProps += " - 'state' "
-	}
-
-	where := conditions.Where()
-	innerSql := fmt.Sprintf("select data from things %s", where)
-	query := fmt.Sprintf(`
-			  select data %s, count(*) OVER () AS total_count 
-	 		  from (
-				 %s
-			  ) things
-			  limit @limit
-			  offset @offset;`, rmProps, innerSql)
-
-	args := conditions.NamedArgs()
-	rows, err := db.pool.Query(ctx, query, args)
-	if err != nil {
-		log.Debug("query things", slog.String("sql", query), slog.Any("args", args))
-		log.Error("could not execute query", "err", err.Error())
-		return QueryResult{}, err
-	}
-
-	var d json.RawMessage
-	var total int64
-	things := make([]json.RawMessage, 0)
-
-	_, err = pgx.ForEachRow(rows, []any{&d, &total}, func() error {
-		things = append(things, d)
-		return nil
-	})
-
-	if err != nil {
-		return QueryResult{}, err
-	}
-
-	b, err := json.Marshal(things)
-	if err != nil {
-		return QueryResult{}, err
-	}
-
-	result := QueryResult{
-		Things:     b,
-		Count:      len(things),
-		Limit:      args["limit"].(int),
-		Offset:     args["offset"].(int),
-		TotalCount: total,
 	}
 
 	return result, nil
@@ -415,4 +364,71 @@ func (db Db) RetrieveRelatedThings(ctx context.Context, conditions ...ConditionF
 	}
 
 	return b, nil
+}
+
+func (db Db) GetTags(ctx context.Context, tenants []string) ([]string, error) {
+	log := logging.GetFromContext(ctx)
+
+	query := `
+		SELECT DISTINCT tag
+		FROM things,
+		LATERAL jsonb_array_elements_text(data->'tags') AS tag
+		WHERE data ? 'tags' AND tenant=ANY(@tenants)
+		ORDER BY tag ASC;`
+
+	args := pgx.NamedArgs{
+		"tenants": tenants,
+	}
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Debug("query tags", slog.String("sql", query))
+		log.Error("could not execute query", "err", err.Error())
+		return []string{}, err
+	}
+
+	tags := make([]string, 0)
+	var tag string
+
+	_, err = pgx.ForEachRow(rows, []any{&tag}, func() error {
+		tags = append(tags, tag)
+		return nil
+	})
+	if err != nil {
+		return []string{}, err
+	}
+
+	return tags, nil
+}
+
+func (db Db) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
+	log := logging.GetFromContext(ctx)
+
+	query := `
+		SELECT DISTINCT type 
+		FROM things 
+		WHERE type IN ('combinedsewageoverflow','wastecontainer','sewer','sewagepumpingstation') AND tenant=ANY(@tenants)
+		ORDER BY type ASC;`
+
+	args := pgx.NamedArgs{
+		"tenants": tenants,
+	}
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Debug("query tags", slog.String("sql", query))
+		log.Error("could not execute query", "err", err.Error())
+		return []string{}, err
+	}
+
+	tags := make([]string, 0)
+	var tag string
+
+	_, err = pgx.ForEachRow(rows, []any{&tag}, func() error {
+		tags = append(tags, tag)
+		return nil
+	})
+	if err != nil {
+		return []string{}, err
+	}
+
+	return tags, nil
 }

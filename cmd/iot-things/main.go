@@ -15,6 +15,7 @@ import (
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -85,9 +86,11 @@ func setupRouter(ctx context.Context, opaFilePath string, app application.App) (
 }
 
 func seedThings(ctx context.Context, thingsFilePath string, app application.App) error {
+	log := logging.GetFromContext(ctx)
 	things, err := os.Open(thingsFilePath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
+			log.Debug("no file with things found", "path", thingsFilePath)
 			return nil
 		}
 		return err
