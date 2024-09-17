@@ -1,4 +1,5 @@
-thingId;thingType;location;relatedId;relatedType;location;tenant;
-52e0a125-01f6-4300-ac97-37bd911c2b28;WasteContainer;62.390715,17.306868;a2c1821b-03b0-42cf-bcf2-3f9c0a38d227;Function;0.0,0.0;default;
-c91149a8-256b-4d65-8ca8-fc00074485c8;WasteContainer;62.390715,17.306868;ebc1747e-c20e-426d-b1d3-24a01ac85428;Function;;default;
-d74a9652-afe6-46ea-8bf1-f4e11d5e02c6;WasteContainer;62.390715,17.306868;;;;default;
+thingID;thingType;location;props;relatedId;relatedType;location;tenant;tags
+forradet-bpn;CombinedSewageOverflow;62.4008,17.4135;name='Förrådet BPN';d4f3e2f1-d430-467b-85ec-7cd977b0335f;stopwatch;0.0,0.0;msva;;
+tradgarden-bpn;CombinedSewageOverflow;62.4008,17.4135;name='Trädgården BPN';527090f3-7f85-49f8-889b-99a50530dede;stopwatch;0.0,0.0;msva;;
+braddmatare-05;CombinedSewageOverflow;62.4008,17.4135;name='Bräddmätare 05';46a8ab5a-48c8-4f51-870b-b820f621a0a4;stopwatch;0.0,0.0;msva;Test
+5;WasteContainer;62.39095613,,17.31727909;capacity=160;level:5;level;62.39095613,,17.31727909;default;soptunna,linje 1;

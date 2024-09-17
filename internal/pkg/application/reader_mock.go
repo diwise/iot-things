@@ -19,6 +19,12 @@ var _ ThingReader = &ThingReaderMock{}
 //
 //		// make and configure a mocked ThingReader
 //		mockedThingReader := &ThingReaderMock{
+//			GetTagsFunc: func(ctx context.Context, tenants []string) ([]string, error) {
+//				panic("mock out the GetTags method")
+//			},
+//			GetTypesFunc: func(ctx context.Context, tenants []string) ([]string, error) {
+//				panic("mock out the GetTypes method")
+//			},
 //			QueryThingsFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error) {
 //				panic("mock out the QueryThings method")
 //			},
@@ -35,6 +41,12 @@ var _ ThingReader = &ThingReaderMock{}
 //
 //	}
 type ThingReaderMock struct {
+	// GetTagsFunc mocks the GetTags method.
+	GetTagsFunc func(ctx context.Context, tenants []string) ([]string, error)
+
+	// GetTypesFunc mocks the GetTypes method.
+	GetTypesFunc func(ctx context.Context, tenants []string) ([]string, error)
+
 	// QueryThingsFunc mocks the QueryThings method.
 	QueryThingsFunc func(ctx context.Context, conditions ...storage.ConditionFunc) (storage.QueryResult, error)
 
@@ -46,6 +58,20 @@ type ThingReaderMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetTags holds details about calls to the GetTags method.
+		GetTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tenants is the tenants argument value.
+			Tenants []string
+		}
+		// GetTypes holds details about calls to the GetTypes method.
+		GetTypes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tenants is the tenants argument value.
+			Tenants []string
+		}
 		// QueryThings holds details about calls to the QueryThings method.
 		QueryThings []struct {
 			// Ctx is the ctx argument value.
@@ -68,9 +94,83 @@ type ThingReaderMock struct {
 			Conditions []storage.ConditionFunc
 		}
 	}
+	lockGetTags               sync.RWMutex
+	lockGetTypes              sync.RWMutex
 	lockQueryThings           sync.RWMutex
 	lockRetrieveRelatedThings sync.RWMutex
 	lockRetrieveThing         sync.RWMutex
+}
+
+// GetTags calls GetTagsFunc.
+func (mock *ThingReaderMock) GetTags(ctx context.Context, tenants []string) ([]string, error) {
+	if mock.GetTagsFunc == nil {
+		panic("ThingReaderMock.GetTagsFunc: method is nil but ThingReader.GetTags was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tenants []string
+	}{
+		Ctx:     ctx,
+		Tenants: tenants,
+	}
+	mock.lockGetTags.Lock()
+	mock.calls.GetTags = append(mock.calls.GetTags, callInfo)
+	mock.lockGetTags.Unlock()
+	return mock.GetTagsFunc(ctx, tenants)
+}
+
+// GetTagsCalls gets all the calls that were made to GetTags.
+// Check the length with:
+//
+//	len(mockedThingReader.GetTagsCalls())
+func (mock *ThingReaderMock) GetTagsCalls() []struct {
+	Ctx     context.Context
+	Tenants []string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tenants []string
+	}
+	mock.lockGetTags.RLock()
+	calls = mock.calls.GetTags
+	mock.lockGetTags.RUnlock()
+	return calls
+}
+
+// GetTypes calls GetTypesFunc.
+func (mock *ThingReaderMock) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
+	if mock.GetTypesFunc == nil {
+		panic("ThingReaderMock.GetTypesFunc: method is nil but ThingReader.GetTypes was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tenants []string
+	}{
+		Ctx:     ctx,
+		Tenants: tenants,
+	}
+	mock.lockGetTypes.Lock()
+	mock.calls.GetTypes = append(mock.calls.GetTypes, callInfo)
+	mock.lockGetTypes.Unlock()
+	return mock.GetTypesFunc(ctx, tenants)
+}
+
+// GetTypesCalls gets all the calls that were made to GetTypes.
+// Check the length with:
+//
+//	len(mockedThingReader.GetTypesCalls())
+func (mock *ThingReaderMock) GetTypesCalls() []struct {
+	Ctx     context.Context
+	Tenants []string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tenants []string
+	}
+	mock.lockGetTypes.RLock()
+	calls = mock.calls.GetTypes
+	mock.lockGetTypes.RUnlock()
+	return calls
 }
 
 // QueryThings calls QueryThingsFunc.

@@ -194,7 +194,7 @@ func TestWhere(t *testing.T) {
 	c := &Condition{}
 	WithThingID("id")(c)
 	WithType([]string{"type"})(c)
-	WithTenants([]string{"default","test"})(c)
+	WithTenants([]string{"default", "test"})(c)
 
 	w := c.Where()
 	args := c.NamedArgs()
@@ -203,6 +203,97 @@ func TestWhere(t *testing.T) {
 	is.Equal("type", args["type"].(string))
 	is.Equal("default", args["tenant"].([]string)[0])
 	is.Equal("test", args["tenant"].([]string)[1])
+}
+
+func TestWhereTags(t *testing.T) {
+	is := is.New(t)
+
+	c := &Condition{}
+	WithThingID("id")(c)
+	WithType([]string{"type"})(c)
+	WithTenants([]string{"default", "test"})(c)
+	WithTags([]string{"tag1", "tag2"})(c)
+
+	w := c.Where()
+	args := c.NamedArgs()
+
+	is.Equal("where thing_id=@thing_id and type=@type and tenant=any(@tenant) and data ? 'tags' and data->'tags' @> (@tags)", strings.Trim(w, " "))
+	is.Equal("type", args["type"].(string))
+	is.Equal("default", args["tenant"].([]string)[0])
+	is.Equal("test", args["tenant"].([]string)[1])
+}
+
+func TestQueryWithTags(t *testing.T) {
+	is := is.New(t)
+	db, ctx, cancel, err := new()
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+	defer cancel()
+
+	id := uuid.NewString()
+	e := thing{
+		ID:      id,
+		Type:    "WasteContainer",
+		Tenant:  "tenant",
+		ThingID: fmt.Sprintf("urn:diwise:WasteContainer:%s", id),
+		Location: location{
+			Latitude:  17.2,
+			Longitude: 64.3,
+		},
+		Tags: []string{"tag3", "tag1", "tag2", id},
+	}
+
+	b, _ := json.Marshal(e)
+	err = db.CreateThing(ctx, b)
+	is.NoErr(err)
+
+	res, err := db.QueryThings(ctx, WithTags([]string{id}), WithTenants([]string{"tenant"}))
+	is.NoErr(err)
+
+	is.Equal(int64(1), res.TotalCount)
+
+	res, err = db.QueryThings(ctx, WithTags([]string{"tag1", id}), WithTenants([]string{"tenant"}))
+	is.NoErr(err)
+
+	is.Equal(int64(1), res.TotalCount)
+
+	res, err = db.QueryThings(ctx, WithTags([]string{"tag1"}), WithTenants([]string{"tenant"}))
+	is.NoErr(err)
+
+	is.True(res.TotalCount > 1)
+}
+
+func TestTags(t *testing.T) {
+	is := is.New(t)
+	db, ctx, cancel, err := new()
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+	defer cancel()
+	id := uuid.NewString()
+	e := thing{
+		ID:      id,
+		Type:    "WasteContainer",
+		Tenant:  "tenant",
+		ThingID: fmt.Sprintf("urn:diwise:WasteContainer:%s", id),
+		Location: location{
+			Latitude:  17.2,
+			Longitude: 64.3,
+		},
+		Tags: []string{"tag3", "tag1", "tag2"},
+	}
+
+	b, _ := json.Marshal(e)
+	err = db.CreateThing(ctx, b)
+	is.NoErr(err)
+
+	_, err = db.GetTags(ctx, []string{"tenant"})
+	is.NoErr(err)
+
+	// is.Equal("tag1,tag2,tag3", strings.Join(tags, ","))
 }
 
 func createEnity(args ...string) []byte {

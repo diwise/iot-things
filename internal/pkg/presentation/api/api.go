@@ -50,6 +50,8 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Put("/{id}", updateThingHandler(log, app))
 				r.Patch("/{id}", patchThingHandler(log, app))
 				r.Post("/{id}", addRelatedThingHandler(log, app))
+				r.Get("/tags", getTagsHandler(log, app))
+				r.Get("/types", getTypesHandler(log, app))
 			})
 		})
 	})
@@ -78,7 +80,7 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		}
 
 		accept := r.Header.Get("Accept")
-		
+
 		if accept != "application/geo+json" && accept != "application/json" && accept != "application/vnd.api+json" {
 			accept = "application/vnd.api+json"
 		}
@@ -381,6 +383,74 @@ func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerF
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func getTagsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
+		ctx, span := tracer.Start(r.Context(), "get-tags")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		logger.Debug("get tags handler")
+
+		tags, err := app.GetTags(ctx)
+		if err != nil {
+			logger.Error("could not get tags", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		b, err := json.Marshal(tags)
+		if err != nil {
+			logger.Error("could not marshal tags", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		response := NewApiResponse(r, b, uint64(len(tags)), uint64(len(tags)), 0, uint64(len(tags)))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(response.Byte())
+	}
+}
+
+func getTypesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
+		ctx, span := tracer.Start(r.Context(), "get-types")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		logger.Debug("get types handler")
+
+		tags, err := app.GetTypes(ctx)
+		if err != nil {
+			logger.Error("could not get tags", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		b, err := json.Marshal(tags)
+		if err != nil {
+			logger.Error("could not marshal tags", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		response := NewApiResponse(r, b, uint64(len(tags)), uint64(len(tags)), 0, uint64(len(tags)))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(response.Byte())
 	}
 }
 

@@ -83,12 +83,12 @@ func setupIntegrationTest() (storage.Db, context.Context, context.CancelFunc, er
 	return db, ctx, cancel, err
 }
 
-const csvData = `thingId;thingType;location;props;relatedId;relatedType;location;tenant
-52e0a125-01f6-4300-ac97-37bd911c2b28;WasteContainer;62.390715,,17.306868;int=1,str='str',float=3.0;a2c1821b-03b0-42cf-bcf2-3f9c0a38d227;Function;62.390715,,17.306868;default
-c91149a8-256b-4d65-8ca8-fc00074485c8;WasteContainer;62.390715,,17.306868;;ebc1747e-c20e-426d-b1d3-24a01ac85428;Function;;default
-d74a9652-afe6-46ea-8bf1-f4e11d5e02c6;WasteContainer;62.390715,,17.306868;;;;;default`
+const csvData = `thingId;thingType;location;props;relatedId;relatedType;location;tenant;tags
+52e0a125-01f6-4300-ac97-37bd911c2b28;WasteContainer;62.390715,,17.306868;int=1,str='str',float=3.0;a2c1821b-03b0-42cf-bcf2-3f9c0a38d227;Function;62.390715,,17.306868;default;tag1,tag2
+c91149a8-256b-4d65-8ca8-fc00074485c8;WasteContainer;62.390715,,17.306868;;ebc1747e-c20e-426d-b1d3-24a01ac85428;Function;;default;
+d74a9652-afe6-46ea-8bf1-f4e11d5e02c6;WasteContainer;62.390715,,17.306868;;;;;default;`
 
-const things = `thingID;thingType;location;props;relatedId;relatedType;location;tenant
-35;WasteContainer;62.39040978,17.30775705;capacity=160;level:35;level;62.39040978,17.30775705;default
-36;WasteContainer;62.39080222,17.31036154;capacity=160;level:36;level;62.39080222,17.31036154;default
-49;WasteContainer;62.27082193,17.37153332;capacity=60;level:49;level;62.27082193,17.37153332;default`
+const things = `thingID;thingType;location;props;relatedId;relatedType;location;tenant;tags
+35;WasteContainer;62.39040978,17.30775705;capacity=160;level:35;level;62.39040978,17.30775705;default;soptunna,miljörum;
+36;WasteContainer;62.39080222,17.31036154;capacity=160;level:36;level;62.39080222,17.31036154;default;hundlatrin;
+49;WasteContainer;62.27082193,17.37153332;capacity=60;level:49;level;62.27082193,17.37153332;default;;`
