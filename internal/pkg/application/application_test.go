@@ -17,7 +17,21 @@ func TestSeed(t *testing.T) {
 
 	reader := &ThingReaderMock{
 		RetrieveThingFunc: func(ctx context.Context, conditions ...storage.ConditionFunc) ([]byte, string, error) {
-			return nil, "", nil
+			thing := Thing{
+				ThingID: "urn:diwise:WasteContainer:52e0a125-01f6-4300-ac97-37bd911c2b28",
+				Type:    "WasteContainer",
+				Location: Location{
+					Latitude:  62.390715,
+					Longitude: 17.306868,
+				},
+				Id:     "52e0a125-01f6-4300-ac97-37bd911c2b28",
+				Tenant: "default",
+				Tags:   []string{"tag1", "tag2"},
+			}
+
+			b, _ := json.Marshal(thing)
+
+			return b, "", nil
 		},
 	}
 
