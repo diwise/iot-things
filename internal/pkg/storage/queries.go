@@ -406,7 +406,7 @@ func (db Db) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
 	query := `
 		SELECT DISTINCT type 
 		FROM things 
-		WHERE type IN ('combinedsewageoverflow','wastecontainer','sewer','sewagepumpingstation') AND tenant=ANY(@tenants)
+		WHERE type IN ('combinedsewageoverflow','wastecontainer','sewer','sewagepumpingstation','passage') AND tenant=ANY(@tenants)
 		ORDER BY type ASC;`
 
 	args := pgx.NamedArgs{
