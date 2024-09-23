@@ -163,6 +163,34 @@ func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 	return nil
 }
 
+func (db Db) DeleteRelatedThing(ctx context.Context, thingID, relatedID string, conditions ...ConditionFunc) error {
+	log := logging.GetFromContext(ctx)
+
+	c := NewCondition(conditions...)
+
+	delete := `DELETE FROM thing_relations 
+			   WHERE parent=(SELECT node_id FROM things WHERE thing_id=@thing_id AND tenant=ANY(@tenant) LIMIT 1) 
+			         AND child=(SELECT node_id FROM things WHERE thing_id=@related_id AND tenant=ANY(@tenant) LIMIT 1);`
+
+	tag, err := db.pool.Exec(ctx, delete, pgx.NamedArgs{
+		"thing_id":   strings.ToLower(thingID),
+		"related_id": strings.ToLower(relatedID),
+		"tenant":     c.Tenants,
+	})
+	if err != nil {
+		log.Error("could not execute statement", "err", err.Error())
+		return err
+	}
+
+	if tag.RowsAffected() != 1 {
+		log.Error("unexpected number of rows affected", "rows", tag.RowsAffected(), "thing_id", thingID, "related_id", relatedID)
+		return ErrUnexpectedNumberOfRows
+	}
+
+	return nil
+
+}
+
 func (db Db) AddRelatedThing(ctx context.Context, v []byte, conditions ...ConditionFunc) error {
 	log := logging.GetFromContext(ctx)
 

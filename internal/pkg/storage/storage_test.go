@@ -188,6 +188,34 @@ func TestAddRelatedThing(t *testing.T) {
 	is.NoErr(err)
 }
 
+func TestDeleteRelatedThing(t *testing.T) {
+	is := is.New(t)
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	wasteContainerId := getUuid()
+	wasteContainer := createEnity(wasteContainerId, "WasteContainer")
+	err = db.CreateThing(ctx, wasteContainer)
+	is.NoErr(err)
+
+	thingID := fmt.Sprintf("urn:diwise:%s:%s", "WasteContainer", wasteContainerId)
+
+	deviceId := getUuid()
+	device := createEnity(deviceId, "Device")
+	err = db.AddRelatedThing(ctx, device, WithThingID(thingID))
+	is.NoErr(err)
+
+	relatedID := fmt.Sprintf("urn:diwise:%s:%s", "Device", deviceId)
+
+	err = db.DeleteRelatedThing(ctx, thingID, relatedID, WithTenants([]string{"default"}))
+	is.NoErr(err)
+}
+
 func TestWhere(t *testing.T) {
 	is := is.New(t)
 

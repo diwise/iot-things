@@ -50,6 +50,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 				r.Put("/{id}", updateThingHandler(log, app))
 				r.Patch("/{id}", patchThingHandler(log, app))
 				r.Post("/{id}", addRelatedThingHandler(log, app))
+				r.Delete("/{id}/{relatedId}", deleteRelatedThingHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
 				r.Get("/types", getTypesHandler(log, app))
 			})
@@ -342,6 +343,41 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		}
 
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func deleteRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		ctx, span := tracer.Start(r.Context(), "add-related-thing")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		relatedId := chi.URLParam(r, "relatedId")
+		if relatedId == "" {
+			logger.Error("no relatedId parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = app.DeleteRelatedThing(ctx, thingId, relatedId)
+		if err != nil {
+			logger.Error("could not delete related thing", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

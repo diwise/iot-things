@@ -25,6 +25,9 @@ var _ ThingWriter = &ThingWriterMock{}
 //			CreateThingFunc: func(ctx context.Context, v []byte) error {
 //				panic("mock out the CreateThing method")
 //			},
+//			DeleteRelatedThingFunc: func(ctx context.Context, thingID string, relatedID string, conditions ...storage.ConditionFunc) error {
+//				panic("mock out the DeleteRelatedThing method")
+//			},
 //			UpdateThingFunc: func(ctx context.Context, v []byte) error {
 //				panic("mock out the UpdateThing method")
 //			},
@@ -40,6 +43,9 @@ type ThingWriterMock struct {
 
 	// CreateThingFunc mocks the CreateThing method.
 	CreateThingFunc func(ctx context.Context, v []byte) error
+
+	// DeleteRelatedThingFunc mocks the DeleteRelatedThing method.
+	DeleteRelatedThingFunc func(ctx context.Context, thingID string, relatedID string, conditions ...storage.ConditionFunc) error
 
 	// UpdateThingFunc mocks the UpdateThing method.
 	UpdateThingFunc func(ctx context.Context, v []byte) error
@@ -62,6 +68,17 @@ type ThingWriterMock struct {
 			// V is the v argument value.
 			V []byte
 		}
+		// DeleteRelatedThing holds details about calls to the DeleteRelatedThing method.
+		DeleteRelatedThing []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ThingID is the thingID argument value.
+			ThingID string
+			// RelatedID is the relatedID argument value.
+			RelatedID string
+			// Conditions is the conditions argument value.
+			Conditions []storage.ConditionFunc
+		}
 		// UpdateThing holds details about calls to the UpdateThing method.
 		UpdateThing []struct {
 			// Ctx is the ctx argument value.
@@ -70,9 +87,10 @@ type ThingWriterMock struct {
 			V []byte
 		}
 	}
-	lockAddRelatedThing sync.RWMutex
-	lockCreateThing     sync.RWMutex
-	lockUpdateThing     sync.RWMutex
+	lockAddRelatedThing    sync.RWMutex
+	lockCreateThing        sync.RWMutex
+	lockDeleteRelatedThing sync.RWMutex
+	lockUpdateThing        sync.RWMutex
 }
 
 // AddRelatedThing calls AddRelatedThingFunc.
@@ -148,6 +166,50 @@ func (mock *ThingWriterMock) CreateThingCalls() []struct {
 	mock.lockCreateThing.RLock()
 	calls = mock.calls.CreateThing
 	mock.lockCreateThing.RUnlock()
+	return calls
+}
+
+// DeleteRelatedThing calls DeleteRelatedThingFunc.
+func (mock *ThingWriterMock) DeleteRelatedThing(ctx context.Context, thingID string, relatedID string, conditions ...storage.ConditionFunc) error {
+	if mock.DeleteRelatedThingFunc == nil {
+		panic("ThingWriterMock.DeleteRelatedThingFunc: method is nil but ThingWriter.DeleteRelatedThing was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		ThingID    string
+		RelatedID  string
+		Conditions []storage.ConditionFunc
+	}{
+		Ctx:        ctx,
+		ThingID:    thingID,
+		RelatedID:  relatedID,
+		Conditions: conditions,
+	}
+	mock.lockDeleteRelatedThing.Lock()
+	mock.calls.DeleteRelatedThing = append(mock.calls.DeleteRelatedThing, callInfo)
+	mock.lockDeleteRelatedThing.Unlock()
+	return mock.DeleteRelatedThingFunc(ctx, thingID, relatedID, conditions...)
+}
+
+// DeleteRelatedThingCalls gets all the calls that were made to DeleteRelatedThing.
+// Check the length with:
+//
+//	len(mockedThingWriter.DeleteRelatedThingCalls())
+func (mock *ThingWriterMock) DeleteRelatedThingCalls() []struct {
+	Ctx        context.Context
+	ThingID    string
+	RelatedID  string
+	Conditions []storage.ConditionFunc
+} {
+	var calls []struct {
+		Ctx        context.Context
+		ThingID    string
+		RelatedID  string
+		Conditions []storage.ConditionFunc
+	}
+	mock.lockDeleteRelatedThing.RLock()
+	calls = mock.calls.DeleteRelatedThing
+	mock.lockDeleteRelatedThing.RUnlock()
 	return calls
 }
 

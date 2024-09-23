@@ -8,6 +8,7 @@ import (
 
 var ErrAlreadyExists error = fmt.Errorf("thing already exists")
 var ErrNotExist error = fmt.Errorf("thing does not exists")
+var ErrUnexpectedNumberOfRows error = fmt.Errorf("unexpected number of rows affected")
 
 type thingMap map[string]any
 

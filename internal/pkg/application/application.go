@@ -40,6 +40,7 @@ type ThingWriter interface {
 	CreateThing(ctx context.Context, v []byte) error
 	UpdateThing(ctx context.Context, v []byte) error
 	AddRelatedThing(ctx context.Context, v []byte, conditions ...storage.ConditionFunc) error
+	DeleteRelatedThing(ctx context.Context, thingID, relatedID string, conditions ...storage.ConditionFunc) error
 }
 
 func New(r ThingReader, w ThingWriter) App {
@@ -47,6 +48,24 @@ func New(r ThingReader, w ThingWriter) App {
 		r: r,
 		w: w,
 	}
+}
+
+func (a App) DeleteRelatedThing(ctx context.Context, thingID, relatedID string) error {
+	tenant := getAllowedTenantsFromContext(ctx)
+	err :=  a.w.DeleteRelatedThing(ctx, thingID, relatedID, storage.WithTenants(tenant))
+	if err != nil {
+		return err
+	}
+
+	// update the thing and remove current measurements 
+	thingBytes, _, err := a.r.RetrieveThing(ctx, storage.WithThingID(thingID), storage.WithMeasurements("false"), storage.WithState("true"))
+	if err != nil {
+		return err
+	}
+
+	a.w.UpdateThing(ctx, thingBytes)
+
+	return nil
 }
 
 func (a App) AddRelatedThing(ctx context.Context, thingId string, data []byte) error {

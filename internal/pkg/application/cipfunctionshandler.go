@@ -65,6 +65,7 @@ func (s stateMap) ToMap() map[string]any {
 	delete(s, "wastecontainer")
 	delete(s, "sewer")
 	delete(s, "sewagepumpingstation")
+	delete(s, "passage")
 
 	return s
 }
