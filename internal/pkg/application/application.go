@@ -182,7 +182,7 @@ func (a App) CreateOrUpdateThing(ctx context.Context, data []byte) error {
 	}
 
 	tenant := getAllowedTenantsFromContext(ctx)
-	b, _, err := a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithType([]string{t}), storage.WithTenants(tenant))
+	b, _, err := a.r.RetrieveThing(ctx, storage.WithID(id), storage.WithMeasurements("true"), storage.WithState("true"), storage.WithType([]string{t}), storage.WithTenants(tenant))
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotExist) {
 			return err
