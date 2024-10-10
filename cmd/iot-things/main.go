@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/diwise/iot-things/internal/app"
-	"github.com/diwise/iot-things/internal/pkg/presentation/api"
+	"github.com/diwise/iot-things/internal/app/api"
+	app "github.com/diwise/iot-things/internal/app/things"
+
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"

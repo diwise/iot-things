@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diwise/iot-things/internal/app"
-	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
+	app "github.com/diwise/iot-things/internal/app/things"
+	"github.com/diwise/iot-things/internal/pkg/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"

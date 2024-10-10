@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/diwise/iot-things/internal/app"
+	app "github.com/diwise/iot-things/internal/app/things"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
