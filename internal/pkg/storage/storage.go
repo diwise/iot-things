@@ -2,33 +2,37 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
+	"github.com/diwise/iot-things/internal/app"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Db struct {
+type database struct {
 	pool *pgxpool.Pool
 }
 
-func New(ctx context.Context, cfg Config) (Db, error) {
+type Storage interface {
+	app.ThingsReader
+	app.ThingsWriter
+}
+
+func New(ctx context.Context, cfg Config) (Storage, error) {
 	p, err := connect(ctx, cfg)
 	if err != nil {
-		return Db{}, err
+		return database{}, err
 	}
 
 	err = initialize(ctx, p)
 	if err != nil {
-		return Db{}, err
+		return database{}, err
 	}
 
-	return Db{
+	return database{
 		pool: p,
 	}, nil
 }
@@ -37,29 +41,47 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 	log := logging.GetFromContext(ctx)
 
 	ddl := `
-	CREATE TABLE IF NOT EXISTS things (		
-		node_id     BIGSERIAL,	
-		thing_id	TEXT	NOT NULL,
-		id		 	TEXT 	NOT NULL,			
-		type 		TEXT 	NOT NULL,
-		location 	POINT 	NULL,
-		data 		JSONB	NULL,	
-		tenant		TEXT 	NOT NULL,	
-		created_on 	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
-		modified_on	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,	
-		PRIMARY KEY (node_id)
-	);			
-	
-	CREATE UNIQUE INDEX IF NOT EXISTS thing_id_idx ON things (lower(thing_id));
-	CREATE INDEX IF NOT EXISTS thing_type_idx ON things (type, id);
+		CREATE TABLE IF NOT EXISTS things (		
+			id		 	TEXT 	NOT NULL,			
+			type 		TEXT 	NOT NULL,
+			location 	POINT 	NULL,
+			data 		JSONB	NULL,	
+			tenant		TEXT 	NOT NULL,	
+			created_on 	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
+			modified_on	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			deleted_on 	timestamp with time zone NULL,	
+			PRIMARY KEY (id)
+		);			
+			
+		CREATE INDEX IF NOT EXISTS thing_type_idx ON things (type, id);
+		CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(location);
 
-	CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(location);
-	
-	CREATE TABLE IF NOT EXISTS  thing_relations (
-		parent        BIGINT NOT NULL,
-		child         BIGINT NOT NULL,
-		PRIMARY KEY (parent, child)
-	);
+		CREATE TABLE IF NOT EXISTS things_measurements (
+			time 		TIMESTAMPTZ NOT NULL,
+			id  		TEXT NOT NULL,
+			urn		  	TEXT NOT NULL,
+			location 	POINT NULL,										
+			v 			NUMERIC NULL,
+			vs 			TEXT NOT NULL DEFAULT '',			
+			vb 			BOOLEAN NULL,			
+			unit 		TEXT NOT NULL DEFAULT '',
+			tenant 		TEXT NOT NULL,
+			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
+			UNIQUE ("time", "id"));
+
+
+		DO $$
+		DECLARE
+			n INTEGER;
+		BEGIN			
+			SELECT COUNT(*) INTO n
+			FROM timescaledb_information.hypertables
+			WHERE hypertable_name = 'things_measurements';
+			
+			IF n = 0 THEN				
+				PERFORM create_hypertable('things_measurements', 'time');				
+			END IF;
+		END $$;
 	`
 
 	tx, err := pool.Begin(ctx)
@@ -98,26 +120,19 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	return conn, err
 }
 
-func (db Db) CreateThing(ctx context.Context, v []byte) error {
+func (db database) AddThing(ctx context.Context, t app.Thing) error {
 	log := logging.GetFromContext(ctx)
 
-	thing, err := unmarshalThing(v)
-	if err != nil {
-		log.Error("could not unmarshal thing", "err", err.Error())
-		return fmt.Errorf("could not unmarshal thing")
-	}
+	lat, lon := t.LatLon()
 
-	lat, lon, _ := thing.Location()
-
-	insert := `INSERT INTO things(thing_id, id, type, location, data, tenant) VALUES (@thing_id, @id, @thing_type, point(@lon,@lat), @thing_data, @tenant);`
-	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"thing_id":   thing.ThingID(),
-		"id":         thing.ID(),
-		"thing_type": thing.Type(),
+	insert := `INSERT INTO things(id, type, location, data, tenant) VALUES (@id, @thing_type, point(@lon,@lat), @data, @tenant);`
+	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
+		"id":         t.ID(),
+		"thing_type": t.Type(),
 		"lon":        lon,
 		"lat":        lat,
-		"thing_data": thing.Data(),
-		"tenant":     thing.Tenant(),
+		"data":       string(t.Byte()),
+		"tenant":     t.Tenant(),
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -127,7 +142,7 @@ func (db Db) CreateThing(ctx context.Context, v []byte) error {
 
 		if isDuplicateKeyErr(err) {
 			log.Debug("error is duplicate key")
-			return ErrAlreadyExists
+			return app.ErrAlreadyExists
 		}
 
 		log.Error("could not execute statement", "err", err.Error())
@@ -137,23 +152,17 @@ func (db Db) CreateThing(ctx context.Context, v []byte) error {
 	return nil
 }
 
-func (db Db) UpdateThing(ctx context.Context, v []byte) error {
+func (db database) UpdateThing(ctx context.Context, t app.Thing) error {
 	log := logging.GetFromContext(ctx)
 
-	thing, err := unmarshalThing(v)
-	if err != nil {
-		log.Error("could not unmarshal thing", "err", err.Error())
-		return fmt.Errorf("could not unmarshal thing")
-	}
+	lat, lon := t.LatLon()
 
-	lat, lon, _ := thing.Location()
-
-	update := `UPDATE things SET location=point(@lon,@lat), data=@thing_data, modified_on=CURRENT_TIMESTAMP WHERE thing_id=@thing_id;`
-	_, err = db.pool.Exec(ctx, update, pgx.NamedArgs{
-		"thing_id":   thing.ThingID(),
-		"thing_data": thing.Data(),
-		"lon":        lon,
-		"lat":        lat,
+	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
+	_, err := db.pool.Exec(ctx, update, pgx.NamedArgs{
+		"id":   t.ID(),
+		"lon":  lon,
+		"lat":  lat,
+		"data": string(t.Byte()),
 	})
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
@@ -163,83 +172,95 @@ func (db Db) UpdateThing(ctx context.Context, v []byte) error {
 	return nil
 }
 
-func (db Db) DeleteRelatedThing(ctx context.Context, thingID, relatedID string, conditions ...ConditionFunc) error {
+func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
+	where, args := newQueryParams(conditions...)
 	log := logging.GetFromContext(ctx)
 
-	c := NewCondition(conditions...)
+	query := fmt.Sprintf("SELECT data, count(*) OVER () AS total FROM things %s", where)
 
-	delete := `DELETE FROM thing_relations 
-			   WHERE parent=(SELECT node_id FROM things WHERE thing_id=@thing_id AND tenant=ANY(@tenant) LIMIT 1) 
-			         AND child=(SELECT node_id FROM things WHERE thing_id=@related_id AND tenant=ANY(@tenant) LIMIT 1);`
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return app.QueryResult{}, err
+	}
 
-	tag, err := db.pool.Exec(ctx, delete, pgx.NamedArgs{
-		"thing_id":   strings.ToLower(thingID),
-		"related_id": strings.ToLower(relatedID),
-		"tenant":     c.Tenants,
+	var t [][]byte
+	var total int64
+	var data []byte
+
+	_, err = pgx.ForEachRow(rows, []any{&data, &total}, func() error {
+		t = append(t, data)
+		return nil
 	})
 	if err != nil {
-		log.Error("could not execute statement", "err", err.Error())
-		return err
+		return app.QueryResult{}, err
 	}
 
-	if tag.RowsAffected() != 1 {
-		log.Error("unexpected number of rows affected", "rows", tag.RowsAffected(), "thing_id", thingID, "related_id", relatedID)
-		return ErrUnexpectedNumberOfRows
-	}
-
-	return nil
-
+	return app.QueryResult{
+		Things:     t,
+		Count:      len(t),
+		TotalCount: total,
+		Limit:      args["limit"].(int),
+		Offset:     args["offset"].(int),
+	}, nil
 }
 
-func (db Db) AddRelatedThing(ctx context.Context, v []byte, conditions ...ConditionFunc) error {
+func (db database) GetTags(ctx context.Context, tenants []string) ([]string, error) {
 	log := logging.GetFromContext(ctx)
 
-	related, err := unmarshalThing(v)
+	query := `
+		SELECT DISTINCT tag
+		FROM things,
+		LATERAL jsonb_array_elements_text(data->'tags') AS tag
+		WHERE data ? 'tags' AND tenant=ANY(@tenants)
+		ORDER BY tag ASC;`
+
+	args := pgx.NamedArgs{
+		"tenants": tenants,
+	}
+	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
-		log.Error("could not unmarshal thing", "err", err.Error())
-		return fmt.Errorf("could not unmarshal thing")
+		log.Error("could not execute query", "err", err.Error())
+		return []string{}, err
 	}
 
-	c := NewCondition(conditions...)
+	tags := make([]string, 0)
+	var tag string
 
-	if c.ThingID == "" {
-		return fmt.Errorf("conditions contains no thing_id")
-	}
-
-	_, _, err = db.RetrieveThing(ctx, conditions...)
-	if err != nil {
-		log.Error("could not retrieve current thing", "err", err.Error())
-		return fmt.Errorf("could not retrieve current thing")
-	}
-
-	_, _, err = db.RetrieveThing(ctx, WithThingID(related.ThingID()))
-	if err != nil {
-		if !errors.Is(err, ErrNotExist) {
-			return err
-		}
-
-		log.Debug("related thing does not exist, will create it", "id", related.ID())
-		err := db.CreateThing(ctx, v)
-		if err != nil {
-			return err
-		}
-	}
-
-	insert := `INSERT INTO thing_relations(parent, child)
-			   VALUES (
-				(SELECT node_id FROM things WHERE thing_id=@thing_id LIMIT 1), 
-				(SELECT node_id FROM things WHERE thing_id=@related_id LIMIT 1)
-			   );`
-
-	_, err = db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"thing_id":   strings.ToLower(c.ThingID),
-		"related_id": related.ThingID(),
+	_, err = pgx.ForEachRow(rows, []any{&tag}, func() error {
+		tags = append(tags, tag)
+		return nil
 	})
 	if err != nil {
-		if isDuplicateKeyErr(err) {
-			return nil
-		}
+		return []string{}, err
+	}
 
+	return tags, nil
+}
+
+func (db database) AddMeasurement(ctx context.Context, t app.Thing, m app.Measurement) error {
+	log := logging.GetFromContext(ctx)
+
+	insert := `
+		INSERT INTO things_measurements(time, id, urn, location, v, vs, vb, unit, tenant)
+		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @tenant)
+		ON CONFLICT (time, id) DO NOTHING;`
+
+	lat, lon := t.LatLon()
+
+	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
+		"time":   m.Timestamp,
+		"id":     m.ID,
+		"urn":    m.Urn,
+		"lon":    lon,
+		"lat":    lat,
+		"v":      m.Value,
+		"vs":     m.StringValue,
+		"vb":     m.BoolValue,
+		"unit":   m.Unit,
+		"tenant": t.Tenant(),
+	})
+	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
 		return err
 	}
@@ -253,28 +274,4 @@ func isDuplicateKeyErr(err error) bool {
 		return pgErr.Code == "23505" // duplicate key value violates unique constraint
 	}
 	return false
-}
-
-func unmarshalThing(v []byte) (thingMap, error) {
-	t := thingMap{}
-
-	err := json.Unmarshal(v, &t)
-	if err != nil {
-		return nil, err
-	}
-
-	if t.ID() == "" {
-		return nil, fmt.Errorf("data contains no thing id")
-	}
-	if t.Type() == "" {
-		return nil, fmt.Errorf("data contains no thing type")
-	}
-	if t.Tenant() == "" {
-		return nil, fmt.Errorf("data contains no tenant information")
-	}
-	if t.ThingID() == "" {
-		t["thing_id"] = fmt.Sprintf("urn:diwise:%s:%s", t.Type(), t.ID())
-	}
-
-	return t, nil
 }

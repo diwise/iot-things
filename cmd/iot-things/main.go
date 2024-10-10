@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/diwise/iot-things/internal/pkg/application"
+	"github.com/diwise/iot-things/internal/app"
 	"github.com/diwise/iot-things/internal/pkg/presentation/api"
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"
@@ -27,26 +27,27 @@ func main() {
 	ctx, log, cleanup := o11y.Init(context.Background(), serviceName, serviceVersion)
 	defer cleanup()
 
-	var opaFilePath, thingsFilePath string
-	flag.StringVar(&opaFilePath, "policies", "/opt/diwise/config/authz.rego", "An authorization policy file")
-	flag.StringVar(&thingsFilePath, "things", "/opt/diwise/config/things.csv", "A file with things")
+	var opa, fp string
+
+	flag.StringVar(&opa, "policies", "/opt/diwise/config/authz.rego", "An authorization policy file")
+	flag.StringVar(&fp, "things", "/opt/diwise/config/things.csv", "A file with things")
 	flag.Parse()
 
-	db, err := storage.New(ctx, storage.LoadConfiguration(ctx))
+	s, err := storage.New(ctx, storage.LoadConfiguration(ctx))
 	if err != nil {
 		log.Error("could not configure storage", "err", err.Error())
 		os.Exit(1)
 	}
 
-	app := application.New(db, db)
+	a := app.New(s, s)
 
-	r, err := setupRouter(ctx, opaFilePath, app)
+	r, err := newRouter(ctx, opa, a)
 	if err != nil {
 		log.Error("could not setup router", "err", err.Error())
 		os.Exit(1)
 	}
 
-	err = seedThings(ctx, thingsFilePath, app)
+	err = seed(ctx, fp, a)
 	if err != nil {
 		log.Error("file with things found but could not seed data", "err", err.Error())
 		os.Exit(1)
@@ -60,8 +61,8 @@ func main() {
 	}
 	messenger.Start()
 
-	messenger.RegisterTopicMessageHandler("message.#", application.NewMeasurementsHandler(db, db))
-	messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
+	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a))
+	//messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
 
 	err = http.ListenAndServe(":8080", r)
 	if err != nil {
@@ -70,14 +71,14 @@ func main() {
 	}
 }
 
-func setupRouter(ctx context.Context, opaFilePath string, app application.App) (*chi.Mux, error) {
-	policies, err := os.Open(opaFilePath)
+func newRouter(ctx context.Context, opa string, a app.ThingsApp) (*chi.Mux, error) {
+	policies, err := os.Open(opa)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open opa policy file: %s", err.Error())
 	}
 	defer policies.Close()
 
-	r, err := api.Register(ctx, app, policies)
+	r, err := api.Register(ctx, a, policies)
 	if err != nil {
 		os.Exit(1)
 	}
@@ -85,17 +86,17 @@ func setupRouter(ctx context.Context, opaFilePath string, app application.App) (
 	return r, nil
 }
 
-func seedThings(ctx context.Context, thingsFilePath string, app application.App) error {
+func seed(ctx context.Context, fp string, a app.ThingsApp) error {
 	log := logging.GetFromContext(ctx)
-	things, err := os.Open(thingsFilePath)
+	things, err := os.Open(fp)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			log.Debug("no file with things found", "path", thingsFilePath)
+			log.Debug("no file with things found", "path", fp)
 			return nil
 		}
 		return err
 	}
 	defer things.Close()
 
-	return app.Seed(ctx, things)
+	return a.Seed(ctx, things)
 }

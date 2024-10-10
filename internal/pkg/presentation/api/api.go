@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diwise/iot-things/internal/pkg/application"
+	"github.com/diwise/iot-things/internal/app"
 	"github.com/diwise/iot-things/internal/pkg/presentation/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
@@ -23,7 +23,7 @@ import (
 
 var tracer = otel.Tracer("iot-things/api/things")
 
-func Register(ctx context.Context, app application.App, policies io.Reader) (*chi.Mux, error) {
+func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.Mux, error) {
 	log := logging.GetFromContext(ctx)
 
 	r := chi.NewRouter()
@@ -44,13 +44,11 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 			r.Use(authenticator)
 
 			r.Route("/things", func(r chi.Router) {
-				r.Get("/", queryThingsHandler(log, app))
-				r.Post("/", createThingHandler(log, app))
-				r.Get("/{id}", retrieveThingHandler(log, app))
-				r.Put("/{id}", updateThingHandler(log, app))
-				r.Patch("/{id}", patchThingHandler(log, app))
-				r.Post("/{id}", addRelatedThingHandler(log, app))
-				r.Delete("/{id}/{relatedId}", deleteRelatedThingHandler(log, app))
+				r.Get("/", queryHandler(log, app))
+				r.Get("/{id}", getByIDHandler(log, app))
+				r.Post("/", addHandler(log, app))
+				r.Put("/{id}", updateHandler(log, app))
+				r.Patch("/{id}", patchHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
 				r.Get("/types", getTypesHandler(log, app))
 			})
@@ -64,7 +62,7 @@ func Register(ctx context.Context, app application.App, policies io.Reader) (*ch
 	return r, nil
 }
 
-func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
@@ -72,7 +70,9 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		result, err := app.QueryThings(ctx, r.URL.Query())
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
+		result, err := a.QueryThings(ctx, r.URL.Query())
 		if err != nil {
 			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -80,93 +80,76 @@ func queryThingsHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			return
 		}
 
-		accept := r.Header.Get("Accept")
-
-		if accept != "application/geo+json" && accept != "application/json" && accept != "application/vnd.api+json" {
-			accept = "application/vnd.api+json"
-		}
-
 		if result.Count == 0 {
-			w.Header().Set("Content-Type", accept)
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("[]"))
 			return
 		}
 
-		if accept == "application/geo+json" {
-			things := []struct {
-				Id       string `json:"id"`
-				Type     string `json:"type"`
-				Location struct {
-					Latitude  float64 `json:"latitude"`
-					Longitude float64 `json:"longitude"`
-				} `json:"location"`
-			}{}
-
-			err = json.Unmarshal(result.Things, &things)
-			if err != nil {
-				logger.Error("could not query things", "err", err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
-			}
-
-			fc := FeatureCollection{
-				Type: "FeatureCollection",
-			}
-			for _, e := range things {
-				fc.Features = append(fc.Features, Feature{
-					ID:   e.Id,
-					Type: "Feature",
-					Geometry: Geometry{
-						Type:        "Point",
-						Coordinates: []float64{e.Location.Longitude, e.Location.Latitude},
-					},
-					Properties: map[string]any{
-						"type": e.Type,
-					},
-				})
-			}
-
-			b, err := json.Marshal(fc)
-			if err != nil {
-				logger.Error("could not marshal things", "err", err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/geo+json")
-			w.WriteHeader(http.StatusOK)
-			w.Write(b)
+		data := make([]json.RawMessage, 0, len(result.Things))
+		for _, thing := range result.Things {
+			data = append(data, thing)
 		}
 
-		if accept == "application/vnd.api+json" || accept == "application/json" {
-			response := NewApiResponse(r, result.Things, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
+		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
 
-			b, err := json.Marshal(response)
-			if err != nil {
-				logger.Error("could not marshal query response", "err", err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/vnd.api+json")
-			w.WriteHeader(http.StatusOK)
-			w.Write(b)
+		b, err := json.Marshal(response)
+		if err != nil {
+			logger.Error("could not marshal query response", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(""))
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(b)
 	}
 }
 
-func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
+		ctx, span := tracer.Start(r.Context(), "get-thing-byID")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		result, err := a.QueryThings(ctx, map[string][]string{"id": {thingId}})
+		if err != nil {
+			logger.Debug("failed to query things", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		if result.Count == 0 || result.Count > 1 {
+			logger.Debug("thing not found", "id", thingId)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		response := NewApiResponse(r, json.RawMessage(result.Things[0]), 1, 1, 0, 1)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(response.Byte())
+	}
+}
+
+func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 
 		if isMultipartFormData(r) {
 			ctx, span := tracer.Start(r.Context(), "seed")
@@ -181,7 +164,7 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			}
 			defer file.Close()
 
-			err = app.Seed(ctx, file)
+			err = a.Seed(ctx, file)
 			if err != nil {
 				logger.Error("could not seed", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -201,18 +184,12 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		if err != nil {
 			logger.Error("could not read body", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
 			return
 		}
 
-		if valid, err := app.IsValidThing(b); !valid {
-			logger.Error("invalid thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		err = app.CreateThing(ctx, b)
-		if err != nil && errors.Is(err, application.ErrAlreadyExists) {
-			logger.Info("thing already exists")
+		err = a.AddThing(ctx, b)
+		if err != nil && errors.Is(err, app.ErrAlreadyExists) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
@@ -227,92 +204,7 @@ func createThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 	}
 }
 
-func retrieveThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-
-		ctx, span := tracer.Start(r.Context(), "retrieve-thing")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
-
-		thingId := chi.URLParam(r, "id")
-		if thingId == "" {
-			logger.Error("no id parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		thing, err := app.RetrieveThing(ctx, thingId, r.URL.Query())
-		if err != nil {
-			logger.Info("could not find thing", "err", err.Error())
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		response := NewApiResponse(r, thing, 1, 1, 0, 1)
-
-		rel, err := app.RetrieveRelatedThings(ctx, thingId)
-		if err != nil {
-			logger.Error("could not fetch related things", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		related := []Resource{}
-		err = json.Unmarshal(rel, &related)
-		if err != nil {
-			logger.Error("could not marshal query response", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-		if len(related) > 0 {
-			response.Included = related
-		}
-
-		w.Header().Set("Content-Type", "application/vnd.api+json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(response.Byte())
-	}
-}
-
-func patchThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		defer r.Body.Close()
-
-		ctx, span := tracer.Start(r.Context(), "patch-thing")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
-
-		thingId := chi.URLParam(r, "id")
-		if thingId == "" {
-			logger.Error("no id parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.Error("could not read body", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		err = app.PatchThing(ctx, thingId, b)
-		if err != nil {
-			logger.Error("could not patch thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-	}
-}
-
-func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func updateHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
@@ -321,6 +213,8 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
 			logger.Error("could not read body", "err", err.Error())
@@ -328,13 +222,9 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 			return
 		}
 
-		if valid, err := app.IsValidThing(b); !valid {
-			logger.Error("invalid thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		err = app.UpdateThing(ctx, b)
+		err = a.UpdateThing(ctx, b, tenants)
 		if err != nil {
 			logger.Error("could not update thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -346,49 +236,16 @@ func updateThingHandler(log *slog.Logger, app application.App) http.HandlerFunc 
 	}
 }
 
-func deleteRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		defer r.Body.Close()
 
-		ctx, span := tracer.Start(r.Context(), "add-related-thing")
+		ctx, span := tracer.Start(r.Context(), "patch-thing")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		thingId := chi.URLParam(r, "id")
-		if thingId == "" {
-			logger.Error("no id parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		relatedId := chi.URLParam(r, "relatedId")
-		if relatedId == "" {
-			logger.Error("no relatedId parameter found in request")
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		err = app.DeleteRelatedThing(ctx, thingId, relatedId)
-		if err != nil {
-			logger.Error("could not delete related thing", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		defer r.Body.Close()
-
-		ctx, span := tracer.Start(r.Context(), "add-related-thing")
-		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
-		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 
 		thingId := chi.URLParam(r, "id")
 		if thingId == "" {
@@ -400,29 +257,25 @@ func addRelatedThingHandler(log *slog.Logger, app application.App) http.HandlerF
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
 			logger.Error("could not read body", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		if valid, err := app.IsValidThing(b); !valid {
-			logger.Error("invalid thing", "err", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		err = app.AddRelatedThing(ctx, thingId, b)
-		if err != nil {
-			logger.Error("could not add related thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
 		}
 
-		w.WriteHeader(http.StatusCreated)
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
+
+		err = a.MergeThing(ctx, thingId, b, tenants)
+		if err != nil {
+			logger.Error("could not patch thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
-func getTagsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func getTagsHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
@@ -430,9 +283,11 @@ func getTagsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		logger.Debug("get tags handler")
+		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		tags, err := app.GetTags(ctx)
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
+
+		tags, err := a.GetTags(ctx, tenants)
 		if err != nil {
 			logger.Error("could not get tags", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -440,15 +295,7 @@ func getTagsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 			return
 		}
 
-		b, err := json.Marshal(tags)
-		if err != nil {
-			logger.Error("could not marshal tags", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		response := NewApiResponse(r, b, uint64(len(tags)), uint64(len(tags)), 0, uint64(len(tags)))
+		response := NewApiResponse(r, tags, uint64(len(tags)), uint64(len(tags)), 0, uint64(len(tags)))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -456,7 +303,7 @@ func getTagsHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 	}
 }
 
-func getTypesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
+func getTypesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
 
@@ -464,9 +311,9 @@ func getTypesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		logger.Debug("get types handler")
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		tags, err := app.GetTypes(ctx)
+		types, err := a.GetTypes(ctx, tenants)
 		if err != nil {
 			logger.Error("could not get tags", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -474,15 +321,7 @@ func getTypesHandler(log *slog.Logger, app application.App) http.HandlerFunc {
 			return
 		}
 
-		b, err := json.Marshal(tags)
-		if err != nil {
-			logger.Error("could not marshal tags", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		response := NewApiResponse(r, b, uint64(len(tags)), uint64(len(tags)), 0, uint64(len(tags)))
+		response := NewApiResponse(r, types, uint64(len(types)), uint64(len(types)), 0, uint64(len(types)))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
