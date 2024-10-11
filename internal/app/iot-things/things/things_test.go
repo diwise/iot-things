@@ -33,7 +33,7 @@ func TestContainer(t *testing.T) {
 	is.Equal(int(container.Percent), 50)
 }
 
-func TestPassage(t *testing.T){
+func TestPassage(t *testing.T) {
 	is := is.New(t)
 
 	thing := NewPassage("id", Location{Latitude: 62, Longitude: 17}, "default")

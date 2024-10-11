@@ -62,7 +62,7 @@ func main() {
 	}
 	messenger.Start()
 
-	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a))
+	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
 	//messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
 
 	err = http.ListenAndServe(":8080", r)

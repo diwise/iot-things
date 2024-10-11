@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"time"
 )
 
 type Thing interface {
@@ -43,6 +44,11 @@ type thingImpl struct {
 type Location struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
+}
+
+type Device struct {
+	DeviceID string           `json:"device_id"`
+	Values   map[string]Value `json:"values,omitempty"`
 }
 
 func (t *thingImpl) ID() string {
@@ -92,38 +98,58 @@ func (c *thingImpl) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
-func (c *PumpingStation) Handle(v Value, onchange func(m Measurements) error) error {
-	return nil
+/* --------------------- Measurements --------------------- */
+
+type Measurements interface {
+	Values() []Value
 }
 
-func (c *PumpingStation) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
+func newValue(id, urn, ref, unit string, ts time.Time, value float64) Value {
+	return Value{
+		ID:        id,
+		Urn:       urn,
+		Value:     &value,
+		Unit:      unit,
+		Timestamp: ts,
+		Ref:       ref,
+	}
 }
 
-func (c *Sewer) Handle(v Value, onchange func(m Measurements) error) error {
-	return nil
+func newBoolValue(id, urn, ref, unit string, ts time.Time, value bool) Value {
+	return Value{
+		ID:        id,
+		Urn:       urn,
+		BoolValue: &value,
+		Unit:      unit,
+		Timestamp: ts,
+		Ref:       ref,
+	}
 }
 
-func (c *Sewer) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
+type Value struct {
+	ID          string    `json:"id"`
+	Urn         string    `json:"urn"`
+	BoolValue   *bool     `json:"vb,omitempty"`
+	StringValue *string   `json:"vs,omitempty"`
+	Value       *float64  `json:"v,omitempty"`
+	Unit        string    `json:"unit,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
+	Ref         string    `json:"ref,omitempty"`
 }
 
-func (c *Lifebuoy) Handle(v Value, onchange func(m Measurements) error) error {
-	return nil
+func (m Value) HasDistance() bool {
+	return m.Urn == "urn:oma:lwm2m:ext:3330" && m.Value != nil
+}
+func (m Value) HasDigitalInput() bool {
+	return m.Urn == "urn:oma:lwm2m:ext:3200" && m.BoolValue != nil
+}
+func (m Value) HasTemperature() bool {
+	return m.Urn == "urn:oma:lwm2m:ext:3303" && m.Value != nil
+}
+func (m Value) HasPresence() bool {
+	return m.Urn == "urn:oma:lwm2m:ext:3302" && m.BoolValue != nil
 }
 
-func (c *Lifebuoy) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
-}
-
-func (c *WaterMeter) Handle(v Value, onchange func(m Measurements) error) error {
-	return nil
-}
-
-func (c *WaterMeter) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
+func (m Value) DeviceID() string {
+	return strings.Split(m.ID, "/")[0]
 }

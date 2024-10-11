@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"github.com/diwise/iot-things/pkg/types"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/senml"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
@@ -21,7 +22,7 @@ import (
 
 var tracer = otel.Tracer("iot-things")
 
-func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
+func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messaging.TopicMessageHandler {
 	return func(ctx context.Context, d messaging.IncomingTopicMessage, logger *slog.Logger) {
 		var err error
 
@@ -57,28 +58,28 @@ func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
 			return
 		}
 
-		if len(connectedThings) == 0 {
+		if len(connectedThings) == 0 { // is it OK if len > 1?
 			log.Debug("no connected things found")
 			return
 		}
 
-		m, err := convPack(ctx, msg.Pack)
+		measurements, err := convPack(ctx, msg.Pack)
 		if err != nil {
-			log.Error("could not pack measurements", "err", err.Error())
+			log.Error("could not convert pack to measurements", "err", err.Error())
 			return
 		}
 
 		errs := make([]error, 0)
-		changes := map[string]bool{}
+		changes := map[string]int{}
 
-		for _, t := range connectedThings {
-			for _, m := range m {
-				err := t.Handle(m, func(m things.Measurements) error {
+		for i, t := range connectedThings { // for each connected thing... is it valid to connect a sensor to multiple things?
+			for _, m := range measurements {
+				err := t.Handle(m, func(m things.Measurements) error { // handle each measurement
 					var errs []error
 
-					for _, m := range m.Measurements() {
-						errs = append(errs, app.AddValue(ctx, t, m))
-						changes[t.ID()] = true
+					for _, v := range m.Values() {
+						errs = append(errs, app.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
+						changes[t.ID()] = i
 					}
 
 					return errors.Join(errs...)
@@ -87,7 +88,7 @@ func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
 					errs = append(errs, err)
 					continue
 				}
-				t.SetValue(m)
+				t.SetValue(m) // adds the current measurement to its (ref)device
 			}
 			errs = append(errs, app.SaveThing(ctx, t))
 		}
@@ -98,7 +99,18 @@ func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
 		}
 
 		if len(changes) > 0 {
-			// TODO: publish event
+			for _, v := range changes {
+				err = msgCtx.PublishOnTopic(ctx, &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
+					ID:        connectedThings[v].ID(),
+					Type:      connectedThings[v].Type(),
+					Tenant:    connectedThings[v].Tenant(),
+					Timestamp: msg.Timestamp,
+				})
+				if err != nil {
+					log.Error("could not publish thing update", "err", err.Error())
+					return
+				}
+			}
 		}
 	}
 }
