@@ -1,9 +1,11 @@
-package things
+package iotthings
 
 import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/diwise/iot-things/internal/app/iot-things/things"
 )
 
 func TestSeed(t *testing.T) {
@@ -17,7 +19,7 @@ func TestSeed(t *testing.T) {
 		},
 	}
 	w := &ThingsWriterMock{
-		AddThingFunc: func(ctx context.Context, t Thing) error {
+		AddThingFunc: func(ctx context.Context, t things.Thing) error {
 			return nil
 		},
 	}
@@ -34,7 +36,7 @@ func TestSeedUpdate(t *testing.T) {
 			cond := newConditions(conditions...)
 			id, ok := cond["id"]
 			if ok && id == "5" {
-				wc := NewWasteContainer("5", Location{62.39095613, 17.31727909}, "default")
+				wc := things.NewWasteContainer("5", things.Location{62.39095613, 17.31727909}, "default")
 
 				return QueryResult{
 					Things: [][]byte{
@@ -49,10 +51,10 @@ func TestSeedUpdate(t *testing.T) {
 		},
 	}
 	w := &ThingsWriterMock{
-		AddThingFunc: func(ctx context.Context, t Thing) error {
+		AddThingFunc: func(ctx context.Context, t things.Thing) error {
 			return nil
 		},
-		UpdateThingFunc: func(ctx context.Context, t Thing) error {
+		UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
 			return nil
 		},
 	}
@@ -79,7 +81,7 @@ func newConditions(conditions ...ConditionFunc) map[string]any {
 	return m
 }
 
-const csvData string = `id;type;subType;name;decsription;location;tenant;tags;refDevices
-forradet-bpn;Sewer;CombinedSewageOverflow;Förrådet BPN;Förrådet BPN;62.4008,17.4135;msva;braddmatare;d4f3e2f1-d430-467b-85ec-7cd977b0335f
-5;Container;WasteContainer;namn;beskrivning;62.39095613,17.31727909;default;soptunna,linje 1;d4f3e2f1-d430-467b-85ec-7cd977b0335f,527090f3-7f85-49f8-889b-99a50530dede
+const csvData string = `id;type;subType;name;decsription;location;tenant;tags;refDevices;args
+forradet-bpn;Sewer;CombinedSewageOverflow;Förrådet BPN;Förrådet BPN;62.4008,17.4135;msva;braddmatare;d4f3e2f1-d430-467b-85ec-7cd977b0335f;
+5;Container;WasteContainer;namn;beskrivning;62.39095613,17.31727909;default;soptunna,linje 1;d4f3e2f1-d430-467b-85ec-7cd977b0335f,527090f3-7f85-49f8-889b-99a50530dede;{'max_distance':0.94,'max_level':0.79}
 `

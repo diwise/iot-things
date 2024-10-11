@@ -1,4 +1,4 @@
-package things
+package iotthings
 
 import "strconv"
 

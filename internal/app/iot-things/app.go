@@ -1,4 +1,4 @@
-package things
+package iotthings
 
 import (
 	"context"
@@ -9,20 +9,23 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/diwise/iot-things/internal/app/iot-things/things"
 )
 
 //go:generate moq -rm -out app_mock.go . ThingsApp
 type ThingsApp interface {
 	AddThing(ctx context.Context, b []byte) error
+	SaveThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
-	GetConnectedThings(ctx context.Context, deviceID string) ([]Thing, error)
+	GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error)
 	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
 	GetTypes(ctx context.Context, tenants []string) ([]string, error)
 	Seed(ctx context.Context, r io.Reader) error
 
-	AddMeasurement(ctx context.Context, t Thing, m Measurement) error
+	AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error
 }
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
@@ -33,9 +36,9 @@ type ThingsReader interface {
 
 //go:generate moq -rm -out writer_mock.go . ThingsWriter
 type ThingsWriter interface {
-	AddThing(ctx context.Context, t Thing) error
-	UpdateThing(ctx context.Context, t Thing) error
-	AddMeasurement(ctx context.Context, t Thing, m Measurement) error
+	AddThing(ctx context.Context, t things.Thing) error
+	UpdateThing(ctx context.Context, t things.Thing) error
+	AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error
 }
 
 var ErrThingNotFound = errors.New("thing not found")
@@ -113,6 +116,25 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	return nil
 }
 
+func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
+	if t.ID() == "" {
+		return errors.New("thing ID must be provided")
+	}
+	if t.Tenant() == "" {
+		return errors.New("tenant must be provided")
+	}
+	if t.Type() == "" {
+		return errors.New("thing type must be provided")
+	}
+
+	err := a.writer.UpdateThing(ctx, t)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
 		return errors.New("tenants must be provided")
@@ -171,7 +193,7 @@ func (a *app) QueryThings(ctx context.Context, params map[string][]string) (Quer
 	return result, nil
 }
 
-func (a *app) getThingByID(ctx context.Context, thingID string) Thing {
+func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 	result, err := a.reader.QueryThings(ctx, WithID(thingID))
 	if err != nil {
 		return nil
@@ -188,13 +210,13 @@ func (a *app) getThingByID(ctx context.Context, thingID string) Thing {
 	return t
 }
 
-func (a *app) GetConnectedThings(ctx context.Context, deviceID string) ([]Thing, error) {
+func (a *app) GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error) {
 	result, err := a.reader.QueryThings(ctx, WithRefDevice(deviceID))
 	if err != nil {
 		return nil, err
 	}
 
-	things := make([]Thing, 0)
+	things := make([]things.Thing, 0)
 
 	for _, b := range result.Things {
 		t, err := convToThing(b)
@@ -224,7 +246,20 @@ func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) 
 	}, nil
 }
 
-func (a *app) AddMeasurement(ctx context.Context, t Thing, m Measurement) error {
+func (a *app) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
+	if m.ID == "" {
+		return errors.New("measurement ID must be provided")
+	}
+	if m.Timestamp.IsZero() {
+		return errors.New("timestamp must be provided")
+	}
+	if m.Value == nil && m.StringValue == nil && m.BoolValue == nil {
+		return errors.New("value must be provided")
+	}
+	if m.Urn == "" {
+		return errors.New("URN must be provided")
+	}
+
 	return a.writer.AddMeasurement(ctx, t, m)
 }
 
@@ -233,10 +268,10 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 	f.Comma = ';'
 	rowNum := 0
 
-	location := func(s string) Location {
+	location := func(s string) things.Location {
 		parts := strings.Split(s, ",")
 		if len(parts) != 2 {
-			return Location{}
+			return things.Location{}
 		}
 
 		parse := func(s string) float64 {
@@ -247,7 +282,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			return f
 		}
 
-		return Location{
+		return things.Location{
 			Latitude:  parse(parts[0]),
 			Longitude: parse(parts[1]),
 		}
@@ -264,18 +299,31 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		return tags
 	}
 
-	refDevices := func(t string) []Device {
+	refDevices := func(t string) []things.Device {
 		if t == "" {
 			return nil
 		}
 		if !strings.Contains(t, ",") {
-			return []Device{{DeviceID: t}}
+			return []things.Device{{DeviceID: t}}
 		}
-		devices := []Device{}
+		devices := []things.Device{}
 		for _, s := range strings.Split(t, ",") {
-			devices = append(devices, Device{DeviceID: s})
+			devices = append(devices, things.Device{DeviceID: s})
 		}
 		return devices
+	}
+
+	args := func(t string) map[string]any {
+		m := make(map[string]any)
+		if t == "" {
+			return nil
+		}
+		t = strings.ReplaceAll(t, "'", "\"")
+		err := json.Unmarshal([]byte(t), &m)
+		if err != nil {
+			return nil
+		}
+		return m
 	}
 
 	tenants := []string{"default"}
@@ -291,8 +339,8 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			continue
 		}
 
-		//  0	 1      2      3         4           5      6        7      8
-		// id, type, subType, name, decsription, location, tenant, tags, refDevices
+		//  0	 1      2      3         4           5      6        7      8          9
+		// id, type, subType, name, decsription, location, tenant, tags, refDevices, args
 
 		id_ := record[0]
 		type_ := record[1]
@@ -304,59 +352,56 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		tags_ := tags(record[7])
 		refDevices_ := refDevices(record[8])
 
+		m := make(map[string]any)
+
 		current := a.getThingByID(ctx, id_)
 		if current != nil {
-			m := make(map[string]any)
 			err := json.Unmarshal(current.Byte(), &m)
 			if err != nil {
 				return err
 			}
-
-			if subType_ != "" {
-				m["sub_type"] = subType_
-			} else {
-				delete(m, "sub_type")
-			}
-
-			m["name"] = name_
-			m["description"] = description_
-			m["location"] = location_
-			m["tenant"] = tenant_
-			m["tags"] = tags_
-			m["ref_devices"] = refDevices_
-
-			b, err := json.Marshal(m)
-			if err != nil {
-				return err
-			}
-
-			if !slices.Contains(tenants, tenant_) {
-				tenants = append(tenants, tenant_)
-			}
-
-			err = a.UpdateThing(ctx, b, tenants)
-			if err != nil {
-				return err
-			}
-
-			continue
+		} else {
+			m["id"] = id_
+			m["type"] = type_
 		}
 
-		t := &thing{
-			ID_:      id_,
-			Type_:    type_,
-			Location: location_,
-			Tenant_:  tenant_,
-		}
-		t.Name = name_
-		t.Description = description_
 		if subType_ != "" {
-			t.SubType = &subType_
+			m["sub_type"] = subType_
+		} else {
+			delete(m, "sub_type")
 		}
-		t.Tags = tags_
-		t.RefDevices = refDevices_
 
-		err = a.writer.AddThing(ctx, t)
+		m["name"] = name_
+		m["description"] = description_
+		m["location"] = location_
+		m["tenant"] = tenant_
+		
+		if len(tags_) > 0 {
+			m["tags"] = tags_
+		} else {
+			delete(m, "tags")
+		}
+		
+		if len(refDevices_) > 0 {
+			m["ref_devices"] = refDevices_
+		} else {
+			delete(m, "ref_devices")
+		}
+
+		for k, v := range args(record[9]) {
+			m[k] = v
+		}
+
+		b, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+
+		if !slices.Contains(tenants, tenant_) {
+			tenants = append(tenants, tenant_)
+		}
+
+		err = a.UpdateThing(ctx, b, tenants)
 		if err != nil {
 			return err
 		}
@@ -365,7 +410,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
-func convToThing(b []byte) (Thing, error) {
+func convToThing(b []byte) (things.Thing, error) {
 	t := struct {
 		Type string `json:"type"`
 	}{}
@@ -376,25 +421,25 @@ func convToThing(b []byte) (Thing, error) {
 
 	switch t.Type {
 	case "Container":
-		c, err := unmarshal[Container](b)
+		c, err := unmarshal[things.Container](b)
 		return &c, err
 	case "PumpingStation":
-		ps, err := unmarshal[PumpingStation](b)
+		ps, err := unmarshal[things.PumpingStation](b)
 		return &ps, err
 	case "Room":
-		r, err := unmarshal[Room](b)
+		r, err := unmarshal[things.Room](b)
 		return &r, err
 	case "Sewer":
-		s, err := unmarshal[Sewer](b)
+		s, err := unmarshal[things.Sewer](b)
 		return &s, err
 	case "Passage":
-		p, err := unmarshal[Passage](b)
+		p, err := unmarshal[things.Passage](b)
 		return &p, err
 	case "Lifebuoy":
-		l, err := unmarshal[Lifebuoy](b)
+		l, err := unmarshal[things.Lifebuoy](b)
 		return &l, err
 	case "WaterMeter":
-		l, err := unmarshal[WaterMeter](b)
+		l, err := unmarshal[things.WaterMeter](b)
 		return &l, err
 	default:
 		return nil, errors.New("unknown thing type")

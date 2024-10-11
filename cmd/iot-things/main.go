@@ -10,7 +10,7 @@ import (
 	"os"
 
 	"github.com/diwise/iot-things/internal/app/api"
-	app "github.com/diwise/iot-things/internal/app/things"
+	app "github.com/diwise/iot-things/internal/app/iot-things"
 
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"

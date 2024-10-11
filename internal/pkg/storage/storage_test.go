@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	app "github.com/diwise/iot-things/internal/app/things"
+	app "github.com/diwise/iot-things/internal/app/iot-things"
+	"github.com/diwise/iot-things/internal/app/iot-things/things"
 	"github.com/diwise/iot-things/internal/pkg/auth"
 	"github.com/google/uuid"
 )
@@ -19,7 +20,7 @@ func TestAddThing(t *testing.T) {
 		t.SkipNow()
 	}
 	uuid := uuid.NewString()
-	thing := app.NewWasteContainer(uuid, app.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+	thing := things.NewWasteContainer(uuid, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
 
 	err = db.AddThing(ctx, thing)
 	if err != nil {
@@ -36,7 +37,7 @@ func TestAddThingWithDevices(t *testing.T) {
 		t.SkipNow()
 	}
 	thingID := uuid.NewString()
-	thing := app.NewWasteContainer(thingID, app.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
 
 	thing.AddDevice(uuid.NewString())
 
@@ -56,7 +57,7 @@ func TestQueryThings(t *testing.T) {
 	}
 
 	thingID := uuid.NewString()
-	thing := app.NewWasteContainer(thingID, app.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
 
 	deviceID := uuid.NewString()
 	thing.AddDevice(deviceID)

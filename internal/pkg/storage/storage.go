@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	app "github.com/diwise/iot-things/internal/app/things"
+	app "github.com/diwise/iot-things/internal/app/iot-things"
+	"github.com/diwise/iot-things/internal/app/iot-things/things"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -62,10 +63,10 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			urn		  	TEXT NOT NULL,
 			location 	POINT NULL,										
 			v 			NUMERIC NULL,
-			vs 			TEXT NOT NULL DEFAULT '',			
+			vs 			TEXT NULL,			
 			vb 			BOOLEAN NULL,			
-			unit 		TEXT NOT NULL DEFAULT '',
-			tenant 		TEXT NOT NULL,
+			unit 		TEXT NOT NULL DEFAULT '',	
+			ref 		TEXT NULL,		
 			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
 			UNIQUE ("time", "id"));
 
@@ -120,7 +121,7 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	return conn, err
 }
 
-func (db database) AddThing(ctx context.Context, t app.Thing) error {
+func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
 	lat, lon := t.LatLon()
@@ -152,7 +153,7 @@ func (db database) AddThing(ctx context.Context, t app.Thing) error {
 	return nil
 }
 
-func (db database) UpdateThing(ctx context.Context, t app.Thing) error {
+func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
 	lat, lon := t.LatLon()
@@ -238,27 +239,32 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 	return tags, nil
 }
 
-func (db database) AddMeasurement(ctx context.Context, t app.Thing, m app.Measurement) error {
+func (db database) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
 	log := logging.GetFromContext(ctx)
 
 	insert := `
-		INSERT INTO things_measurements(time, id, urn, location, v, vs, vb, unit, tenant)
-		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @tenant)
+		INSERT INTO things_measurements(time, id, urn, location, v, vs, vb, unit, ref)
+		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @ref)
 		ON CONFLICT (time, id) DO NOTHING;`
 
 	lat, lon := t.LatLon()
 
+	var ref *string
+	if m.Ref != "" {
+		ref = &m.Ref
+	}
+
 	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"time":   m.Timestamp,
-		"id":     m.ID,
-		"urn":    m.Urn,
-		"lon":    lon,
-		"lat":    lat,
-		"v":      m.Value,
-		"vs":     m.StringValue,
-		"vb":     m.BoolValue,
-		"unit":   m.Unit,
-		"tenant": t.Tenant(),
+		"time": m.Timestamp,
+		"id":   m.ID,
+		"urn":  m.Urn,
+		"lon":  lon,
+		"lat":  lat,
+		"v":    m.Value,
+		"vs":   m.StringValue,
+		"vb":   m.BoolValue,
+		"unit": m.Unit,
+		"ref":  ref,
 	})
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	app "github.com/diwise/iot-things/internal/app/things"
+	app "github.com/diwise/iot-things/internal/app/iot-things"
 	"github.com/jackc/pgx/v5"
 )
 
