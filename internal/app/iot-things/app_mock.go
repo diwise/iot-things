@@ -41,6 +41,9 @@ var _ ThingsApp = &ThingsAppMock{}
 //			QueryThingsFunc: func(ctx context.Context, params map[string][]string) (QueryResult, error) {
 //				panic("mock out the QueryThings method")
 //			},
+//			QueryValuesFunc: func(ctx context.Context, params map[string][]string) (QueryResult, error) {
+//				panic("mock out the QueryValues method")
+//			},
 //			SaveThingFunc: func(ctx context.Context, t things.Thing) error {
 //				panic("mock out the SaveThing method")
 //			},
@@ -77,6 +80,9 @@ type ThingsAppMock struct {
 
 	// QueryThingsFunc mocks the QueryThings method.
 	QueryThingsFunc func(ctx context.Context, params map[string][]string) (QueryResult, error)
+
+	// QueryValuesFunc mocks the QueryValues method.
+	QueryValuesFunc func(ctx context.Context, params map[string][]string) (QueryResult, error)
 
 	// SaveThingFunc mocks the SaveThing method.
 	SaveThingFunc func(ctx context.Context, t things.Thing) error
@@ -144,6 +150,13 @@ type ThingsAppMock struct {
 			// Params is the params argument value.
 			Params map[string][]string
 		}
+		// QueryValues holds details about calls to the QueryValues method.
+		QueryValues []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Params is the params argument value.
+			Params map[string][]string
+		}
 		// SaveThing holds details about calls to the SaveThing method.
 		SaveThing []struct {
 			// Ctx is the ctx argument value.
@@ -175,6 +188,7 @@ type ThingsAppMock struct {
 	lockGetTypes           sync.RWMutex
 	lockMergeThing         sync.RWMutex
 	lockQueryThings        sync.RWMutex
+	lockQueryValues        sync.RWMutex
 	lockSaveThing          sync.RWMutex
 	lockSeed               sync.RWMutex
 	lockUpdateThing        sync.RWMutex
@@ -441,6 +455,42 @@ func (mock *ThingsAppMock) QueryThingsCalls() []struct {
 	mock.lockQueryThings.RLock()
 	calls = mock.calls.QueryThings
 	mock.lockQueryThings.RUnlock()
+	return calls
+}
+
+// QueryValues calls QueryValuesFunc.
+func (mock *ThingsAppMock) QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error) {
+	if mock.QueryValuesFunc == nil {
+		panic("ThingsAppMock.QueryValuesFunc: method is nil but ThingsApp.QueryValues was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Params map[string][]string
+	}{
+		Ctx:    ctx,
+		Params: params,
+	}
+	mock.lockQueryValues.Lock()
+	mock.calls.QueryValues = append(mock.calls.QueryValues, callInfo)
+	mock.lockQueryValues.Unlock()
+	return mock.QueryValuesFunc(ctx, params)
+}
+
+// QueryValuesCalls gets all the calls that were made to QueryValues.
+// Check the length with:
+//
+//	len(mockedThingsApp.QueryValuesCalls())
+func (mock *ThingsAppMock) QueryValuesCalls() []struct {
+	Ctx    context.Context
+	Params map[string][]string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Params map[string][]string
+	}
+	mock.lockQueryValues.RLock()
+	calls = mock.calls.QueryValues
+	mock.lockQueryValues.RUnlock()
 	return calls
 }
 

@@ -26,7 +26,7 @@ func newConditions(conditions ...app.ConditionFunc) map[string]any {
 	return m
 }
 
-func newQueryParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
+func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
 	c := newConditions(conditions...)
 
 	query := "WHERE 1=1"
@@ -61,6 +61,26 @@ func newQueryParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
 	if refDevice, ok := c["ref_device"]; ok {
 		query += fmt.Sprintf(` AND data->'ref_devices' @> '[{"device_id": "%s"}]'`, refDevice)
 	}
+
+	if offset, ok := c["offset"]; ok {
+		query += " OFFSET @offset"
+		args["offset"] = offset
+	}
+
+	if limit, ok := c["limit"]; ok {
+		query += " LIMIT @limit"
+		args["limit"] = limit
+	}
+
+	return query, args
+}
+
+func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
+	c := newConditions(conditions...)
+
+	query := "WHERE 1=1"
+	args := pgx.NamedArgs{}
+
 
 	if offset, ok := c["offset"]; ok {
 		query += " OFFSET @offset"

@@ -24,6 +24,9 @@ var _ ThingsReader = &ThingsReaderMock{}
 //			QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
 //				panic("mock out the QueryThings method")
 //			},
+//			QueryValuesFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+//				panic("mock out the QueryValues method")
+//			},
 //		}
 //
 //		// use mockedThingsReader in code that requires ThingsReader
@@ -36,6 +39,9 @@ type ThingsReaderMock struct {
 
 	// QueryThingsFunc mocks the QueryThings method.
 	QueryThingsFunc func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
+
+	// QueryValuesFunc mocks the QueryValues method.
+	QueryValuesFunc func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -53,9 +59,17 @@ type ThingsReaderMock struct {
 			// Conditions is the conditions argument value.
 			Conditions []ConditionFunc
 		}
+		// QueryValues holds details about calls to the QueryValues method.
+		QueryValues []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Conditions is the conditions argument value.
+			Conditions []ConditionFunc
+		}
 	}
 	lockGetTags     sync.RWMutex
 	lockQueryThings sync.RWMutex
+	lockQueryValues sync.RWMutex
 }
 
 // GetTags calls GetTagsFunc.
@@ -127,5 +141,41 @@ func (mock *ThingsReaderMock) QueryThingsCalls() []struct {
 	mock.lockQueryThings.RLock()
 	calls = mock.calls.QueryThings
 	mock.lockQueryThings.RUnlock()
+	return calls
+}
+
+// QueryValues calls QueryValuesFunc.
+func (mock *ThingsReaderMock) QueryValues(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+	if mock.QueryValuesFunc == nil {
+		panic("ThingsReaderMock.QueryValuesFunc: method is nil but ThingsReader.QueryValues was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Conditions []ConditionFunc
+	}{
+		Ctx:        ctx,
+		Conditions: conditions,
+	}
+	mock.lockQueryValues.Lock()
+	mock.calls.QueryValues = append(mock.calls.QueryValues, callInfo)
+	mock.lockQueryValues.Unlock()
+	return mock.QueryValuesFunc(ctx, conditions...)
+}
+
+// QueryValuesCalls gets all the calls that were made to QueryValues.
+// Check the length with:
+//
+//	len(mockedThingsReader.QueryValuesCalls())
+func (mock *ThingsReaderMock) QueryValuesCalls() []struct {
+	Ctx        context.Context
+	Conditions []ConditionFunc
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Conditions []ConditionFunc
+	}
+	mock.lockQueryValues.RLock()
+	calls = mock.calls.QueryValues
+	mock.lockQueryValues.RUnlock()
 	return calls
 }

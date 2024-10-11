@@ -1,3 +1,1 @@
-id;type;subType;name;decsription;location;tenant;tags;refDevices
-forradet-bpn;Sewer;CombinedSewageOverflow;Förrådet BPN;Förrådet BPN;62.4008,17.4135;msva;braddmatare;d4f3e2f1-d430-467b-85ec-7cd977b0335f
-5;Container;WasteContainer;namn;beskrivning;62.39095613,17.31727909;default;soptunna,linje 1;d4f3e2f1-d430-467b-85ec-7cd977b0335f,527090f3-7f85-49f8-889b-99a50530dede
+id;type;subType;name;decsription;location;tenant;tags;refDevices;args

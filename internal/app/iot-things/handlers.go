@@ -154,7 +154,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 
 		m := things.Value{
 			ID:          id,
-			Timestamp:   ts,
+			Timestamp:   ts.UTC(),
 			Urn:         urn,
 			BoolValue:   rec.BoolValue,
 			Value:       rec.Value,

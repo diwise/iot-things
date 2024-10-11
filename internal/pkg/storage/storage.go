@@ -2,14 +2,17 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	app "github.com/diwise/iot-things/internal/app/iot-things"
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -174,7 +177,7 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 }
 
 func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
-	where, args := newQueryParams(conditions...)
+	where, args := newQueryThingsParams(conditions...)
 	log := logging.GetFromContext(ctx)
 
 	query := fmt.Sprintf("SELECT data, count(*) OVER () AS total FROM things %s", where)
@@ -198,7 +201,60 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 	}
 
 	return app.QueryResult{
-		Things:     t,
+		Data:       t,
+		Count:      len(t),
+		TotalCount: total,
+		Limit:      args["limit"].(int),
+		Offset:     args["offset"].(int),
+	}, nil
+}
+
+func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
+	where, args := newQueryValuesParams(conditions...)
+	log := logging.GetFromContext(ctx)
+
+	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s", where)
+
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	var t [][]byte
+	var total int64
+
+	var ts time.Time
+	var id, urn, unit, ref string
+	var location pgtype.Point
+	var v *float64
+	var vb *bool
+	var vs *string
+
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &total}, func() error {
+
+		m := things.Value{
+			ID:          id,
+			Urn:         urn,
+			BoolValue:   vb,
+			StringValue: vs,
+			Value:       v,
+			Unit:        unit,
+			Timestamp:   ts.UTC(),
+			Ref:         ref,
+		}
+
+		b, _ := json.Marshal(m)
+		t = append(t, b)
+
+		return nil
+	})
+	if err != nil {
+		return app.QueryResult{}, err
+	}
+
+	return app.QueryResult{
+		Data:       t,
 		Count:      len(t),
 		TotalCount: total,
 		Limit:      args["limit"].(int),
@@ -255,7 +311,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 	}
 
 	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
-		"time": m.Timestamp,
+		"time": m.Timestamp.UTC(),
 		"id":   m.ID,
 		"urn":  m.Urn,
 		"lon":  lon,

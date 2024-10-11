@@ -51,6 +51,7 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Patch("/{id}", patchHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
 				r.Get("/types", getTypesHandler(log, app))
+				r.Get("/values", getValuesHandler(log, app))
 			})
 		})
 	})
@@ -86,8 +87,8 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := make([]json.RawMessage, 0, len(result.Things))
-		for _, thing := range result.Things {
+		data := make([]json.RawMessage, 0, len(result.Data))
+		for _, thing := range result.Data {
 			data = append(data, thing)
 		}
 
@@ -137,7 +138,7 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		response := NewApiResponse(r, json.RawMessage(result.Things[0]), 1, 1, 0, 1)
+		response := NewApiResponse(r, json.RawMessage(result.Data[0]), 1, 1, 0, 1)
 
 		w.WriteHeader(http.StatusOK)
 		w.Write(response.Byte())
@@ -326,6 +327,51 @@ func getTypesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(response.Byte())
+	}
+}
+
+func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
+		ctx, span := tracer.Start(r.Context(), "query-things-values")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
+		result, err := a.QueryValues(ctx, r.URL.Query())
+		if err != nil {
+			logger.Error("could not query for values", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		if result.Count == 0 {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("[]"))
+			return
+		}
+
+		data := make([]json.RawMessage, 0, len(result.Data))
+		for _, v := range result.Data {
+			data = append(data, v)
+		}
+
+		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
+
+		b, err := json.Marshal(response)
+		if err != nil {
+			logger.Error("could not marshal query response", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(b)
 	}
 }
 

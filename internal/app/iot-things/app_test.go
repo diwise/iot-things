@@ -14,7 +14,7 @@ func TestSeed(t *testing.T) {
 	r := &ThingsReaderMock{
 		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
 			return QueryResult{
-				Things: [][]byte{},
+				Data: [][]byte{},
 			}, nil
 		},
 	}
@@ -39,14 +39,14 @@ func TestSeedUpdate(t *testing.T) {
 				wc := things.NewWasteContainer("5", things.Location{62.39095613, 17.31727909}, "default")
 
 				return QueryResult{
-					Things: [][]byte{
+					Data: [][]byte{
 						wc.Byte(),
 					},
 				}, nil
 
 			}
 			return QueryResult{
-				Things: [][]byte{},
+				Data: [][]byte{},
 			}, nil
 		},
 	}

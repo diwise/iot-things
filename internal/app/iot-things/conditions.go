@@ -5,7 +5,7 @@ import "strconv"
 type ConditionFunc func(map[string]any) map[string]any
 
 type QueryResult struct {
-	Things     [][]byte
+	Data       [][]byte
 	Count      int
 	Limit      int
 	Offset     int

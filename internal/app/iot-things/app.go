@@ -26,11 +26,13 @@ type ThingsApp interface {
 	Seed(ctx context.Context, r io.Reader) error
 
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
+	QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error)
 }
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
 type ThingsReader interface {
 	QueryThings(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
+	QueryValues(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
 }
 
@@ -104,7 +106,7 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	if err != nil {
 		return err
 	}
-	if len(result.Things) != 1 {
+	if len(result.Data) != 1 {
 		return ErrThingNotFound
 	}
 
@@ -150,12 +152,12 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 	if err != nil {
 		return err
 	}
-	if len(result.Things) != 1 {
+	if len(result.Data) != 1 {
 		return ErrThingNotFound
 	}
 
 	current := make(map[string]any)
-	err = json.Unmarshal(result.Things[0], &current)
+	err = json.Unmarshal(result.Data[0], &current)
 	if err != nil {
 		return err
 	}
@@ -193,16 +195,24 @@ func (a *app) QueryThings(ctx context.Context, params map[string][]string) (Quer
 	return result, nil
 }
 
+func (a *app) QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error) {
+	result, err := a.reader.QueryValues(ctx, WithParams(params)...)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	return result, nil
+}
+
 func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 	result, err := a.reader.QueryThings(ctx, WithID(thingID))
 	if err != nil {
 		return nil
 	}
-	if len(result.Things) != 1 {
+	if len(result.Data) != 1 {
 		return nil
 	}
 
-	t, err := convToThing(result.Things[0])
+	t, err := convToThing(result.Data[0])
 	if err != nil {
 		return nil
 	}
@@ -218,7 +228,7 @@ func (a *app) GetConnectedThings(ctx context.Context, deviceID string) ([]things
 
 	things := make([]things.Thing, 0)
 
-	for _, b := range result.Things {
+	for _, b := range result.Data {
 		t, err := convToThing(b)
 		if err != nil {
 			return nil, err
