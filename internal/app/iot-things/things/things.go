@@ -3,6 +3,7 @@ package things
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 )
 
 type Thing interface {
@@ -10,9 +11,10 @@ type Thing interface {
 	Type() string
 	Tenant() string
 	LatLon() (float64, float64)
-	Handle(m Measurement, onchange func(m Measurement) error) error
+	Handle(v Value, onchange func(m Measurements) error) error
 	Byte() []byte
 
+	SetValue(v Value)
 	AddDevice(deviceID string)
 	AddTag(tag string)
 }
@@ -27,15 +29,15 @@ func newThingImpl(id, t string, l Location, tenant string) thingImpl {
 }
 
 type thingImpl struct {
-	ID_          string        `json:"id"`
-	Type_        string        `json:"type"`
-	SubType      *string       `json:"sub_type,omitempty"`
-	Name         string        `json:"name"`
-	Description  string        `json:"description"`
-	Location     Location      `json:"location,omitempty"`	
-	RefDevices   []Device      `json:"ref_devices,omitempty"`
-	Tags         []string      `json:"tags,omitempty"`
-	Tenant_      string        `json:"tenant"`
+	ID_         string   `json:"id"`
+	Type_       string   `json:"type"`
+	SubType     *string  `json:"sub_type,omitempty"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Location    Location `json:"location,omitempty"`
+	RefDevices  []Device `json:"ref_devices,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Tenant_     string   `json:"tenant"`
 }
 
 type Location struct {
@@ -63,21 +65,34 @@ func (t *thingImpl) AddDevice(deviceID string) {
 		t.RefDevices = append(t.RefDevices, Device{DeviceID: deviceID})
 	}
 }
+
 func (t *thingImpl) AddTag(tag string) {
 	exists := slices.Contains(t.Tags, tag)
 	if !exists {
 		t.Tags = append(t.Tags, tag)
 	}
 }
+
+func (c *thingImpl) SetValue(v Value) {
+	for i, ref := range c.RefDevices {
+		if strings.EqualFold(ref.DeviceID, v.DeviceID()) {
+			if c.RefDevices[i].Values == nil {
+				c.RefDevices[i].Values = make(map[string]Value)
+			}
+			c.RefDevices[i].Values[v.ID] = v
+		}
+	}
+}
+
 func (c *thingImpl) Byte() []byte {
 	b, _ := json.Marshal(c)
 	return b
 }
-func (c *thingImpl) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *thingImpl) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
-func (c *PumpingStation) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *PumpingStation) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
@@ -86,16 +101,7 @@ func (c *PumpingStation) Byte() []byte {
 	return b
 }
 
-func (c *Room) Handle(m Measurement, onchange func(m Measurement) error) error {
-	return nil
-}
-
-func (c *Room) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
-}
-
-func (c *Sewer) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *Sewer) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
@@ -104,16 +110,7 @@ func (c *Sewer) Byte() []byte {
 	return b
 }
 
-func (c *Passage) Handle(m Measurement, onchange func(m Measurement) error) error {
-	return nil
-}
-
-func (c *Passage) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
-}
-
-func (c *Lifebuoy) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *Lifebuoy) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
@@ -122,7 +119,7 @@ func (c *Lifebuoy) Byte() []byte {
 	return b
 }
 
-func (c *WaterMeter) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *WaterMeter) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 

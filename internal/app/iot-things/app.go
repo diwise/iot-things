@@ -25,7 +25,7 @@ type ThingsApp interface {
 	GetTypes(ctx context.Context, tenants []string) ([]string, error)
 	Seed(ctx context.Context, r io.Reader) error
 
-	AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error
+	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
@@ -38,7 +38,7 @@ type ThingsReader interface {
 type ThingsWriter interface {
 	AddThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, t things.Thing) error
-	AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error
+	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
 var ErrThingNotFound = errors.New("thing not found")
@@ -246,7 +246,7 @@ func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) 
 	}, nil
 }
 
-func (a *app) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
+func (a *app) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	if m.ID == "" {
 		return errors.New("measurement ID must be provided")
 	}
@@ -260,7 +260,7 @@ func (a *app) AddMeasurement(ctx context.Context, t things.Thing, m things.Measu
 		return errors.New("URN must be provided")
 	}
 
-	return a.writer.AddMeasurement(ctx, t, m)
+	return a.writer.AddValue(ctx, t, m)
 }
 
 func (a *app) Seed(ctx context.Context, r io.Reader) error {
@@ -375,13 +375,13 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		m["description"] = description_
 		m["location"] = location_
 		m["tenant"] = tenant_
-		
+
 		if len(tags_) > 0 {
 			m["tags"] = tags_
 		} else {
 			delete(m, "tags")
 		}
-		
+
 		if len(refDevices_) > 0 {
 			m["ref_devices"] = refDevices_
 		} else {
@@ -401,9 +401,16 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			tenants = append(tenants, tenant_)
 		}
 
-		err = a.UpdateThing(ctx, b, tenants)
-		if err != nil {
-			return err
+		if current == nil {
+			err = a.AddThing(ctx, b)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = a.UpdateThing(ctx, b, tenants)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

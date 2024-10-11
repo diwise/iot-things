@@ -20,11 +20,11 @@ var _ ThingsApp = &ThingsAppMock{}
 //
 //		// make and configure a mocked ThingsApp
 //		mockedThingsApp := &ThingsAppMock{
-//			AddMeasurementFunc: func(ctx context.Context, t things.Thing, m things.Measurement) error {
-//				panic("mock out the AddMeasurement method")
-//			},
 //			AddThingFunc: func(ctx context.Context, b []byte) error {
 //				panic("mock out the AddThing method")
+//			},
+//			AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+//				panic("mock out the AddValue method")
 //			},
 //			GetConnectedThingsFunc: func(ctx context.Context, deviceID string) ([]things.Thing, error) {
 //				panic("mock out the GetConnectedThings method")
@@ -57,11 +57,11 @@ var _ ThingsApp = &ThingsAppMock{}
 //
 //	}
 type ThingsAppMock struct {
-	// AddMeasurementFunc mocks the AddMeasurement method.
-	AddMeasurementFunc func(ctx context.Context, t things.Thing, m things.Measurement) error
-
 	// AddThingFunc mocks the AddThing method.
 	AddThingFunc func(ctx context.Context, b []byte) error
+
+	// AddValueFunc mocks the AddValue method.
+	AddValueFunc func(ctx context.Context, t things.Thing, m things.Value) error
 
 	// GetConnectedThingsFunc mocks the GetConnectedThings method.
 	GetConnectedThingsFunc func(ctx context.Context, deviceID string) ([]things.Thing, error)
@@ -89,21 +89,21 @@ type ThingsAppMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// AddMeasurement holds details about calls to the AddMeasurement method.
-		AddMeasurement []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// T is the t argument value.
-			T things.Thing
-			// M is the m argument value.
-			M things.Measurement
-		}
 		// AddThing holds details about calls to the AddThing method.
 		AddThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// B is the b argument value.
 			B []byte
+		}
+		// AddValue holds details about calls to the AddValue method.
+		AddValue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// T is the t argument value.
+			T things.Thing
+			// M is the m argument value.
+			M things.Value
 		}
 		// GetConnectedThings holds details about calls to the GetConnectedThings method.
 		GetConnectedThings []struct {
@@ -168,8 +168,8 @@ type ThingsAppMock struct {
 			Tenants []string
 		}
 	}
-	lockAddMeasurement     sync.RWMutex
 	lockAddThing           sync.RWMutex
+	lockAddValue           sync.RWMutex
 	lockGetConnectedThings sync.RWMutex
 	lockGetTags            sync.RWMutex
 	lockGetTypes           sync.RWMutex
@@ -178,46 +178,6 @@ type ThingsAppMock struct {
 	lockSaveThing          sync.RWMutex
 	lockSeed               sync.RWMutex
 	lockUpdateThing        sync.RWMutex
-}
-
-// AddMeasurement calls AddMeasurementFunc.
-func (mock *ThingsAppMock) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
-	if mock.AddMeasurementFunc == nil {
-		panic("ThingsAppMock.AddMeasurementFunc: method is nil but ThingsApp.AddMeasurement was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		T   things.Thing
-		M   things.Measurement
-	}{
-		Ctx: ctx,
-		T:   t,
-		M:   m,
-	}
-	mock.lockAddMeasurement.Lock()
-	mock.calls.AddMeasurement = append(mock.calls.AddMeasurement, callInfo)
-	mock.lockAddMeasurement.Unlock()
-	return mock.AddMeasurementFunc(ctx, t, m)
-}
-
-// AddMeasurementCalls gets all the calls that were made to AddMeasurement.
-// Check the length with:
-//
-//	len(mockedThingsApp.AddMeasurementCalls())
-func (mock *ThingsAppMock) AddMeasurementCalls() []struct {
-	Ctx context.Context
-	T   things.Thing
-	M   things.Measurement
-} {
-	var calls []struct {
-		Ctx context.Context
-		T   things.Thing
-		M   things.Measurement
-	}
-	mock.lockAddMeasurement.RLock()
-	calls = mock.calls.AddMeasurement
-	mock.lockAddMeasurement.RUnlock()
-	return calls
 }
 
 // AddThing calls AddThingFunc.
@@ -253,6 +213,46 @@ func (mock *ThingsAppMock) AddThingCalls() []struct {
 	mock.lockAddThing.RLock()
 	calls = mock.calls.AddThing
 	mock.lockAddThing.RUnlock()
+	return calls
+}
+
+// AddValue calls AddValueFunc.
+func (mock *ThingsAppMock) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
+	if mock.AddValueFunc == nil {
+		panic("ThingsAppMock.AddValueFunc: method is nil but ThingsApp.AddValue was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		T   things.Thing
+		M   things.Value
+	}{
+		Ctx: ctx,
+		T:   t,
+		M:   m,
+	}
+	mock.lockAddValue.Lock()
+	mock.calls.AddValue = append(mock.calls.AddValue, callInfo)
+	mock.lockAddValue.Unlock()
+	return mock.AddValueFunc(ctx, t, m)
+}
+
+// AddValueCalls gets all the calls that were made to AddValue.
+// Check the length with:
+//
+//	len(mockedThingsApp.AddValueCalls())
+func (mock *ThingsAppMock) AddValueCalls() []struct {
+	Ctx context.Context
+	T   things.Thing
+	M   things.Value
+} {
+	var calls []struct {
+		Ctx context.Context
+		T   things.Thing
+		M   things.Value
+	}
+	mock.lockAddValue.RLock()
+	calls = mock.calls.AddValue
+	mock.lockAddValue.RUnlock()
 	return calls
 }
 

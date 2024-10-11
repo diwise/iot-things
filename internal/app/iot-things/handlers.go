@@ -69,12 +69,25 @@ func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
 		}
 
 		errs := make([]error, 0)
+		changes := map[string]bool{}
 
 		for _, t := range connectedThings {
 			for _, m := range m {
-				errs = append(errs, t.Handle(m, func(m things.Measurement) error {
-					return app.AddMeasurement(ctx, t, m)
-				}))
+				err := t.Handle(m, func(m things.Measurements) error {
+					var errs []error
+
+					for _, m := range m.Measurements() {
+						errs = append(errs, app.AddValue(ctx, t, m))
+						changes[t.ID()] = true
+					}
+
+					return errors.Join(errs...)
+				})
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				t.SetValue(m)
 			}
 			errs = append(errs, app.SaveThing(ctx, t))
 		}
@@ -83,10 +96,14 @@ func NewMeasurementsHandler(app ThingsApp) messaging.TopicMessageHandler {
 			log.Error("errors occured when handle measurements", "err", err.Error())
 			return
 		}
+
+		if len(changes) > 0 {
+			// TODO: publish event
+		}
 	}
 }
 
-func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error) {
+func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 	log := logging.GetFromContext(ctx)
 
 	header, ok := pack.GetRecord(senml.FindByName("0"))
@@ -94,7 +111,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 		return nil, fmt.Errorf("could not find header record (0)")
 	}
 
-	measurements := make([]things.Measurement, len(pack))
+	values := make([]things.Value, len(pack))
 
 	urn := header.StringValue
 
@@ -123,7 +140,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 			vs = &rec.StringValue
 		}
 
-		m := things.Measurement{
+		m := things.Value{
 			ID:          id,
 			Timestamp:   ts,
 			Urn:         urn,
@@ -133,10 +150,10 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 			Unit:        rec.Unit,
 		}
 
-		measurements = append(measurements, m)
+		values = append(values, m)
 	}
 
-	return measurements, errors.Join(errs...)
+	return values, errors.Join(errs...)
 }
 
 func getDeviceID(pack senml.Pack) (string, bool) {

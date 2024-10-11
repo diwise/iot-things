@@ -2,7 +2,6 @@ package things
 
 import (
 	"encoding/json"
-	"errors"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/functions"
 )
@@ -37,7 +36,7 @@ func NewWasteContainer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Container) Handle(m Measurement, onchange func(m Measurement) error) error {
+func (c *Container) Handle(m Value, onchange func(m Measurements) error) error {
 	if !m.HasDistance() {
 		return nil
 	}
@@ -52,15 +51,12 @@ func (c *Container) Handle(m Measurement, onchange func(m Measurement) error) er
 		return err
 	}
 
+	fillingLevel := NewFillingLevel(c.ID(), m.ID, level.Percent(), level.Current(), m.Timestamp)
+
 	c.CurrentLevel = level.Current()
 	c.Percent = level.Percent()
 
-	errs := []error{}
-
-	errs = append(errs, onchange(newActualFillingLevel(c.ID(), m.ID, m.Timestamp, c.CurrentLevel)))
-	errs = append(errs, onchange(newActualFillingPercentage(c.ID(), m.ID, m.Timestamp, c.Percent)))
-
-	return errors.Join(errs...)
+	return onchange(fillingLevel)
 }
 
 func (c *Container) Byte() []byte {

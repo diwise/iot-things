@@ -57,7 +57,7 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 		CREATE INDEX IF NOT EXISTS thing_type_idx ON things (type, id);
 		CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(location);
 
-		CREATE TABLE IF NOT EXISTS things_measurements (
+		CREATE TABLE IF NOT EXISTS things_values (
 			time 		TIMESTAMPTZ NOT NULL,
 			id  		TEXT NOT NULL,
 			urn		  	TEXT NOT NULL,
@@ -77,10 +77,10 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 		BEGIN			
 			SELECT COUNT(*) INTO n
 			FROM timescaledb_information.hypertables
-			WHERE hypertable_name = 'things_measurements';
+			WHERE hypertable_name = 'things_values';
 			
 			IF n = 0 THEN				
-				PERFORM create_hypertable('things_measurements', 'time');				
+				PERFORM create_hypertable('things_values', 'time');				
 			END IF;
 		END $$;
 	`
@@ -239,11 +239,11 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 	return tags, nil
 }
 
-func (db database) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
+func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	log := logging.GetFromContext(ctx)
 
 	insert := `
-		INSERT INTO things_measurements(time, id, urn, location, v, vs, vb, unit, ref)
+		INSERT INTO things_values(time, id, urn, location, v, vs, vb, unit, ref)
 		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @ref)
 		ON CONFLICT (time, id) DO NOTHING;`
 

@@ -19,11 +19,11 @@ var _ ThingsWriter = &ThingsWriterMock{}
 //
 //		// make and configure a mocked ThingsWriter
 //		mockedThingsWriter := &ThingsWriterMock{
-//			AddMeasurementFunc: func(ctx context.Context, t things.Thing, m things.Measurement) error {
-//				panic("mock out the AddMeasurement method")
-//			},
 //			AddThingFunc: func(ctx context.Context, t things.Thing) error {
 //				panic("mock out the AddThing method")
+//			},
+//			AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+//				panic("mock out the AddValue method")
 //			},
 //			UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
 //				panic("mock out the UpdateThing method")
@@ -35,32 +35,32 @@ var _ ThingsWriter = &ThingsWriterMock{}
 //
 //	}
 type ThingsWriterMock struct {
-	// AddMeasurementFunc mocks the AddMeasurement method.
-	AddMeasurementFunc func(ctx context.Context, t things.Thing, m things.Measurement) error
-
 	// AddThingFunc mocks the AddThing method.
 	AddThingFunc func(ctx context.Context, t things.Thing) error
+
+	// AddValueFunc mocks the AddValue method.
+	AddValueFunc func(ctx context.Context, t things.Thing, m things.Value) error
 
 	// UpdateThingFunc mocks the UpdateThing method.
 	UpdateThingFunc func(ctx context.Context, t things.Thing) error
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// AddMeasurement holds details about calls to the AddMeasurement method.
-		AddMeasurement []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// T is the t argument value.
-			T things.Thing
-			// M is the m argument value.
-			M things.Measurement
-		}
 		// AddThing holds details about calls to the AddThing method.
 		AddThing []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// T is the t argument value.
 			T things.Thing
+		}
+		// AddValue holds details about calls to the AddValue method.
+		AddValue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// T is the t argument value.
+			T things.Thing
+			// M is the m argument value.
+			M things.Value
 		}
 		// UpdateThing holds details about calls to the UpdateThing method.
 		UpdateThing []struct {
@@ -70,49 +70,9 @@ type ThingsWriterMock struct {
 			T things.Thing
 		}
 	}
-	lockAddMeasurement sync.RWMutex
-	lockAddThing       sync.RWMutex
-	lockUpdateThing    sync.RWMutex
-}
-
-// AddMeasurement calls AddMeasurementFunc.
-func (mock *ThingsWriterMock) AddMeasurement(ctx context.Context, t things.Thing, m things.Measurement) error {
-	if mock.AddMeasurementFunc == nil {
-		panic("ThingsWriterMock.AddMeasurementFunc: method is nil but ThingsWriter.AddMeasurement was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		T   things.Thing
-		M   things.Measurement
-	}{
-		Ctx: ctx,
-		T:   t,
-		M:   m,
-	}
-	mock.lockAddMeasurement.Lock()
-	mock.calls.AddMeasurement = append(mock.calls.AddMeasurement, callInfo)
-	mock.lockAddMeasurement.Unlock()
-	return mock.AddMeasurementFunc(ctx, t, m)
-}
-
-// AddMeasurementCalls gets all the calls that were made to AddMeasurement.
-// Check the length with:
-//
-//	len(mockedThingsWriter.AddMeasurementCalls())
-func (mock *ThingsWriterMock) AddMeasurementCalls() []struct {
-	Ctx context.Context
-	T   things.Thing
-	M   things.Measurement
-} {
-	var calls []struct {
-		Ctx context.Context
-		T   things.Thing
-		M   things.Measurement
-	}
-	mock.lockAddMeasurement.RLock()
-	calls = mock.calls.AddMeasurement
-	mock.lockAddMeasurement.RUnlock()
-	return calls
+	lockAddThing    sync.RWMutex
+	lockAddValue    sync.RWMutex
+	lockUpdateThing sync.RWMutex
 }
 
 // AddThing calls AddThingFunc.
@@ -148,6 +108,46 @@ func (mock *ThingsWriterMock) AddThingCalls() []struct {
 	mock.lockAddThing.RLock()
 	calls = mock.calls.AddThing
 	mock.lockAddThing.RUnlock()
+	return calls
+}
+
+// AddValue calls AddValueFunc.
+func (mock *ThingsWriterMock) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
+	if mock.AddValueFunc == nil {
+		panic("ThingsWriterMock.AddValueFunc: method is nil but ThingsWriter.AddValue was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		T   things.Thing
+		M   things.Value
+	}{
+		Ctx: ctx,
+		T:   t,
+		M:   m,
+	}
+	mock.lockAddValue.Lock()
+	mock.calls.AddValue = append(mock.calls.AddValue, callInfo)
+	mock.lockAddValue.Unlock()
+	return mock.AddValueFunc(ctx, t, m)
+}
+
+// AddValueCalls gets all the calls that were made to AddValue.
+// Check the length with:
+//
+//	len(mockedThingsWriter.AddValueCalls())
+func (mock *ThingsWriterMock) AddValueCalls() []struct {
+	Ctx context.Context
+	T   things.Thing
+	M   things.Value
+} {
+	var calls []struct {
+		Ctx context.Context
+		T   things.Thing
+		M   things.Value
+	}
+	mock.lockAddValue.RLock()
+	calls = mock.calls.AddValue
+	mock.lockAddValue.RUnlock()
 	return calls
 }
 
