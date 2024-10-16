@@ -81,7 +81,7 @@ func (d Door) Values() []Value {
 /* --------------------- Temperature --------------------- */
 
 type Temperature struct {
-	Value Value `json:"value"`
+	Value Value 
 }
 
 func NewTemperature(id, ref string, value float64, ts time.Time) Temperature {
@@ -98,7 +98,7 @@ func (t Temperature) Values() []Value {
 /* --------------------- Presence --------------------- */
 
 type Presence struct {
-	Value Value `json:"value"`
+	Value Value 
 }
 
 func NewPresence(id, ref string, value bool, ts time.Time) Presence {
@@ -110,4 +110,28 @@ func NewPresence(id, ref string, value bool, ts time.Time) Presence {
 
 func (d Presence) Values() []Value {
 	return []Value{d.Value}
+}
+
+/* --------------------- Stopwatch --------------------- */
+
+type Stopwatch struct {
+	CumulativeTime Value
+	OnOff          Value
+}
+
+func NewStopwatch(id, ref string, cumulativeTime float64, onOff bool, ts time.Time) Stopwatch {
+	ct := newValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5544"), "urn:oma:lwm2m:ext:3350", ref, "s", ts, cumulativeTime)
+	oo := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5850"), "urn:oma:lwm2m:ext:3350", ref, "", ts, onOff)
+
+	return Stopwatch{
+		CumulativeTime: ct,
+		OnOff:          oo,
+	}
+}
+
+func (sw Stopwatch) Values() []Value {
+	return []Value{
+		sw.CumulativeTime,
+		sw.OnOff,
+	}
 }

@@ -8,14 +8,10 @@ import (
 
 type Container struct {
 	thingImpl
-	CurrentLevel float64 `json:"current_level"`
-	Percent      float64 `json:"percent"`
+	functions.LevelConfig
 
-	MaxDistance *float64 `json:"max_distance,omitempty"`
-	MaxLevel    *float64 `json:"max_level,omitempty"`
-	MeanLevel   *float64 `json:"mean_level,omitempty"`
-	Offset      *float64 `json:"offset,omitempty"`
-	Angle       *float64 `json:"angle,omitempty"`
+	CurrentLevel float64 `json:"currentLevel"`
+	Percent      float64 `json:"percent"`
 }
 
 func NewContainer(id string, l Location, tenant string) Thing {
@@ -36,8 +32,8 @@ func NewWasteContainer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Container) Handle(m Value, onchange func(m Measurements) error) error {
-	if !m.HasDistance() {
+func (c *Container) Handle(v Value, onchange func(m Measurements) error) error {
+	if !v.HasDistance() {
 		return nil
 	}
 
@@ -46,15 +42,33 @@ func (c *Container) Handle(m Value, onchange func(m Measurements) error) error {
 		return err
 	}
 
-	_, err = level.Calc(*m.Value, m.Timestamp)
+	_, err = level.Calc(*v.Value, v.Timestamp)
 	if err != nil {
 		return err
 	}
 
-	fillingLevel := NewFillingLevel(c.ID(), m.ID, level.Percent(), level.Current(), m.Timestamp)
+	fillingLevel := NewFillingLevel(c.ID(), v.ID, level.Percent(), level.Current(), v.Timestamp)
 
-	c.CurrentLevel = level.Current()
-	c.Percent = level.Percent()
+	d := *v.Value
+	n := 1
+
+	for _, ref := range c.RefDevices {
+		if ref.DeviceID != v.ID {
+			for _, h := range ref.Values {
+				if h.HasDistance() {
+					d += *h.Value
+					n++
+				}
+			}
+		}
+	}
+
+	avg_distance := d / float64(n)
+	avg_level, _ := functions.NewLevel(c.Angle, c.MaxDistance, c.MaxLevel, c.MeanLevel, c.Offset, c.CurrentLevel)
+	avg_level.Calc(avg_distance, v.Timestamp)
+
+	c.CurrentLevel = avg_level.Current()
+	c.Percent = avg_level.Percent()
 
 	return onchange(fillingLevel)
 }

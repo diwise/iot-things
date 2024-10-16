@@ -14,6 +14,14 @@ type Level interface {
 	Percent() float64
 }
 
+type LevelConfig struct {
+	MaxDistance *float64 `json:"maxd,omitempty"`
+	MaxLevel    *float64 `json:"maxl,omitempty"`
+	MeanLevel   *float64 `json:"meanl,omitempty"`
+	Offset      *float64 `json:"offset,omitempty"`
+	Angle       *float64 `json:"angle,omitempty"`
+}
+
 type level struct {
 	cosAlpha    float64
 	maxDistance float64

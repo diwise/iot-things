@@ -4,7 +4,7 @@ import "encoding/json"
 
 type WaterMeter struct {
 	thingImpl
-	CumulativeVolume Value `json:"cumulative_volume"`
+	CumulativeVolume Value `json:"cumulativeVolume"`
 	Leakage          *bool `json:"leakage,omitempty"`
 	Burst            *bool `json:"burst,omitempty"`
 	Backflow         *bool `json:"backflow,omitempty"`

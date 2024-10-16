@@ -30,16 +30,23 @@ func newThingImpl(id, t string, l Location, tenant string) thingImpl {
 }
 
 type thingImpl struct {
-	ID_         string   `json:"id"`
-	Type_       string   `json:"type"`
-	SubType     *string  `json:"sub_type,omitempty"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Location    Location `json:"location,omitempty"`
-	RefDevices  []Device `json:"ref_devices,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Tenant_     string   `json:"tenant"`
+	ID_         string        `json:"id"`
+	Type_       string        `json:"type"`
+	SubType     *string       `json:"sub_type,omitempty"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Location    Location      `json:"location,omitempty"`
+	Area        *LineSegments `json:"area,omitempty"`
+	RefDevices  []Device      `json:"ref_devices,omitempty"`
+	Tags        []string      `json:"tags,omitempty"`
+	Tenant_     string        `json:"tenant"`
 }
+
+// TODO: LineString
+
+type Point []float64     // [x, y]
+type Line []Point        // [Point, Point]
+type LineSegments []Line // [Line, Line, ...]
 
 type Location struct {
 	Latitude  float64 `json:"latitude"`

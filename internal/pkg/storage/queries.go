@@ -81,6 +81,66 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 	query := "WHERE 1=1"
 	args := pgx.NamedArgs{}
 
+	if id, ok := c["id"]; ok {
+		query += " AND id=@id"
+		args["id"] = id
+	}
+
+	if thingID, ok := c["thingid"]; ok {
+		query += fmt.Sprintf(" AND id LIKE '%s/%%'", thingID)
+	}
+
+	if urn, ok := c["urn"]; ok {
+		query += " AND urn=ANY(@urn)"
+		args["urn"] = urn
+	}
+
+	if timerel, ok := c["timerel"]; ok {
+		switch timerel {
+		case "before":
+			query += " AND time < @ts"
+			args["ts"] = c["timeat"]
+		case "after":
+			query += " AND time > @ts"
+			args["ts"] = c["timeat"]
+		case "between":
+			query += " AND time > @ts1 AND time < @ts2"
+			args["ts1"] = c["timeat"]
+			args["ts2"] = c["endtimeat"]
+		}
+	}
+
+	if v, ok := c["value"]; ok {
+		op, opOk := c["operator"]
+		if opOk {
+			switch op {
+			case "eq":
+				query += " AND v IS NOT NULL AND v=@v"
+				args["v"] = v
+			case "gt":
+				query += " AND v IS NOT NULL AND v>@v"
+				args["v"] = v
+			case "lt":
+				query += " AND v IS NOT NULL AND v<@v"
+				args["v"] = v
+			case "ne":
+				query += " AND v IS NOT NULL AND v<>@v"
+				args["v"] = v
+			}
+		}
+	}
+
+	if vb, ok := c["vb"]; ok {
+		query += " AND vb IS NOT NULL AND vb=@vb"
+		args["vb"] = vb
+	}
+
+	if ref, ok := c["refdevice"]; ok {
+		query += " AND ref=@ref"
+		args["ref"] = ref
+	}
+
+	query += " ORDER BY time ASC"
 
 	if offset, ok := c["offset"]; ok {
 		query += " OFFSET @offset"

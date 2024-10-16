@@ -213,7 +213,7 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 	where, args := newQueryValuesParams(conditions...)
 	log := logging.GetFromContext(ctx)
 
-	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s", where)
+	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s ", where)
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {

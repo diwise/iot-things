@@ -87,9 +87,18 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := make([]json.RawMessage, 0, len(result.Data))
-		for _, thing := range result.Data {
-			data = append(data, thing)
+		data := make([]map[string]any, 0, len(result.Data))
+		for _, b := range result.Data {
+			m := make(map[string]any)
+			err = json.Unmarshal(b, &m)
+			if err != nil {
+				logger.Error("could not unmarshal thing", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+			mapToOutModel(m)
+			data = append(data, m)
 		}
 
 		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
@@ -138,7 +147,34 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		response := NewApiResponse(r, json.RawMessage(result.Data[0]), 1, 1, 0, 1)
+		q := r.URL.Query()
+		q.Set("thingid", thingId)
+		values, err := a.QueryValues(ctx, q)
+		if err != nil {
+			logger.Debug("failed to query values", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		data := make([]json.RawMessage, 0, len(values.Data))
+		for _, v := range values.Data {
+			data = append(data, json.RawMessage(v))
+		}
+
+		thing := make(map[string]any)
+		err = json.Unmarshal(result.Data[0], &thing)
+		if err != nil {
+			logger.Debug("failed to marshal thing", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		thing["values"] = data
+		mapToOutModel(thing)
+
+		response := NewApiResponse(r, thing, uint64(values.Count), uint64(values.TotalCount), uint64(values.Offset), uint64(values.Limit))
 
 		w.WriteHeader(http.StatusOK)
 		w.Write(response.Byte())
@@ -378,4 +414,17 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 func isMultipartFormData(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
 	return strings.Contains(contentType, "multipart/form-data")
+}
+
+func mapToOutModel(m map[string]any) {
+	if refDevices, ok := m["ref_devices"]; ok {
+		if ref, ok := refDevices.([]any); ok {
+			for _, device := range ref {
+				x := device.(map[string]any)
+				delete(x, "values")
+			}
+			m["ref_devices"] = ref
+		}
+	}
+	delete(m, "stopwatch")
 }

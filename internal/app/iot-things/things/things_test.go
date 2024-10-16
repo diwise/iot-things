@@ -51,5 +51,60 @@ func TestPassage(t *testing.T) {
 		return nil
 	})
 
-	is.Equal(passage.State, true)
+	is.Equal(passage.CurrentState, true)
+}
+
+func TestSewer(t *testing.T) {
+	is := is.New(t)
+
+	thing := NewSewer("id", Location{Latitude: 62, Longitude: 17}, "default")
+	sewer := thing.(*Sewer)
+
+	maxd := 0.94
+	maxl := 0.79
+	sewer.MaxDistance = &maxd
+	sewer.MaxLevel = &maxl
+
+	v := 0.54
+	distance := Value{
+		ID:        "device/3330/5700",
+		Urn:       "urn:oma:lwm2m:ext:3330",
+		Value:     &v,
+		Timestamp: time.Now(),
+	}
+	sewer.Handle(distance, func(m Measurements) error {
+		return nil
+	})
+
+	is.Equal(sewer.CurrentLevel, 0.4)
+	is.Equal(int(sewer.Percent), 50)
+
+	now := time.Now()
+
+	vb := true
+	digitalInputOn := Value{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &vb,
+		Timestamp: now.Add(-1 * time.Hour),
+	}
+
+	sewer.Handle(digitalInputOn, func(m Measurements) error {
+		return nil
+	})
+
+	vb = false
+	digitalInputOff := Value{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &vb,
+		Timestamp: now.Add(1 * time.Hour),
+	}
+
+	sewer.Handle(digitalInputOff, func(m Measurements) error {
+		return nil
+	})
+
+	is.Equal(sewer.OverflowObserved, false)
+	is.Equal(sewer.OverflowCumulativeTime, 2*time.Hour)
 }

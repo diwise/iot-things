@@ -7,9 +7,9 @@ import (
 
 type Passage struct {
 	thingImpl
-	Count int64 `json:"count"`
-	Today int64 `json:"today"`
-	State bool  `json:"state"`
+	CumulatedNumberOfPassages int64 `json:"cumulatedNumberOfPassages"`
+	PassagesToday             int64 `json:"passagesToday"`
+	CurrentState              bool  `json:"currentState"`
 }
 
 func NewPassage(id string, l Location, tenant string) Thing {
@@ -24,22 +24,22 @@ func (c *Passage) Handle(m Value, onchange func(m Measurements) error) error {
 		return nil
 	}
 
-	if c.State == *m.BoolValue {
+	if c.CurrentState == *m.BoolValue {
 		return nil
 	}
 
 	var err error
 
 	if *m.BoolValue {
-		c.Count++
+		c.CumulatedNumberOfPassages++
 
 		if m.Timestamp.YearDay() == time.Now().YearDay() {
-			c.Today++
+			c.PassagesToday++
 		} else {
-			c.Today = 1
+			c.PassagesToday = 1
 		}
 
-		peopleCounter := NewPeopleCounter(c.ID(), m.ID, c.Today, c.Count, m.Timestamp)
+		peopleCounter := NewPeopleCounter(c.ID(), m.ID, c.PassagesToday, c.CumulatedNumberOfPassages, m.Timestamp)
 
 		err = onchange(peopleCounter)
 		if err != nil {
@@ -47,9 +47,9 @@ func (c *Passage) Handle(m Value, onchange func(m Measurements) error) error {
 		}
 	}
 
-	c.State = *m.BoolValue
+	c.CurrentState = *m.BoolValue
 
-	door := NewDoor(c.ID(), m.ID, c.State, m.Timestamp)
+	door := NewDoor(c.ID(), m.ID, c.CurrentState, m.Timestamp)
 
 	return onchange(door)
 }

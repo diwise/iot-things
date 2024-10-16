@@ -7,6 +7,12 @@ type Room struct {
 	Temperature float64 `json:"temperature"`
 }
 
+func NewRoom(id string, l Location, tenant string) Room {
+	return Room{
+		thingImpl: newThingImpl(id, "Room", l, tenant),
+	}
+}
+
 func (c *Room) Handle(v Value, onchange func(m Measurements) error) error {
 	if !v.HasTemperature() {
 		return nil

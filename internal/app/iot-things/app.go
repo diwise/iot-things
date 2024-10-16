@@ -246,7 +246,7 @@ func (a *app) GetTags(ctx context.Context, tenants []string) ([]string, error) {
 
 func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
 	return []string{
-		"Container",
+		"WasteContainer",
 		"PumpingStation",
 		"Room",
 		"Sewer",
