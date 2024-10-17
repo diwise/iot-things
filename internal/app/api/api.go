@@ -157,9 +157,22 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := make([]json.RawMessage, 0, len(values.Data))
+		data := map[string][]json.RawMessage{}
 		for _, v := range values.Data {
-			data = append(data, json.RawMessage(v))
+			valueID := struct {
+				ID string `json:"id"`
+			}{}
+			err = json.Unmarshal(v, &valueID)
+			if err != nil {
+				logger.Debug("failed to unmarshal value", "err", err.Error())
+				continue
+			}
+
+			if _, ok := data[valueID.ID]; !ok {
+				data[valueID.ID] = []json.RawMessage{}
+			}
+
+			data[valueID.ID] = append(data[valueID.ID], json.RawMessage(v))
 		}
 
 		thing := make(map[string]any)

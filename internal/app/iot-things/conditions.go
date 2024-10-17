@@ -163,6 +163,12 @@ func WithBoolValue(vb string) ConditionFunc {
 	}
 }
 
+func WithValueName(n string) ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		m["n"] = n
+		return m
+	}
+}
 
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
@@ -247,6 +253,10 @@ func WithParams(query map[string][]string) []ConditionFunc {
 
 	if vb, ok := params["vb"]; ok {
 		conditions = append(conditions, WithBoolValue(vb[0]))
+	}
+
+	if n,ok := params["n"]; ok {
+		conditions = append(conditions, WithValueName(n[0]))
 	}
 
 	return conditions

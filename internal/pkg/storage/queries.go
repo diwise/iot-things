@@ -140,6 +140,10 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 		args["ref"] = ref
 	}
 
+	if n, ok := c["n"]; ok {
+		query += fmt.Sprintf(" AND id LIKE '%%/%s'", n)
+	}
+
 	query += " ORDER BY time ASC"
 
 	if offset, ok := c["offset"]; ok {
