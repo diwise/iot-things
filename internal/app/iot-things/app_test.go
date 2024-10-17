@@ -35,8 +35,12 @@ func TestSeedUpdate(t *testing.T) {
 		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
 			cond := newConditions(conditions...)
 			id, ok := cond["id"]
+			l := things.Location{
+				Latitude:  62.39095613,
+				Longitude: 17.31727909,
+			}
 			if ok && id == "5" {
-				wc := things.NewWasteContainer("5", things.Location{62.39095613, 17.31727909}, "default")
+				wc := things.NewWasteContainer("5", l, "default")
 
 				return QueryResult{
 					Data: [][]byte{
