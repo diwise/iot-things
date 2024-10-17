@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/diwise/senml"
 )
 
 const (
@@ -23,14 +25,17 @@ const (
 	PeopleCounterURN string = lwm2mPrefix + "3334"
 	DoorURN          string = "urn:oma:lwm2m:x:10351"
 	StopwatchURN     string = lwm2mPrefix + "3350"
+	WaterMeterURN    string = lwm2mPrefix + "3424"
 )
 
-func hasChanged(a,b any) bool {
+func hasChanged(a, b any) bool {
 	switch a.(type) {
 	case float64:
 		return isNotZero(a.(float64) - b.(float64))
 	case bool:
 		return a.(bool) != b.(bool)
+	case string:
+		return a.(string) != b.(string)
 	default:
 		return true
 	}
@@ -198,15 +203,47 @@ type Power struct {
 }
 
 func NewPower(id, ref string, v float64, ts time.Time) Power {
-	energy := newValue(fmt.Sprintf("%s/%s/%s", id, "3328", "5700"), PowerURN, ref, "kW", ts, v)
+	pwr := newValue(fmt.Sprintf("%s/%s/%s", id, "3328", "5700"), PowerURN, ref, "kW", ts, v)
 
 	return Power{
-		Value: energy,
+		Value: pwr,
 	}
 }
 
 func (p Power) Values() []Value {
 	return []Value{
 		p.Value,
+	}
+}
+
+/* --------------------- WaterMeter --------------------- */
+
+type WaterMeter struct {
+	CumulatedWaterVolume Value
+	LeakDetected         Value
+	BackFlowDetected     Value
+	FraudDetected        Value
+}
+
+func NewWaterMeter(id, ref string, v float64, l, b, f bool, ts time.Time) WaterMeter {
+	vol := newValue(fmt.Sprintf("%s/%s/%s", id, "3424", "1"), PowerURN, ref, senml.UnitCubicMeter, ts, v)
+	leak := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "10"), WatermeterURN, ref, "", ts, l)
+	backflow := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "11"), WatermeterURN, ref, "", ts, b)
+	fraud := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "13"), WatermeterURN, ref, "", ts, f)
+
+	return WaterMeter{
+		CumulatedWaterVolume: vol,
+		LeakDetected:         leak,
+		BackFlowDetected:     backflow,
+		FraudDetected:        fraud,
+	}
+}
+
+func (p WaterMeter) Values() []Value {
+	return []Value{
+		p.CumulatedWaterVolume,
+		p.LeakDetected,
+		p.BackFlowDetected,
+		p.FraudDetected,
 	}
 }

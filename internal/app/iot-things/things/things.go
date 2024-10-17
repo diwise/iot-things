@@ -162,6 +162,9 @@ func (m Value) HasPower() bool {
 func (m Value) HasEnergy() bool {
 	return m.Urn == EnergyURN && m.Value != nil
 }
+func (m Value) HasWaterMeter() bool {
+	return m.Urn == WaterMeterURN && (m.Value != nil || m.BoolValue != nil)
+}
 
 func (m Value) DeviceID() string {
 	return strings.Split(m.ID, "/")[0]

@@ -244,18 +244,6 @@ func (a *app) GetTags(ctx context.Context, tenants []string) ([]string, error) {
 	return a.reader.GetTags(ctx, tenants)
 }
 
-func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
-	return []string{
-		"WasteContainer",
-		"PumpingStation",
-		"Room",
-		"Sewer",
-		"Passage",
-		"Lifebuoy",
-		"WaterMeter",
-	}, nil
-}
-
 func (a *app) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	if m.ID == "" {
 		return errors.New("measurement ID must be provided")
@@ -427,6 +415,20 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
+func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
+	return []string{
+		"Building",
+		"Container",
+		"WasteContainer",
+		"Lifebuoy",
+		"Passage",
+		"PumpingStation",
+		"Room",
+		"Sewer",
+		"WaterMeter",
+	}, nil
+}
+
 func convToThing(b []byte) (things.Thing, error) {
 	t := struct {
 		Type string `json:"type"`
@@ -436,30 +438,33 @@ func convToThing(b []byte) (things.Thing, error) {
 		return nil, err
 	}
 
-	switch t.Type {
-	case "Container":
+	switch strings.ToLower(t.Type) {
+	case "building":
+		l, err := unmarshal[things.Building](b)
+		return &l, err
+	case "container":
 		c, err := unmarshal[things.Container](b)
 		return &c, err
-	case "PumpingStation":
-		ps, err := unmarshal[things.PumpingStation](b)
-		return &ps, err
-	case "Room":
-		r, err := unmarshal[things.Room](b)
-		return &r, err
-	case "Sewer":
-		s, err := unmarshal[things.Sewer](b)
-		return &s, err
-	case "Passage":
-		p, err := unmarshal[things.Passage](b)
-		return &p, err
-	case "Lifebuoy":
+	case "lifebuoy":
 		l, err := unmarshal[things.Lifebuoy](b)
 		return &l, err
-	case "WaterMeter":
-		l, err := unmarshal[things.WaterMeter](b)
+	case "passage":
+		p, err := unmarshal[things.Passage](b)
+		return &p, err
+	case "pumpingstation":
+		ps, err := unmarshal[things.PumpingStation](b)
+		return &ps, err
+	case "room":
+		r, err := unmarshal[things.Room](b)
+		return &r, err
+	case "sewer":
+		s, err := unmarshal[things.Sewer](b)
+		return &s, err
+	case "watermeter":
+		l, err := unmarshal[things.Watermeter](b)
 		return &l, err
 	default:
-		return nil, errors.New("unknown thing type")
+		return nil, errors.New("unknown thing type [" + t.Type + "]")
 	}
 }
 

@@ -22,7 +22,7 @@ func (c *Room) Handle(v Value, onchange func(m Measurements) error) error {
 		return nil
 	}
 
-	temp := NewTemperature(c.ID(), v.ID, c.Temperature, v.Timestamp)
+	temp := NewTemperature(c.ID(), v.ID, *v.Value, v.Timestamp)
 	err := onchange(temp)
 	if err != nil {
 		return err

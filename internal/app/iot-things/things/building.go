@@ -2,8 +2,9 @@ package things
 
 type Building struct {
 	thingImpl
-	Energy float64 `json:"energy"`
-	Power  float64 `json:"power"`
+	Energy      float64 `json:"energy"`
+	Power       float64 `json:"power"`
+	Temperature float64 `json:"temperature"`
 }
 
 func NewBuilding(id string, l Location, tenant string) Thing {
@@ -34,6 +35,36 @@ func (b *Building) Handle(m Value, onchange func(m Measurements) error) error {
 			power := NewPower(b.ID(), m.ID, b.Power, m.Timestamp)
 			return onchange(power)
 		}
+	}
+
+	if m.HasTemperature() {
+		if b.Temperature == *m.Value {
+			return nil
+		}
+
+		temp := NewTemperature(b.ID(), m.ID, *m.Value, m.Timestamp)
+		err := onchange(temp)
+		if err != nil {
+			return err
+		}
+
+		t := *m.Value
+		n := 1
+
+		for _, ref := range b.RefDevices {
+			if ref.DeviceID != m.ID {
+				for _, v := range ref.Values {
+					if v.HasTemperature() {
+						t += *v.Value
+						n++
+					}
+				}
+			}
+		}
+
+		b.Temperature = t / float64(n)
+
+		return nil
 	}
 
 	return nil
