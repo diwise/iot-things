@@ -81,7 +81,7 @@ func (d Door) Values() []Value {
 /* --------------------- Temperature --------------------- */
 
 type Temperature struct {
-	Value Value 
+	Value Value
 }
 
 func NewTemperature(id, ref string, value float64, ts time.Time) Temperature {
@@ -98,7 +98,7 @@ func (t Temperature) Values() []Value {
 /* --------------------- Presence --------------------- */
 
 type Presence struct {
-	Value Value 
+	Value Value
 }
 
 func NewPresence(id, ref string, value bool, ts time.Time) Presence {

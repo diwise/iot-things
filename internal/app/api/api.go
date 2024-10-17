@@ -166,10 +166,8 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		
 		thing["values"] = transformValues(r, values.Data)
-		
-			
+
 		mapToOutModel(thing)
 
 		response := NewApiResponse(r, thing, uint64(values.Count), uint64(values.TotalCount), uint64(values.Offset), uint64(values.Limit))
@@ -424,7 +422,7 @@ func mapToOutModel(m map[string]any) {
 	delete(m, "stopwatch")
 }
 
-func transformValues(r *http.Request, values [][]byte) (any) {
+func transformValues(r *http.Request, values [][]byte) any {
 	grouped := false
 
 	if options := r.URL.Query().Get("options"); options == "grouped" {

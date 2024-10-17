@@ -46,7 +46,7 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 			sw.StopTime = &ts
 			sw.State = false
 			duration := ts.Sub(*sw.StartTime)
-			sw.Duration = &duration			 
+			sw.Duration = &duration
 			sw.CumulativeTime += *sw.Duration
 
 			onchange(*sw)

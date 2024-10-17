@@ -255,7 +255,7 @@ func WithParams(query map[string][]string) []ConditionFunc {
 		conditions = append(conditions, WithBoolValue(vb[0]))
 	}
 
-	if n,ok := params["n"]; ok {
+	if n, ok := params["n"]; ok {
 		conditions = append(conditions, WithValueName(n[0]))
 	}
 
