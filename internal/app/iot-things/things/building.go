@@ -38,7 +38,7 @@ func (b *Building) Handle(m Value, onchange func(m Measurements) error) error {
 	}
 
 	if m.HasTemperature() {
-		if b.Temperature == *m.Value {
+		if !hasChanged(b.Temperature, *m.Value) {
 			return nil
 		}
 

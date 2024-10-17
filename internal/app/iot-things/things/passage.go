@@ -24,7 +24,7 @@ func (c *Passage) Handle(m Value, onchange func(m Measurements) error) error {
 		return nil
 	}
 
-	if c.CurrentState == *m.BoolValue {
+	if !hasChanged(c.CurrentState, *m.BoolValue) {
 		return nil
 	}
 

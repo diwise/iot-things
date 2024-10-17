@@ -12,7 +12,7 @@ func (c *Lifebuoy) Handle(v Value, onchange func(m Measurements) error) error {
 		return nil
 	}
 
-	if c.Presence == *v.BoolValue {
+	if !hasChanged(c.Presence, *v.BoolValue) {
 		return nil
 	}
 

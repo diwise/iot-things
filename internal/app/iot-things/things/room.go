@@ -18,7 +18,7 @@ func (c *Room) Handle(v Value, onchange func(m Measurements) error) error {
 		return nil
 	}
 
-	if c.Temperature == *v.Value {
+	if !hasChanged(c.Temperature, *v.Value) {
 		return nil
 	}
 
