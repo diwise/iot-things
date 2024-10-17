@@ -157,24 +157,6 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := map[string][]json.RawMessage{}
-		for _, v := range values.Data {
-			valueID := struct {
-				ID string `json:"id"`
-			}{}
-			err = json.Unmarshal(v, &valueID)
-			if err != nil {
-				logger.Debug("failed to unmarshal value", "err", err.Error())
-				continue
-			}
-
-			if _, ok := data[valueID.ID]; !ok {
-				data[valueID.ID] = []json.RawMessage{}
-			}
-
-			data[valueID.ID] = append(data[valueID.ID], json.RawMessage(v))
-		}
-
 		thing := make(map[string]any)
 		err = json.Unmarshal(result.Data[0], &thing)
 		if err != nil {
@@ -184,7 +166,10 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		thing["values"] = data
+		
+		thing["values"] = transformValues(r, values.Data)
+		
+			
 		mapToOutModel(thing)
 
 		response := NewApiResponse(r, thing, uint64(values.Count), uint64(values.TotalCount), uint64(values.Offset), uint64(values.Limit))
@@ -403,10 +388,7 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := make([]json.RawMessage, 0, len(result.Data))
-		for _, v := range result.Data {
-			data = append(data, v)
-		}
+		data := transformValues(r, result.Data)
 
 		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
 
@@ -440,4 +422,42 @@ func mapToOutModel(m map[string]any) {
 		}
 	}
 	delete(m, "stopwatch")
+}
+
+func transformValues(r *http.Request, values [][]byte) (any) {
+	grouped := false
+
+	if options := r.URL.Query().Get("options"); options == "grouped" {
+		grouped = true
+	}
+
+	flatValues := make([]json.RawMessage, 0, len(values))
+	groupedValues := map[string][]json.RawMessage{}
+
+	for _, v := range values {
+		switch grouped {
+		case false:
+			flatValues = append(flatValues, json.RawMessage(v))
+		case true:
+			valueID := struct {
+				ID string `json:"id"`
+			}{}
+			err := json.Unmarshal(v, &valueID)
+			if err != nil {
+				continue
+			}
+
+			if _, ok := groupedValues[valueID.ID]; !ok {
+				groupedValues[valueID.ID] = []json.RawMessage{}
+			}
+
+			groupedValues[valueID.ID] = append(groupedValues[valueID.ID], json.RawMessage(v))
+		}
+	}
+
+	if !grouped {
+		return flatValues
+	}
+
+	return groupedValues
 }
