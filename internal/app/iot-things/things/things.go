@@ -145,16 +145,22 @@ type Value struct {
 }
 
 func (m Value) HasDistance() bool {
-	return m.Urn == "urn:oma:lwm2m:ext:3330" && m.Value != nil
+	return m.Urn == DistanceURN && m.Value != nil
 }
 func (m Value) HasDigitalInput() bool {
-	return m.Urn == "urn:oma:lwm2m:ext:3200" && m.BoolValue != nil
+	return m.Urn == DigitalInputURN && m.BoolValue != nil
 }
 func (m Value) HasTemperature() bool {
-	return m.Urn == "urn:oma:lwm2m:ext:3303" && m.Value != nil
+	return m.Urn == TemperatureURN && m.Value != nil
 }
 func (m Value) HasPresence() bool {
-	return m.Urn == "urn:oma:lwm2m:ext:3302" && m.BoolValue != nil
+	return m.Urn == PresenceURN && m.BoolValue != nil
+}
+func (m Value) HasPower() bool {
+	return m.Urn == PowerURN && m.Value != nil
+}
+func (m Value) HasEnergy() bool {
+	return m.Urn == EnergyURN && m.Value != nil
 }
 
 func (m Value) DeviceID() string {

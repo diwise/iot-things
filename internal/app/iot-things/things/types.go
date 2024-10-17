@@ -2,8 +2,43 @@ package things
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
+
+const (
+	lwm2mPrefix string = "urn:oma:lwm2m:ext:"
+
+	DigitalInputURN  string = lwm2mPrefix + "3200"
+	PresenceURN      string = lwm2mPrefix + "3302"
+	TemperatureURN   string = lwm2mPrefix + "3303"
+	PressureURN      string = lwm2mPrefix + "3323"
+	ConductivityURN  string = lwm2mPrefix + "3327"
+	DistanceURN      string = lwm2mPrefix + "3330"
+	AirQualityURN    string = lwm2mPrefix + "3428"
+	WatermeterURN    string = lwm2mPrefix + "3424"
+	PowerURN         string = lwm2mPrefix + "3328"
+	EnergyURN        string = lwm2mPrefix + "3331"
+	FillingLevelURN  string = lwm2mPrefix + "3435"
+	PeopleCounterURN string = lwm2mPrefix + "3334"
+	DoorURN          string = "urn:oma:lwm2m:x:10351"
+	StopwatchURN     string = lwm2mPrefix + "3350"
+)
+
+func hasChanged(a,b any) bool {
+	switch a.(type) {
+	case float64:
+		return isNotZero(a.(float64) - b.(float64))
+	case bool:
+		return a.(bool) != b.(bool)
+	default:
+		return true
+	}
+}
+
+func isNotZero(v float64) bool {
+	return (math.Abs(v) >= 0.001)
+}
 
 /* --------------------- Filling Level --------------------- */
 
@@ -25,12 +60,12 @@ func (f FillingLevel) Values() []Value {
 
 func newActualFillingPercentage(id, ref string, ts time.Time, value float64) Value {
 	id = fmt.Sprintf("%s/%s/%s", id, "3435", "2")
-	return newValue(id, "urn:oma:lwm2m:ext:3435", ref, "%", ts, value)
+	return newValue(id, FillingLevelURN, ref, "%", ts, value)
 }
 
 func newActualFillingLevel(id, ref string, ts time.Time, value float64) Value {
 	id = fmt.Sprintf("%s/%s/%s", id, "3435", "3")
-	return newValue(id, "urn:oma:lwm2m:ext:3435", ref, "m", ts, value)
+	return newValue(id, FillingLevelURN, ref, "m", ts, value)
 }
 
 /* --------------------- People Counter --------------------- */
@@ -53,12 +88,12 @@ func (p PeopleCounter) Values() []Value {
 
 func newDailyNumberOfPassages(id, ref string, ts time.Time, value int64) Value {
 	id = fmt.Sprintf("%s/%s/%s", id, "3434", "5")
-	return newValue(id, "urn:oma:lwm2m:ext:3434", ref, "", ts, float64(value))
+	return newValue(id, PeopleCounterURN, ref, "", ts, float64(value))
 }
 
 func newCumulatedNumberOfPassages(id, ref string, ts time.Time, value int64) Value {
 	id = fmt.Sprintf("%s/%s/%s", id, "3434", "6")
-	return newValue(id, "urn:oma:lwm2m:ext:3434", ref, "", ts, float64(value))
+	return newValue(id, PeopleCounterURN, ref, "", ts, float64(value))
 }
 
 /* --------------------- Door --------------------- */
@@ -70,7 +105,7 @@ type Door struct {
 func NewDoor(id, ref string, state bool, ts time.Time) Door {
 	id = fmt.Sprintf("%s/%s/%s", id, "10351", "50")
 	return Door{
-		Status: newBoolValue(id, "urn:oma:lwm2m:x:10351", ref, "", ts, state),
+		Status: newBoolValue(id, DoorURN, ref, "", ts, state),
 	}
 }
 
@@ -87,7 +122,7 @@ type Temperature struct {
 func NewTemperature(id, ref string, value float64, ts time.Time) Temperature {
 	id = fmt.Sprintf("%s/%s/%s", id, "3303", "5700")
 	return Temperature{
-		Value: newValue(id, "urn:oma:lwm2m:ext:3303", ref, "Cel", ts, value),
+		Value: newValue(id, TemperatureURN, ref, "Cel", ts, value),
 	}
 }
 
@@ -104,7 +139,7 @@ type Presence struct {
 func NewPresence(id, ref string, value bool, ts time.Time) Presence {
 	id = fmt.Sprintf("%s/%s/%s", id, "3302", "5500")
 	return Presence{
-		Value: newBoolValue(id, "urn:oma:lwm2m:ext:3302", ref, "", ts, value),
+		Value: newBoolValue(id, PresenceURN, ref, "", ts, value),
 	}
 }
 
@@ -120,8 +155,8 @@ type Stopwatch struct {
 }
 
 func NewStopwatch(id, ref string, cumulativeTime float64, onOff bool, ts time.Time) Stopwatch {
-	ct := newValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5544"), "urn:oma:lwm2m:ext:3350", ref, "s", ts, cumulativeTime)
-	oo := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5850"), "urn:oma:lwm2m:ext:3350", ref, "", ts, onOff)
+	ct := newValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5544"), StopwatchURN, ref, "s", ts, cumulativeTime)
+	oo := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5850"), StopwatchURN, ref, "", ts, onOff)
 
 	return Stopwatch{
 		CumulativeTime: ct,
@@ -133,5 +168,45 @@ func (sw Stopwatch) Values() []Value {
 	return []Value{
 		sw.CumulativeTime,
 		sw.OnOff,
+	}
+}
+
+/* --------------------- Energy --------------------- */
+
+type Energy struct {
+	Value Value
+}
+
+func NewEnergy(id, ref string, v float64, ts time.Time) Energy {
+	energy := newValue(fmt.Sprintf("%s/%s/%s", id, "3331", "5700"), EnergyURN, ref, "kWh", ts, v)
+
+	return Energy{
+		Value: energy,
+	}
+}
+
+func (e Energy) Values() []Value {
+	return []Value{
+		e.Value,
+	}
+}
+
+/* --------------------- Power --------------------- */
+
+type Power struct {
+	Value Value
+}
+
+func NewPower(id, ref string, v float64, ts time.Time) Power {
+	energy := newValue(fmt.Sprintf("%s/%s/%s", id, "3328", "5700"), PowerURN, ref, "kW", ts, v)
+
+	return Power{
+		Value: energy,
+	}
+}
+
+func (p Power) Values() []Value {
+	return []Value{
+		p.Value,
 	}
 }
