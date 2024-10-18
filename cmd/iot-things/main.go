@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/diwise/iot-things/internal/app/api"
 	app "github.com/diwise/iot-things/internal/app/iot-things"
@@ -25,7 +27,10 @@ const serviceName string = "iot-things"
 func main() {
 	serviceVersion := buildinfo.SourceVersion()
 
-	ctx, log, cleanup := o11y.Init(context.Background(), serviceName, serviceVersion)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ctx, log, cleanup := o11y.Init(ctx, serviceName, serviceVersion)
 	defer cleanup()
 
 	var opa, fp string
@@ -61,15 +66,24 @@ func main() {
 		os.Exit(1)
 	}
 	messenger.Start()
+	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))	
+	
+	webServer := &http.Server{Addr: ":8080" , Handler: r}
 
-	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
-	//messenger.RegisterTopicMessageHandler("cip-function.updated", application.NewCipFunctionsHandler(db, db))
+	go func() {
+		if err := webServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("could not listen and serve", "err", err.Error())
+			os.Exit(1)
+		}
+	}()
 
-	err = http.ListenAndServe(":8080", r)
-	if err != nil {
-		log.Error("could not listen and serve", "err", err.Error())
-		os.Exit(1)
-	}
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	webServer.Shutdown(ctx)
+	messenger.Close()
+	s.Close()
 }
 
 func newRouter(ctx context.Context, opa string, a app.ThingsApp) (*chi.Mux, error) {

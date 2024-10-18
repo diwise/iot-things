@@ -1,5 +1,7 @@
 package things
 
+import "encoding/json"
+
 type Building struct {
 	thingImpl
 	Energy      float64 `json:"energy"`
@@ -68,4 +70,9 @@ func (b *Building) Handle(m Value, onchange func(m Measurements) error) error {
 	}
 
 	return nil
+}
+
+func (c *Building) Byte() []byte {
+	b, _ := json.Marshal(c)
+	return b
 }

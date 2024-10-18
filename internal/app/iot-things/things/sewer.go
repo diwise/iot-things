@@ -72,7 +72,19 @@ func (s *Sewer) handleDigitalInput(v Value, onchange func(m Measurements) error)
 		s.OverflowObserved = sw.State
 		s.OverflowObservedAt = sw.StartTime
 		s.OverflowDuration = sw.Duration
-		s.OverflowCumulativeTime = sw.CumulativeTime
+
+		switch sw.CurrentEvent {
+		case functions.Started:
+			stopwatch := NewStopwatch(s.ID(), v.ID, 0, true, *s.OverflowObservedAt)
+			return onchange(stopwatch)
+		case functions.Updated:
+			stopwatch := NewStopwatch(s.ID(), v.ID, s.OverflowDuration.Seconds(), s.OverflowObserved, v.Timestamp)
+			return onchange(stopwatch)
+		case functions.Stopped:
+			stopwatch := NewStopwatch(s.ID(), v.ID, s.OverflowDuration.Seconds(), false, v.Timestamp)
+			s.OverflowCumulativeTime += *s.OverflowDuration
+			return onchange(stopwatch)
+		}
 
 		return nil
 	})
@@ -80,9 +92,7 @@ func (s *Sewer) handleDigitalInput(v Value, onchange func(m Measurements) error)
 		return err
 	}
 
-	stopwatch := NewStopwatch(s.ID(), v.ID, s.OverflowCumulativeTime.Seconds(), *v.BoolValue, v.Timestamp)
-
-	return onchange(stopwatch)
+	return nil
 }
 
 func (c *Sewer) Byte() []byte {

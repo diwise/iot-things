@@ -10,7 +10,17 @@ type Stopwatch struct {
 	State          bool           `json:"state"`
 	Duration       *time.Duration `json:"duration"`
 	CumulativeTime time.Duration  `json:"cumulativeTime"`
+
+	CurrentEvent StopwatchEvent `json:"-"`
 }
+
+type StopwatchEvent int
+
+const (
+	Started StopwatchEvent = 1
+	Stopped StopwatchEvent = 2
+	Updated StopwatchEvent = 3
+)
 
 func NewStopwatch() *Stopwatch {
 	return &Stopwatch{}
@@ -29,6 +39,8 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 			sw.StopTime = nil // setting end time and duration to nil values to ensure we don't send out the wrong ones later
 			sw.Duration = nil
 
+			sw.CurrentEvent = Started
+
 			onchange(*sw)
 		}
 
@@ -36,6 +48,10 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 		if currentState {
 			duration := ts.Sub(*sw.StartTime)
 			sw.Duration = &duration
+
+			sw.CurrentEvent = Updated
+
+			onchange(*sw)
 		}
 	}
 
@@ -49,10 +65,13 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 			sw.Duration = &duration
 			sw.CumulativeTime += *sw.Duration
 
+			sw.CurrentEvent = Stopped
+
 			onchange(*sw)
 
 			sw.StartTime = nil
 			sw.Duration = nil
+			sw.StopTime = nil
 		}
 
 		// Off -> Off = Do nothing

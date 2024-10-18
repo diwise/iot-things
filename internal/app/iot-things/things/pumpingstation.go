@@ -42,7 +42,19 @@ func (ps *PumpingStation) Handle(v Value, onchange func(m Measurements) error) e
 		ps.PumpingObserved = sw.State
 		ps.PumpingObservedAt = sw.StartTime
 		ps.PumpingDuration = sw.Duration
-		ps.PumpingCumulativeTime = sw.CumulativeTime
+
+		switch sw.CurrentEvent {
+		case functions.Started:
+			stopwatch := NewStopwatch(ps.ID(), v.ID, 0, true, *ps.PumpingObservedAt)
+			return onchange(stopwatch)
+		case functions.Updated:
+			stopwatch := NewStopwatch(ps.ID(), v.ID, ps.PumpingDuration.Seconds(), ps.PumpingObserved, v.Timestamp)
+			return onchange(stopwatch)
+		case functions.Stopped:
+			stopwatch := NewStopwatch(ps.ID(), v.ID, ps.PumpingDuration.Seconds(), false, v.Timestamp)
+			ps.PumpingCumulativeTime += *ps.PumpingDuration
+			return onchange(stopwatch)
+		}
 
 		return nil
 	})
@@ -50,9 +62,7 @@ func (ps *PumpingStation) Handle(v Value, onchange func(m Measurements) error) e
 		return err
 	}
 
-	stopwatch := NewStopwatch(ps.ID(), v.ID, ps.PumpingCumulativeTime.Seconds(), *v.BoolValue, v.Timestamp)
-
-	return onchange(stopwatch)
+	return nil
 }
 
 func (ps *PumpingStation) Byte() []byte {

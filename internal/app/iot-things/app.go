@@ -417,6 +417,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 
 func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
 	return []string{
+		"Beach",
 		"Building",
 		"Container",
 		"WasteContainer",
@@ -439,10 +440,16 @@ func convToThing(b []byte) (things.Thing, error) {
 	}
 
 	switch strings.ToLower(t.Type) {
+	case "beach":
+		l, err := unmarshal[things.Beach](b)
+		return &l, err
 	case "building":
 		l, err := unmarshal[things.Building](b)
 		return &l, err
 	case "container":
+		c, err := unmarshal[things.Container](b)
+		return &c, err
+	case "wastecontainer":
 		c, err := unmarshal[things.Container](b)
 		return &c, err
 	case "lifebuoy":

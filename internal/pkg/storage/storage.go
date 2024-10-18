@@ -23,6 +23,7 @@ type database struct {
 type Storage interface {
 	app.ThingsReader
 	app.ThingsWriter
+	Close()
 }
 
 func New(ctx context.Context, cfg Config) (Storage, error) {
@@ -39,6 +40,10 @@ func New(ctx context.Context, cfg Config) (Storage, error) {
 	return database{
 		pool: p,
 	}, nil
+}
+
+func (db database) Close() {
+	db.pool.Close()
 }
 
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
