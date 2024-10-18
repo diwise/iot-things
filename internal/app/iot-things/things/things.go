@@ -56,7 +56,7 @@ type Location struct {
 
 type Device struct {
 	DeviceID     string                 `json:"device_id"`
-	Measurements map[string]Measurement `json:"values,omitempty"`
+	Measurements map[string]Measurement `json:"measurements,omitempty"`
 }
 
 func (t *thingImpl) ID() string {
