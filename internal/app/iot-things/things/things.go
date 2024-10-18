@@ -15,7 +15,7 @@ type Thing interface {
 	Handle(m Measurement, onchange func(m ValueProvider) error) error
 	Byte() []byte
 
-	SetValue(v Measurement, ts time.Time)
+	SetLastObserved(v Measurement, ts time.Time)
 	AddDevice(deviceID string)
 	AddTag(tag string)
 }
@@ -87,7 +87,7 @@ func (t *thingImpl) AddTag(tag string) {
 	}
 }
 
-func (c *thingImpl) SetValue(m Measurement, ts time.Time) {
+func (c *thingImpl) SetLastObserved(m Measurement, ts time.Time) {
 	for i := range c.RefDevices {
 		if c.RefDevices[i].DeviceID == m.DeviceID() {
 			if c.RefDevices[i].Measurements == nil {

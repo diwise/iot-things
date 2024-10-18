@@ -88,7 +88,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 					errs = append(errs, err)
 					continue
 				}
-				t.SetValue(m, m.Timestamp) // adds the current measurement to its (ref)device
+				t.SetLastObserved(m, m.Timestamp) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
 			}
 			errs = append(errs, app.SaveThing(ctx, t))
 		}
