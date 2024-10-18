@@ -12,10 +12,10 @@ type Thing interface {
 	Type() string
 	Tenant() string
 	LatLon() (float64, float64)
-	Handle(v Value, onchange func(m Measurements) error) error
+	Handle(m Measurement, onchange func(m ValueProvider) error) error
 	Byte() []byte
 
-	SetValue(v Value, ts time.Time)
+	SetValue(v Measurement, ts time.Time)
 	AddDevice(deviceID string)
 	AddTag(tag string)
 }
@@ -55,8 +55,8 @@ type Location struct {
 }
 
 type Device struct {
-	DeviceID string           `json:"device_id"`
-	Values   map[string]Value `json:"values,omitempty"`
+	DeviceID     string                 `json:"device_id"`
+	Measurements map[string]Measurement `json:"values,omitempty"`
 }
 
 func (t *thingImpl) ID() string {
@@ -87,13 +87,13 @@ func (t *thingImpl) AddTag(tag string) {
 	}
 }
 
-func (c *thingImpl) SetValue(v Value, ts time.Time) {
-	for i, ref := range c.RefDevices {
-		if strings.EqualFold(ref.DeviceID, v.DeviceID()) {
-			if c.RefDevices[i].Values == nil {
-				c.RefDevices[i].Values = make(map[string]Value)
+func (c *thingImpl) SetValue(m Measurement, ts time.Time) {
+	for i := range c.RefDevices {
+		if c.RefDevices[i].DeviceID == m.DeviceID() {
+			if c.RefDevices[i].Measurements == nil {
+				c.RefDevices[i].Measurements = make(map[string]Measurement)
 			}
-			c.RefDevices[i].Values[v.ID] = v
+			c.RefDevices[i].Measurements[m.ID] = m
 		}
 	}
 
@@ -106,13 +106,13 @@ func (c *thingImpl) Byte() []byte {
 	b, _ := json.Marshal(c)
 	return b
 }
-func (c *thingImpl) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *thingImpl) Handle(v Value, onchange func(m ValueProvider) error) error {
 	return nil
 }
 
 /* --------------------- Measurements --------------------- */
 
-type Measurements interface {
+type ValueProvider interface {
 	Values() []Value
 }
 
@@ -149,28 +149,38 @@ type Value struct {
 	Ref         string    `json:"ref,omitempty"`
 }
 
-func (m Value) HasDistance() bool {
+type Measurement struct {
+	ID          string    `json:"id"`
+	Urn         string    `json:"urn"`
+	BoolValue   *bool     `json:"vb,omitempty"`
+	StringValue *string   `json:"vs,omitempty"`
+	Value       *float64  `json:"v,omitempty"`
+	Unit        string    `json:"unit,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
+}
+
+func (m Measurement) HasDistance() bool {
 	return m.Urn == DistanceURN && m.Value != nil
 }
-func (m Value) HasDigitalInput() bool {
+func (m Measurement) HasDigitalInput() bool {
 	return m.Urn == DigitalInputURN && m.BoolValue != nil
 }
-func (m Value) HasTemperature() bool {
+func (m Measurement) HasTemperature() bool {
 	return m.Urn == TemperatureURN && m.Value != nil
 }
-func (m Value) HasPresence() bool {
+func (m Measurement) HasPresence() bool {
 	return m.Urn == PresenceURN && m.BoolValue != nil
 }
-func (m Value) HasPower() bool {
+func (m Measurement) HasPower() bool {
 	return m.Urn == PowerURN && m.Value != nil
 }
-func (m Value) HasEnergy() bool {
+func (m Measurement) HasEnergy() bool {
 	return m.Urn == EnergyURN && m.Value != nil
 }
-func (m Value) HasWaterMeter() bool {
+func (m Measurement) HasWaterMeter() bool {
 	return m.Urn == WaterMeterURN && (m.Value != nil || m.BoolValue != nil)
 }
 
-func (m Value) DeviceID() string {
+func (m Measurement) DeviceID() string {
 	return strings.Split(m.ID, "/")[0]
 }

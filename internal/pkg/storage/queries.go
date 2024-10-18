@@ -47,8 +47,8 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 		args["types"] = types
 	}
 
-	if subType, ok := c["sub_type"]; ok {
-		query += " AND data->>'sub_type'=@sub_type"
+	if subType, ok := c["subtype"]; ok {
+		query += " AND data->>'subType'=@sub_type"
 		args["sub_type"] = subType
 	}
 
@@ -58,8 +58,8 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 		args["tags"] = string(b)
 	}
 
-	if refDevice, ok := c["ref_device"]; ok {
-		query += fmt.Sprintf(` AND data->'ref_devices' @> '[{"device_id": "%s"}]'`, refDevice)
+	if refDevice, ok := c["refdevice"]; ok {
+		query += fmt.Sprintf(` AND data->'refDevices' @> '[{"device_id": "%s"}]'`, refDevice)
 	}
 
 	if offset, ok := c["offset"]; ok {

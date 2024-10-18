@@ -21,7 +21,7 @@ type Watermeter struct {
 	Fraud            bool    `json:"fraud"`
 }
 
-func (c *Watermeter) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *Watermeter) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasWaterMeter() {
 		return nil
 	}

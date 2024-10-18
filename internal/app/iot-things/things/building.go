@@ -16,7 +16,7 @@ func NewBuilding(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (b *Building) Handle(m Value, onchange func(m Measurements) error) error {
+func (b *Building) Handle(m Measurement, onchange func(m ValueProvider) error) error {
 	if m.HasEnergy() {
 		previousValue := b.Energy
 		value := *m.Value / 3600000.0 // convert from Joule to kWh
@@ -55,7 +55,7 @@ func (b *Building) Handle(m Value, onchange func(m Measurements) error) error {
 
 		for _, ref := range b.RefDevices {
 			if ref.DeviceID != m.ID {
-				for _, v := range ref.Values {
+				for _, v := range ref.Measurements {
 					if v.HasTemperature() {
 						t += *v.Value
 						n++

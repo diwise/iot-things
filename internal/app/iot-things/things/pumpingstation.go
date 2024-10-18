@@ -33,7 +33,7 @@ func (ps *PumpingStation) stopWatch() *functions.Stopwatch {
 	return ps.Sw
 }
 
-func (ps *PumpingStation) Handle(v Value, onchange func(m Measurements) error) error {
+func (ps *PumpingStation) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasDigitalInput() {
 		return nil
 	}

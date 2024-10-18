@@ -29,7 +29,7 @@ func NewSewer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Sewer) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *Sewer) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if v.HasDistance() {
 		return c.handleDistance(v, onchange)
 	}
@@ -41,7 +41,7 @@ func (c *Sewer) Handle(v Value, onchange func(m Measurements) error) error {
 	return nil
 }
 
-func (s *Sewer) handleDistance(v Value, onchange func(m Measurements) error) error {
+func (s *Sewer) handleDistance(v Measurement, onchange func(m ValueProvider) error) error {
 	level, err := functions.NewLevel(s.Angle, s.MaxDistance, s.MaxLevel, s.MeanLevel, s.Offset, s.CurrentLevel)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func (s *Sewer) stopWatch() *functions.Stopwatch {
 	return s.Sw
 }
 
-func (s *Sewer) handleDigitalInput(v Value, onchange func(m Measurements) error) error {
+func (s *Sewer) handleDigitalInput(v Measurement, onchange func(m ValueProvider) error) error {
 	err := s.stopWatch().Push(*v.BoolValue, v.Timestamp, func(sw functions.Stopwatch) error {
 		s.OverflowObserved = sw.State
 		s.OverflowObservedAt = sw.StartTime

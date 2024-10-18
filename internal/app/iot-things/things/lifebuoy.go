@@ -7,7 +7,7 @@ type Lifebuoy struct {
 	Presence bool `json:"presence"`
 }
 
-func (c *Lifebuoy) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *Lifebuoy) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !(v.HasDigitalInput() || v.HasPresence()) {
 		return nil
 	}

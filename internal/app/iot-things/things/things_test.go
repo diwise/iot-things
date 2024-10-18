@@ -19,13 +19,13 @@ func TestContainer(t *testing.T) {
 	container.MaxLevel = &maxl
 
 	v := 0.54
-	distance := Value{
+	distance := Measurement{
 		ID:        "device/3330/5700",
 		Urn:       "urn:oma:lwm2m:ext:3330",
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	container.Handle(distance, func(m Measurements) error {
+	container.Handle(distance, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -40,14 +40,14 @@ func TestPassage(t *testing.T) {
 	passage := thing.(*Passage)
 
 	v := true
-	digitalInput := Value{
+	digitalInput := Measurement{
 		ID:        "device/3200/5500",
 		Urn:       "urn:oma:lwm2m:ext:3200",
 		BoolValue: &v,
 		Timestamp: time.Now(),
 	}
 
-	passage.Handle(digitalInput, func(m Measurements) error {
+	passage.Handle(digitalInput, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -66,13 +66,13 @@ func TestSewer(t *testing.T) {
 	sewer.MaxLevel = &maxl
 
 	v := 0.54
-	distance := Value{
+	distance := Measurement{
 		ID:        "device/3330/5700",
 		Urn:       "urn:oma:lwm2m:ext:3330",
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	sewer.Handle(distance, func(m Measurements) error {
+	sewer.Handle(distance, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -82,26 +82,26 @@ func TestSewer(t *testing.T) {
 	now := time.Now()
 
 	vb := true
-	digitalInputOn := Value{
+	digitalInputOn := Measurement{
 		ID:        "device/3200/5500",
 		Urn:       "urn:oma:lwm2m:ext:3200",
 		BoolValue: &vb,
 		Timestamp: now.Add(-1 * time.Hour),
 	}
 
-	sewer.Handle(digitalInputOn, func(m Measurements) error {
+	sewer.Handle(digitalInputOn, func(m ValueProvider) error {
 		return nil
 	})
 
 	vb = false
-	digitalInputOff := Value{
+	digitalInputOff := Measurement{
 		ID:        "device/3200/5500",
 		Urn:       "urn:oma:lwm2m:ext:3200",
 		BoolValue: &vb,
 		Timestamp: now.Add(1 * time.Hour),
 	}
 
-	sewer.Handle(digitalInputOff, func(m Measurements) error {
+	sewer.Handle(digitalInputOff, func(m ValueProvider) error {
 		return nil
 	})
 

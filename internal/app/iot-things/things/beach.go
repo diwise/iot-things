@@ -13,7 +13,7 @@ func NewBeach(id string, l Location, tenant string) Beach {
 	}
 }
 
-func (c *Beach) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *Beach) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasTemperature() {
 		return nil
 	}
@@ -33,7 +33,7 @@ func (c *Beach) Handle(v Value, onchange func(m Measurements) error) error {
 
 	for _, ref := range c.RefDevices {
 		if ref.DeviceID != v.ID {
-			for _, v := range ref.Values {
+			for _, v := range ref.Measurements {
 				if v.HasTemperature() {
 					t += *v.Value
 					n++

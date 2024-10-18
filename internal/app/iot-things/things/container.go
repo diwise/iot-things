@@ -32,7 +32,7 @@ func NewWasteContainer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Container) Handle(v Value, onchange func(m Measurements) error) error {
+func (c *Container) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasDistance() {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (c *Container) Handle(v Value, onchange func(m Measurements) error) error {
 
 	for _, ref := range c.RefDevices {
 		if ref.DeviceID != v.ID {
-			for _, h := range ref.Values {
+			for _, h := range ref.Measurements {
 				if h.HasDistance() {
 					d += *h.Value
 					n++

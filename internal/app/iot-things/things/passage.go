@@ -19,7 +19,7 @@ func NewPassage(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Passage) Handle(m Value, onchange func(m Measurements) error) error {
+func (c *Passage) Handle(m Measurement, onchange func(m ValueProvider) error) error {
 	if !m.HasDigitalInput() {
 		return nil
 	}

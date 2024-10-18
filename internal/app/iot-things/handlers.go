@@ -74,7 +74,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 
 		for i, t := range connectedThings { // for each connected thing... is it valid to connect a sensor to multiple things?
 			for _, m := range measurements {
-				err := t.Handle(m, func(m things.Measurements) error { // handle each measurement
+				err := t.Handle(m, func(m things.ValueProvider) error { // handle each measurement
 					var errs []error
 
 					for _, v := range m.Values() {
@@ -115,7 +115,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 	}
 }
 
-func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
+func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error) {
 	log := logging.GetFromContext(ctx)
 
 	header, ok := pack.GetRecord(senml.FindByName("0"))
@@ -123,7 +123,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 		return nil, fmt.Errorf("could not find header record (0)")
 	}
 
-	values := make([]things.Value, len(pack))
+	measurements := make([]things.Measurement, len(pack))
 
 	urn := header.StringValue
 
@@ -152,7 +152,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 			vs = &rec.StringValue
 		}
 
-		m := things.Value{
+		m := things.Measurement{
 			ID:          id,
 			Timestamp:   ts.UTC(),
 			Urn:         urn,
@@ -162,10 +162,10 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 			Unit:        rec.Unit,
 		}
 
-		values = append(values, m)
+		measurements = append(measurements, m)
 	}
 
-	return values, errors.Join(errs...)
+	return measurements, errors.Join(errs...)
 }
 
 func extractDeviceID(pack senml.Pack) (string, bool) {
