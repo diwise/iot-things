@@ -2,18 +2,18 @@ package things
 
 import "encoding/json"
 
-type Beach struct {
+type PointOfInterest struct {
 	thingImpl
 	Temperature float64 `json:"temperature"`
 }
 
-func NewBeach(id string, l Location, tenant string) Beach {
-	return Beach{
-		thingImpl: newThingImpl(id, "Beach", l, tenant),
+func NewPointOfInterest(id string, l Location, tenant string) PointOfInterest {
+	return PointOfInterest{
+		thingImpl: newThingImpl(id, "PointOfInterest", l, tenant),
 	}
 }
 
-func (c *Beach) Handle(v Measurement, onchange func(m ValueProvider) error) error {
+func (c *PointOfInterest) Handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasTemperature() {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (c *Beach) Handle(v Measurement, onchange func(m ValueProvider) error) erro
 	return nil
 }
 
-func (c *Beach) Byte() []byte {
+func (c *PointOfInterest) Byte() []byte {
 	b, _ := json.Marshal(c)
 	return b
 }

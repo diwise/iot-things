@@ -423,6 +423,7 @@ func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) 
 		"WasteContainer",
 		"Lifebuoy",
 		"Passage",
+		"PointOfInterest",
 		"PumpingStation",
 		"Room",
 		"Sewer",
@@ -441,8 +442,11 @@ func convToThing(b []byte) (things.Thing, error) {
 
 	switch strings.ToLower(t.Type) {
 	case "beach":
-		l, err := unmarshal[things.Beach](b)
+		l, err := unmarshal[things.PointOfInterest](b)
 		return &l, err
+	case "pointofinterest":
+		l, err := unmarshal[things.PointOfInterest](b)
+		return &l, err		
 	case "building":
 		l, err := unmarshal[things.Building](b)
 		return &l, err
