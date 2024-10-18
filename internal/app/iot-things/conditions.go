@@ -40,7 +40,7 @@ func WithTypes(types []string) ConditionFunc {
 
 func WithSubType(subType string) ConditionFunc {
 	return func(m map[string]any) map[string]any {
-		m["sub_type"] = subType
+		m["subtype"] = subType
 		return m
 	}
 }
@@ -54,7 +54,7 @@ func WithTags(tags []string) ConditionFunc {
 
 func WithRefDevice(refDevice string) ConditionFunc {
 	return func(m map[string]any) map[string]any {
-		m["ref_device"] = refDevice
+		m["refdevice"] = refDevice
 		return m
 	}
 }

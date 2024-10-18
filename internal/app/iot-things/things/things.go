@@ -15,7 +15,7 @@ type Thing interface {
 	Handle(v Value, onchange func(m Measurements) error) error
 	Byte() []byte
 
-	SetValue(v Value)
+	SetValue(v Value, ts time.Time)
 	AddDevice(deviceID string)
 	AddTag(tag string)
 }
@@ -32,14 +32,15 @@ func newThingImpl(id, t string, l Location, tenant string) thingImpl {
 type thingImpl struct {
 	ID_         string        `json:"id"`
 	Type_       string        `json:"type"`
-	SubType     *string       `json:"sub_type,omitempty"`
+	SubType     *string       `json:"subType,omitempty"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
 	Location    Location      `json:"location,omitempty"`
 	Area        *LineSegments `json:"area,omitempty"`
-	RefDevices  []Device      `json:"ref_devices,omitempty"`
+	RefDevices  []Device      `json:"refDevices,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	Tenant_     string        `json:"tenant"`
+	ObservedAt  time.Time     `json:"observedAt,omitempty"`
 }
 
 // TODO: LineString
@@ -86,7 +87,7 @@ func (t *thingImpl) AddTag(tag string) {
 	}
 }
 
-func (c *thingImpl) SetValue(v Value) {
+func (c *thingImpl) SetValue(v Value, ts time.Time) {
 	for i, ref := range c.RefDevices {
 		if strings.EqualFold(ref.DeviceID, v.DeviceID()) {
 			if c.RefDevices[i].Values == nil {
@@ -94,6 +95,10 @@ func (c *thingImpl) SetValue(v Value) {
 			}
 			c.RefDevices[i].Values[v.ID] = v
 		}
+	}
+
+	if ts.After(c.ObservedAt) {
+		c.ObservedAt = ts
 	}
 }
 

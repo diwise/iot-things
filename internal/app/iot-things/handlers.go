@@ -46,13 +46,13 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
-		deviceID, ok := getDeviceID(msg.Pack)
+		refDeviceID, ok := extractDeviceID(msg.Pack)
 		if !ok {
 			log.Debug("no deviceID found in package")
 			return
 		}
 
-		connectedThings, err := app.GetConnectedThings(ctx, deviceID)
+		connectedThings, err := app.GetConnectedThings(ctx, refDeviceID)
 		if err != nil {
 			log.Error("could not get connected things", "err", err.Error())
 			return
@@ -88,7 +88,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 					errs = append(errs, err)
 					continue
 				}
-				t.SetValue(m) // adds the current measurement to its (ref)device
+				t.SetValue(m, m.Timestamp) // adds the current measurement to its (ref)device
 			}
 			errs = append(errs, app.SaveThing(ctx, t))
 		}
@@ -168,7 +168,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Value, error) {
 	return values, errors.Join(errs...)
 }
 
-func getDeviceID(pack senml.Pack) (string, bool) {
+func extractDeviceID(pack senml.Pack) (string, bool) {
 	r, ok := pack.GetRecord(senml.FindByName("0"))
 	if !ok {
 		return "", false

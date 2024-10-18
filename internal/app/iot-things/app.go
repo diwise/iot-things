@@ -364,9 +364,9 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		}
 
 		if subType_ != "" {
-			m["sub_type"] = subType_
+			m["subType"] = subType_
 		} else {
-			delete(m, "sub_type")
+			delete(m, "subType")
 		}
 
 		m["name"] = name_
@@ -381,9 +381,9 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		}
 
 		if len(refDevices_) > 0 {
-			m["ref_devices"] = refDevices_
+			m["refDevices"] = refDevices_
 		} else {
-			delete(m, "ref_devices")
+			delete(m, "refDevices")
 		}
 
 		for k, v := range args(record[9]) {
