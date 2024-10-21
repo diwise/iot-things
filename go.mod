@@ -44,7 +44,7 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/diwise/messaging-golang v0.0.0-20240506092815-fc973e9e4a4f
+	github.com/diwise/messaging-golang v0.0.0-20241021090331-143508a441a2
 	github.com/diwise/senml v0.0.0-20240402140901-e4008e065e05
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
