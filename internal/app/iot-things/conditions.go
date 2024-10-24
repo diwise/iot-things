@@ -170,6 +170,15 @@ func WithValueName(n string) ConditionFunc {
 	}
 }
 
+func WithTimeUnit(timeUnit string) ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		if slices.Contains([]string{"hour", "day"}, timeUnit) {
+			m["timeunit"] = timeUnit
+		}
+		return m
+	}
+}
+
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
 
@@ -257,6 +266,10 @@ func WithParams(query map[string][]string) []ConditionFunc {
 
 	if n, ok := params["n"]; ok {
 		conditions = append(conditions, WithValueName(n[0]))
+	}
+
+	if timeUnit, ok := params["timeunit"]; ok {
+		conditions = append(conditions, WithTimeUnit(timeUnit[0]))
 	}
 
 	return conditions

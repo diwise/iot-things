@@ -28,6 +28,18 @@ const (
 	WaterMeterURN    string = lwm2mPrefix + "3424"
 )
 
+var (
+	BuildingURNs        = []string{EnergyURN, PowerURN, TemperatureURN}
+	ContainerURNs       = []string{DistanceURN}
+	LifebuoyURNs        = []string{DigitalInputURN, PresenceURN}
+	PassageURNs         = []string{DigitalInputURN}
+	PointOfInterestURNs = []string{TemperatureURN}
+	PumpingStationURNs  = []string{DigitalInputURN}
+	RoomURNs            = []string{TemperatureURN}
+	SewerURNs           = []string{DistanceURN, DigitalInputURN}
+	WaterMeterURNs      = []string{WatermeterURN}
+)
+
 func hasChanged(a, b any) bool {
 	switch a.(type) {
 	case float64:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	app "github.com/diwise/iot-things/internal/app/iot-things"
@@ -218,6 +219,10 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 	where, args := newQueryValuesParams(conditions...)
 	log := logging.GetFromContext(ctx)
 
+	if _, ok := args["timeunit"]; ok {
+		return db.countValues(ctx, where, args)
+	}
+
 	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s ", where)
 
 	rows, err := db.pool.Query(ctx, query, args)
@@ -237,16 +242,16 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 	var vs *string
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &total}, func() error {
-
 		m := things.Value{
-			ID:          id,
-			Urn:         urn,
-			BoolValue:   vb,
-			StringValue: vs,
-			Value:       v,
-			Unit:        unit,
-			Timestamp:   ts.UTC(),
-			Ref:         ref,
+			Measurement: things.Measurement{
+				ID:          id,
+				Urn:         urn,
+				BoolValue:   vb,
+				StringValue: vs,
+				Value:       v,
+				Unit:        unit,
+				Timestamp:   ts.UTC()},
+			Ref: ref,
 		}
 
 		b, _ := json.Marshal(m)
@@ -264,6 +269,66 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		TotalCount: total,
 		Limit:      args["limit"].(int),
 		Offset:     args["offset"].(int),
+	}, nil
+}
+
+func (db database) countValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
+	log := logging.GetFromContext(ctx)
+
+	timeUnit := args["timeunit"].(string)
+
+	if !slices.Contains([]string{"hour", "day"}, timeUnit) {
+		timeUnit = "hour"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT DATE_TRUNC('%s', time) e, id, ref, count(*) n
+		FROM things_values
+		%s
+		GROUP BY e, id, ref 
+		ORDER BY e ASC;
+	`, timeUnit, where)
+
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	var t [][]byte
+
+	var ts time.Time
+	var n int64
+	var id, ref string
+
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &ref, &n}, func() error {
+		count := struct {
+			ID        string    `json:"id"`
+			Ref       string    `json:"ref"`
+			Count     int64     `json:"count"`
+			Timestamp time.Time `json:"timestamp"`
+		}{
+			ID:        id,
+			Ref:       ref,
+			Count:     n,
+			Timestamp: ts.UTC(),
+		}
+
+		b, _ := json.Marshal(count)
+		t = append(t, b)
+
+		return nil
+	})
+	if err != nil {
+		return app.QueryResult{}, err
+	}
+
+	return app.QueryResult{
+		Data:       t,
+		Count:      len(t),
+		TotalCount: int64(len(t)),
+		Limit:      len(t),
+		Offset:     0,
 	}, nil
 }
 

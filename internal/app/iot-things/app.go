@@ -442,37 +442,44 @@ func convToThing(b []byte) (things.Thing, error) {
 
 	switch strings.ToLower(t.Type) {
 	case "beach":
-		l, err := unmarshal[things.PointOfInterest](b)
-		return &l, err
+		fallthrough
 	case "pointofinterest":
-		l, err := unmarshal[things.PointOfInterest](b)
-		return &l, err		
+		poi, err := unmarshal[things.PointOfInterest](b)
+		poi.ValidURN = things.PointOfInterestURNs
+		return &poi, err
 	case "building":
-		l, err := unmarshal[things.Building](b)
-		return &l, err
+		building, err := unmarshal[things.Building](b)
+		building.ValidURN = things.BuildingURNs
+		return &building, err
+	case "wastecontainer":
+		fallthrough
 	case "container":
 		c, err := unmarshal[things.Container](b)
-		return &c, err
-	case "wastecontainer":
-		c, err := unmarshal[things.Container](b)
+		c.ValidURN = things.ContainerURNs
 		return &c, err
 	case "lifebuoy":
 		l, err := unmarshal[things.Lifebuoy](b)
+		l.ValidURN = things.LifebuoyURNs
 		return &l, err
 	case "passage":
 		p, err := unmarshal[things.Passage](b)
+		p.ValidURN = things.PassageURNs
 		return &p, err
 	case "pumpingstation":
 		ps, err := unmarshal[things.PumpingStation](b)
+		ps.ValidURN = things.PumpingStationURNs
 		return &ps, err
 	case "room":
 		r, err := unmarshal[things.Room](b)
+		r.ValidURN = things.RoomURNs
 		return &r, err
 	case "sewer":
 		s, err := unmarshal[things.Sewer](b)
+		s.ValidURN = things.SewerURNs
 		return &s, err
 	case "watermeter":
 		l, err := unmarshal[things.Watermeter](b)
+		l.ValidURN = things.WaterMeterURNs
 		return &l, err
 	default:
 		return nil, errors.New("unknown thing type [" + t.Type + "]")

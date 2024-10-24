@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -410,33 +411,33 @@ func isMultipartFormData(r *http.Request) bool {
 }
 
 func mapToOutModel(m map[string]any) {
-	if refDevices, ok := m["ref_devices"]; ok {
+	if refDevices, ok := m["refDevices"]; ok {
 		if ref, ok := refDevices.([]any); ok {
 			for _, device := range ref {
 				x := device.(map[string]any)
-				delete(x, "values")
+				delete(x, "measurements")
 			}
-			m["ref_devices"] = ref
+			m["refDevices"] = ref
 		}
 	}
 	delete(m, "stopwatch")
 }
 
 func transformValues(r *http.Request, values [][]byte) any {
-	grouped := false
+	group := r.URL.Query().Get("options")
 
-	if options := r.URL.Query().Get("options"); options == "grouped" {
-		grouped = true
+	if !slices.Contains([]string{"", "groupByID", "groupByRef"}, group) {
+		group = ""
 	}
 
 	flatValues := make([]json.RawMessage, 0, len(values))
 	groupedValues := map[string][]json.RawMessage{}
 
 	for _, v := range values {
-		switch grouped {
-		case false:
+		switch group {
+		case "":
 			flatValues = append(flatValues, json.RawMessage(v))
-		case true:
+		case "groupByID":
 			valueID := struct {
 				ID string `json:"id"`
 			}{}
@@ -450,10 +451,24 @@ func transformValues(r *http.Request, values [][]byte) any {
 			}
 
 			groupedValues[valueID.ID] = append(groupedValues[valueID.ID], json.RawMessage(v))
+		case "groupByRef":
+			valueID := struct {
+				Ref string `json:"ref"`
+			}{}
+			err := json.Unmarshal(v, &valueID)
+			if err != nil {
+				continue
+			}
+
+			if _, ok := groupedValues[valueID.Ref]; !ok {
+				groupedValues[valueID.Ref] = []json.RawMessage{}
+			}
+
+			groupedValues[valueID.Ref] = append(groupedValues[valueID.Ref], json.RawMessage(v))
 		}
 	}
 
-	if !grouped {
+	if group == "" {
 		return flatValues
 	}
 
