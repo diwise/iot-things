@@ -26,6 +26,9 @@ var _ ThingsApp = &ThingsAppMock{}
 //			AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
 //				panic("mock out the AddValue method")
 //			},
+//			DeleteThingFunc: func(ctx context.Context, thingID string, tenants []string) error {
+//				panic("mock out the DeleteThing method")
+//			},
 //			GetConnectedThingsFunc: func(ctx context.Context, deviceID string) ([]things.Thing, error) {
 //				panic("mock out the GetConnectedThings method")
 //			},
@@ -65,6 +68,9 @@ type ThingsAppMock struct {
 
 	// AddValueFunc mocks the AddValue method.
 	AddValueFunc func(ctx context.Context, t things.Thing, m things.Value) error
+
+	// DeleteThingFunc mocks the DeleteThing method.
+	DeleteThingFunc func(ctx context.Context, thingID string, tenants []string) error
 
 	// GetConnectedThingsFunc mocks the GetConnectedThings method.
 	GetConnectedThingsFunc func(ctx context.Context, deviceID string) ([]things.Thing, error)
@@ -110,6 +116,15 @@ type ThingsAppMock struct {
 			T things.Thing
 			// M is the m argument value.
 			M things.Value
+		}
+		// DeleteThing holds details about calls to the DeleteThing method.
+		DeleteThing []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ThingID is the thingID argument value.
+			ThingID string
+			// Tenants is the tenants argument value.
+			Tenants []string
 		}
 		// GetConnectedThings holds details about calls to the GetConnectedThings method.
 		GetConnectedThings []struct {
@@ -183,6 +198,7 @@ type ThingsAppMock struct {
 	}
 	lockAddThing           sync.RWMutex
 	lockAddValue           sync.RWMutex
+	lockDeleteThing        sync.RWMutex
 	lockGetConnectedThings sync.RWMutex
 	lockGetTags            sync.RWMutex
 	lockGetTypes           sync.RWMutex
@@ -267,6 +283,46 @@ func (mock *ThingsAppMock) AddValueCalls() []struct {
 	mock.lockAddValue.RLock()
 	calls = mock.calls.AddValue
 	mock.lockAddValue.RUnlock()
+	return calls
+}
+
+// DeleteThing calls DeleteThingFunc.
+func (mock *ThingsAppMock) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
+	if mock.DeleteThingFunc == nil {
+		panic("ThingsAppMock.DeleteThingFunc: method is nil but ThingsApp.DeleteThing was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		ThingID string
+		Tenants []string
+	}{
+		Ctx:     ctx,
+		ThingID: thingID,
+		Tenants: tenants,
+	}
+	mock.lockDeleteThing.Lock()
+	mock.calls.DeleteThing = append(mock.calls.DeleteThing, callInfo)
+	mock.lockDeleteThing.Unlock()
+	return mock.DeleteThingFunc(ctx, thingID, tenants)
+}
+
+// DeleteThingCalls gets all the calls that were made to DeleteThing.
+// Check the length with:
+//
+//	len(mockedThingsApp.DeleteThingCalls())
+func (mock *ThingsAppMock) DeleteThingCalls() []struct {
+	Ctx     context.Context
+	ThingID string
+	Tenants []string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		ThingID string
+		Tenants []string
+	}
+	mock.lockDeleteThing.RLock()
+	calls = mock.calls.DeleteThing
+	mock.lockDeleteThing.RUnlock()
 	return calls
 }
 

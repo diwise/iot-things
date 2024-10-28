@@ -29,7 +29,7 @@ func newConditions(conditions ...app.ConditionFunc) map[string]any {
 func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
 	c := newConditions(conditions...)
 
-	query := "WHERE 1=1"
+	query := "WHERE deleted_on IS NULL"
 	args := pgx.NamedArgs{}
 
 	if id, ok := c["id"]; ok {
@@ -59,8 +59,10 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 	}
 
 	if refDevice, ok := c["refdevice"]; ok {
-		query += fmt.Sprintf(` AND data->'refDevices' @> '[{"device_id": "%s"}]'`, refDevice)
+		query += fmt.Sprintf(` AND data ? 'refDevices' AND data->'refDevices' @> '[{"deviceID": "%s"}]'`, refDevice)
 	}
+
+	query += " ORDER BY type ASC, data->>'subType' ASC, data->>'name' ASC"
 
 	if offset, ok := c["offset"]; ok {
 		query += " OFFSET @offset"
@@ -144,16 +146,21 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 		query += fmt.Sprintf(" AND id LIKE '%%/%s'", n)
 	}
 
-	query += " ORDER BY time ASC"
+	// if timeunit is present, we are counting rows gouped by timeunit (hour, day)
+	if timeunit, ok := c["timeunit"]; ok {
+		args["timeunit"] = timeunit
+	} else {
+		query += " ORDER BY time ASC"
 
-	if offset, ok := c["offset"]; ok {
-		query += " OFFSET @offset"
-		args["offset"] = offset
-	}
+		if offset, ok := c["offset"]; ok {
+			query += " OFFSET @offset"
+			args["offset"] = offset
+		}
 
-	if limit, ok := c["limit"]; ok {
-		query += " LIMIT @limit"
-		args["limit"] = limit
+		if limit, ok := c["limit"]; ok {
+			query += " LIMIT @limit"
+			args["limit"] = limit
+		}
 	}
 
 	return query, args

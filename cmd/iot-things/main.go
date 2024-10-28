@@ -17,6 +17,7 @@ import (
 	"github.com/diwise/iot-things/internal/pkg/storage"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/buildinfo"
+	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/go-chi/chi/v5"
@@ -66,9 +67,11 @@ func main() {
 		os.Exit(1)
 	}
 	messenger.Start()
-	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))	
-	
-	webServer := &http.Server{Addr: ":8080" , Handler: r}
+	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
+
+	port := env.GetVariableOrDefault(ctx, "SERVICE_PORT", "8080")
+
+	webServer := &http.Server{Addr: ":" + port, Handler: r}
 
 	go func() {
 		if err := webServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

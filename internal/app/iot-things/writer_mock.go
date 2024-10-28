@@ -25,6 +25,9 @@ var _ ThingsWriter = &ThingsWriterMock{}
 //			AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
 //				panic("mock out the AddValue method")
 //			},
+//			DeleteThingFunc: func(ctx context.Context, thingID string) error {
+//				panic("mock out the DeleteThing method")
+//			},
 //			UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
 //				panic("mock out the UpdateThing method")
 //			},
@@ -40,6 +43,9 @@ type ThingsWriterMock struct {
 
 	// AddValueFunc mocks the AddValue method.
 	AddValueFunc func(ctx context.Context, t things.Thing, m things.Value) error
+
+	// DeleteThingFunc mocks the DeleteThing method.
+	DeleteThingFunc func(ctx context.Context, thingID string) error
 
 	// UpdateThingFunc mocks the UpdateThing method.
 	UpdateThingFunc func(ctx context.Context, t things.Thing) error
@@ -62,6 +68,13 @@ type ThingsWriterMock struct {
 			// M is the m argument value.
 			M things.Value
 		}
+		// DeleteThing holds details about calls to the DeleteThing method.
+		DeleteThing []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ThingID is the thingID argument value.
+			ThingID string
+		}
 		// UpdateThing holds details about calls to the UpdateThing method.
 		UpdateThing []struct {
 			// Ctx is the ctx argument value.
@@ -72,6 +85,7 @@ type ThingsWriterMock struct {
 	}
 	lockAddThing    sync.RWMutex
 	lockAddValue    sync.RWMutex
+	lockDeleteThing sync.RWMutex
 	lockUpdateThing sync.RWMutex
 }
 
@@ -148,6 +162,42 @@ func (mock *ThingsWriterMock) AddValueCalls() []struct {
 	mock.lockAddValue.RLock()
 	calls = mock.calls.AddValue
 	mock.lockAddValue.RUnlock()
+	return calls
+}
+
+// DeleteThing calls DeleteThingFunc.
+func (mock *ThingsWriterMock) DeleteThing(ctx context.Context, thingID string) error {
+	if mock.DeleteThingFunc == nil {
+		panic("ThingsWriterMock.DeleteThingFunc: method is nil but ThingsWriter.DeleteThing was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		ThingID string
+	}{
+		Ctx:     ctx,
+		ThingID: thingID,
+	}
+	mock.lockDeleteThing.Lock()
+	mock.calls.DeleteThing = append(mock.calls.DeleteThing, callInfo)
+	mock.lockDeleteThing.Unlock()
+	return mock.DeleteThingFunc(ctx, thingID)
+}
+
+// DeleteThingCalls gets all the calls that were made to DeleteThing.
+// Check the length with:
+//
+//	len(mockedThingsWriter.DeleteThingCalls())
+func (mock *ThingsWriterMock) DeleteThingCalls() []struct {
+	Ctx     context.Context
+	ThingID string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		ThingID string
+	}
+	mock.lockDeleteThing.RLock()
+	calls = mock.calls.DeleteThing
+	mock.lockDeleteThing.RUnlock()
 	return calls
 }
 

@@ -19,6 +19,7 @@ type ThingsApp interface {
 	SaveThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
+	DeleteThing(ctx context.Context, thingID string, tenants []string) error
 	GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error)
 	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
@@ -40,6 +41,7 @@ type ThingsReader interface {
 type ThingsWriter interface {
 	AddThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, t things.Thing) error
+	DeleteThing(ctx context.Context, thingID string) error
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
@@ -180,6 +182,27 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 	}
 
 	err = a.writer.UpdateThing(ctx, patchedThing)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
+	if len(tenants) == 0 {
+		return errors.New("tenants must be provided")
+	}
+
+	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
+	if err != nil {
+		return err
+	}
+	if len(result.Data) != 1 {
+		return ErrThingNotFound
+	}
+
+	err = a.writer.DeleteThing(ctx, thingID)
 	if err != nil {
 		return err
 	}
@@ -442,37 +465,44 @@ func convToThing(b []byte) (things.Thing, error) {
 
 	switch strings.ToLower(t.Type) {
 	case "beach":
-		l, err := unmarshal[things.PointOfInterest](b)
-		return &l, err
+		fallthrough
 	case "pointofinterest":
-		l, err := unmarshal[things.PointOfInterest](b)
-		return &l, err		
+		poi, err := unmarshal[things.PointOfInterest](b)
+		poi.ValidURN = things.PointOfInterestURNs
+		return &poi, err
 	case "building":
-		l, err := unmarshal[things.Building](b)
-		return &l, err
+		building, err := unmarshal[things.Building](b)
+		building.ValidURN = things.BuildingURNs
+		return &building, err
+	case "wastecontainer":
+		fallthrough
 	case "container":
 		c, err := unmarshal[things.Container](b)
-		return &c, err
-	case "wastecontainer":
-		c, err := unmarshal[things.Container](b)
+		c.ValidURN = things.ContainerURNs
 		return &c, err
 	case "lifebuoy":
 		l, err := unmarshal[things.Lifebuoy](b)
+		l.ValidURN = things.LifebuoyURNs
 		return &l, err
 	case "passage":
 		p, err := unmarshal[things.Passage](b)
+		p.ValidURN = things.PassageURNs
 		return &p, err
 	case "pumpingstation":
 		ps, err := unmarshal[things.PumpingStation](b)
+		ps.ValidURN = things.PumpingStationURNs
 		return &ps, err
 	case "room":
 		r, err := unmarshal[things.Room](b)
+		r.ValidURN = things.RoomURNs
 		return &r, err
 	case "sewer":
 		s, err := unmarshal[things.Sewer](b)
+		s.ValidURN = things.SewerURNs
 		return &s, err
 	case "watermeter":
 		l, err := unmarshal[things.Watermeter](b)
+		l.ValidURN = things.WaterMeterURNs
 		return &l, err
 	default:
 		return nil, errors.New("unknown thing type [" + t.Type + "]")

@@ -41,9 +41,8 @@ type thingImpl struct {
 	Tags        []string      `json:"tags,omitempty"`
 	Tenant_     string        `json:"tenant"`
 	ObservedAt  time.Time     `json:"observedAt,omitempty"`
+	ValidURN    []string      `json:"validURN,omitempty"`
 }
-
-// TODO: LineString
 
 type Point []float64     // [x, y]
 type Line []Point        // [Point, Point]
@@ -55,7 +54,7 @@ type Location struct {
 }
 
 type Device struct {
-	DeviceID     string                 `json:"device_id"`
+	DeviceID     string                 `json:"deviceID"`
 	Measurements map[string]Measurement `json:"measurements,omitempty"`
 }
 
@@ -88,12 +87,16 @@ func (t *thingImpl) AddTag(tag string) {
 }
 
 func (c *thingImpl) SetLastObserved(m Measurement, ts time.Time) {
-	for i := range c.RefDevices {
-		if c.RefDevices[i].DeviceID == m.DeviceID() {
-			if c.RefDevices[i].Measurements == nil {
-				c.RefDevices[i].Measurements = make(map[string]Measurement)
+	if slices.Contains(c.ValidURN, m.Urn) {
+		for i := range c.RefDevices {
+
+			if c.RefDevices[i].DeviceID == m.DeviceID() {
+				if c.RefDevices[i].Measurements == nil {
+					c.RefDevices[i].Measurements = make(map[string]Measurement)
+				}
+				
+				c.RefDevices[i].Measurements[m.ID] = m
 			}
-			c.RefDevices[i].Measurements[m.ID] = m
 		}
 	}
 
@@ -118,35 +121,31 @@ type ValueProvider interface {
 
 func newValue(id, urn, ref, unit string, ts time.Time, value float64) Value {
 	return Value{
-		ID:        id,
-		Urn:       urn,
-		Value:     &value,
-		Unit:      unit,
-		Timestamp: ts,
-		Ref:       ref,
+		Measurement: Measurement{
+			ID:        id,
+			Urn:       urn,
+			Value:     &value,
+			Unit:      unit,
+			Timestamp: ts},
+		Ref: ref,
 	}
 }
 
 func newBoolValue(id, urn, ref, unit string, ts time.Time, value bool) Value {
 	return Value{
-		ID:        id,
-		Urn:       urn,
-		BoolValue: &value,
-		Unit:      unit,
-		Timestamp: ts,
-		Ref:       ref,
+		Measurement: Measurement{
+			ID:        id,
+			Urn:       urn,
+			BoolValue: &value,
+			Unit:      unit,
+			Timestamp: ts},
+		Ref: ref,
 	}
 }
 
 type Value struct {
-	ID          string    `json:"id"`
-	Urn         string    `json:"urn"`
-	BoolValue   *bool     `json:"vb,omitempty"`
-	StringValue *string   `json:"vs,omitempty"`
-	Value       *float64  `json:"v,omitempty"`
-	Unit        string    `json:"unit,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
-	Ref         string    `json:"ref,omitempty"`
+	Measurement
+	Ref string `json:"ref,omitempty"`
 }
 
 type Measurement struct {

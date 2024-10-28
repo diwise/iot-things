@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,6 +50,7 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Post("/", addHandler(log, app))
 				r.Put("/{id}", updateHandler(log, app))
 				r.Patch("/{id}", patchHandler(log, app))
+				r.Delete("/{id}", deleteHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
 				r.Get("/types", getTypesHandler(log, app))
 				r.Get("/values", getValuesHandler(log, app))
@@ -308,6 +310,37 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	}
 }
 
+func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		ctx, span := tracer.Start(r.Context(), "delete-thing")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
+
+		err = a.DeleteThing(ctx, thingId, tenants)
+		if err != nil {
+			logger.Error("could not delete thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
 func getTagsHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -410,33 +443,33 @@ func isMultipartFormData(r *http.Request) bool {
 }
 
 func mapToOutModel(m map[string]any) {
-	if refDevices, ok := m["ref_devices"]; ok {
+	if refDevices, ok := m["refDevices"]; ok {
 		if ref, ok := refDevices.([]any); ok {
 			for _, device := range ref {
 				x := device.(map[string]any)
-				delete(x, "values")
+				delete(x, "measurements")
 			}
-			m["ref_devices"] = ref
+			m["refDevices"] = ref
 		}
 	}
 	delete(m, "stopwatch")
 }
 
 func transformValues(r *http.Request, values [][]byte) any {
-	grouped := false
+	group := r.URL.Query().Get("options")
 
-	if options := r.URL.Query().Get("options"); options == "grouped" {
-		grouped = true
+	if !slices.Contains([]string{"", "groupByID", "groupByRef"}, group) {
+		group = ""
 	}
 
 	flatValues := make([]json.RawMessage, 0, len(values))
 	groupedValues := map[string][]json.RawMessage{}
 
 	for _, v := range values {
-		switch grouped {
-		case false:
+		switch group {
+		case "":
 			flatValues = append(flatValues, json.RawMessage(v))
-		case true:
+		case "groupByID":
 			valueID := struct {
 				ID string `json:"id"`
 			}{}
@@ -450,10 +483,24 @@ func transformValues(r *http.Request, values [][]byte) any {
 			}
 
 			groupedValues[valueID.ID] = append(groupedValues[valueID.ID], json.RawMessage(v))
+		case "groupByRef":
+			valueID := struct {
+				Ref string `json:"ref"`
+			}{}
+			err := json.Unmarshal(v, &valueID)
+			if err != nil {
+				continue
+			}
+
+			if _, ok := groupedValues[valueID.Ref]; !ok {
+				groupedValues[valueID.Ref] = []json.RawMessage{}
+			}
+
+			groupedValues[valueID.Ref] = append(groupedValues[valueID.Ref], json.RawMessage(v))
 		}
 	}
 
-	if !grouped {
+	if group == "" {
 		return flatValues
 	}
 

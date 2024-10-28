@@ -8,8 +8,10 @@ import (
 type Passage struct {
 	thingImpl
 	CumulatedNumberOfPassages int64 `json:"cumulatedNumberOfPassages"`
-	PassagesToday             int64 `json:"passagesToday"`
+	PassagesToday             int   `json:"passagesToday"`
 	CurrentState              bool  `json:"currentState"`
+
+	passages map[int]int `json:"-"`
 }
 
 func NewPassage(id string, l Location, tenant string) Thing {
@@ -17,6 +19,18 @@ func NewPassage(id string, l Location, tenant string) Thing {
 	return &Passage{
 		thingImpl: thing,
 	}
+}
+func (c *Passage) increasePassages() {
+	c.CumulatedNumberOfPassages++
+
+	if c.passages == nil {
+		c.passages = make(map[int]int)
+	}
+
+	today := time.Now().Year() + time.Now().YearDay()
+	c.passages[today]++
+
+	c.PassagesToday = c.passages[today]
 }
 
 func (c *Passage) Handle(m Measurement, onchange func(m ValueProvider) error) error {
@@ -31,13 +45,7 @@ func (c *Passage) Handle(m Measurement, onchange func(m ValueProvider) error) er
 	var err error
 
 	if *m.BoolValue {
-		c.CumulatedNumberOfPassages++
-
-		if m.Timestamp.YearDay() == time.Now().YearDay() {
-			c.PassagesToday++
-		} else {
-			c.PassagesToday = 1
-		}
+		c.increasePassages()
 
 		peopleCounter := NewPeopleCounter(c.ID(), m.ID, c.PassagesToday, c.CumulatedNumberOfPassages, m.Timestamp)
 
