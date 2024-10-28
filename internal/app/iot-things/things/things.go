@@ -87,12 +87,16 @@ func (t *thingImpl) AddTag(tag string) {
 }
 
 func (c *thingImpl) SetLastObserved(m Measurement, ts time.Time) {
-	for i := range c.RefDevices {
-		if c.RefDevices[i].DeviceID == m.DeviceID() {
-			if c.RefDevices[i].Measurements == nil {
-				c.RefDevices[i].Measurements = make(map[string]Measurement)
+	if slices.Contains(c.ValidURN, m.Urn) {
+		for i := range c.RefDevices {
+
+			if c.RefDevices[i].DeviceID == m.DeviceID() {
+				if c.RefDevices[i].Measurements == nil {
+					c.RefDevices[i].Measurements = make(map[string]Measurement)
+				}
+				
+				c.RefDevices[i].Measurements[m.ID] = m
 			}
-			c.RefDevices[i].Measurements[m.ID] = m
 		}
 	}
 

@@ -182,6 +182,21 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	return nil
 }
 
+func (db database) DeleteThing(ctx context.Context, id string) error {
+	log := logging.GetFromContext(ctx)
+
+	delete := `UPDATE things SET deleted_on=CURRENT_TIMESTAMP WHERE id=@id;`
+	_, err := db.pool.Exec(ctx, delete, pgx.NamedArgs{
+		"id": id,
+	})
+	if err != nil {
+		log.Error("could not execute statement", "err", err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
 	where, args := newQueryThingsParams(conditions...)
 	log := logging.GetFromContext(ctx)

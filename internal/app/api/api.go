@@ -50,6 +50,7 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Post("/", addHandler(log, app))
 				r.Put("/{id}", updateHandler(log, app))
 				r.Patch("/{id}", patchHandler(log, app))
+				r.Delete("/{id}", deleteHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
 				r.Get("/types", getTypesHandler(log, app))
 				r.Get("/values", getValuesHandler(log, app))
@@ -301,6 +302,37 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		err = a.MergeThing(ctx, thingId, b, tenants)
 		if err != nil {
 			logger.Error("could not patch thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		defer r.Body.Close()
+
+		ctx, span := tracer.Start(r.Context(), "delete-thing")
+		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
+		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
+
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+
+		thingId := chi.URLParam(r, "id")
+		if thingId == "" {
+			logger.Error("no id parameter found in request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		tenants := auth.GetAllowedTenantsFromContext(ctx)
+
+		err = a.DeleteThing(ctx, thingId, tenants)
+		if err != nil {
+			logger.Error("could not delete thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}

@@ -29,7 +29,7 @@ func newConditions(conditions ...app.ConditionFunc) map[string]any {
 func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArgs) {
 	c := newConditions(conditions...)
 
-	query := "WHERE 1=1"
+	query := "WHERE deleted_on IS NULL"
 	args := pgx.NamedArgs{}
 
 	if id, ok := c["id"]; ok {

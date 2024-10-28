@@ -11,20 +11,20 @@ import (
 const (
 	lwm2mPrefix string = "urn:oma:lwm2m:ext:"
 
-	DigitalInputURN  string = lwm2mPrefix + "3200"
-	PresenceURN      string = lwm2mPrefix + "3302"
-	TemperatureURN   string = lwm2mPrefix + "3303"
-	PressureURN      string = lwm2mPrefix + "3323"
-	ConductivityURN  string = lwm2mPrefix + "3327"
-	DistanceURN      string = lwm2mPrefix + "3330"
 	AirQualityURN    string = lwm2mPrefix + "3428"
-	WatermeterURN    string = lwm2mPrefix + "3424"
-	PowerURN         string = lwm2mPrefix + "3328"
+	ConductivityURN  string = lwm2mPrefix + "3327"
+	DigitalInputURN  string = lwm2mPrefix + "3200"
+	DistanceURN      string = lwm2mPrefix + "3330"
+	DoorURN          string = "urn:oma:lwm2m:x:10351"
 	EnergyURN        string = lwm2mPrefix + "3331"
 	FillingLevelURN  string = lwm2mPrefix + "3435"
 	PeopleCounterURN string = lwm2mPrefix + "3334"
-	DoorURN          string = "urn:oma:lwm2m:x:10351"
+	PowerURN         string = lwm2mPrefix + "3328"
+	PresenceURN      string = lwm2mPrefix + "3302"
+	PressureURN      string = lwm2mPrefix + "3323"
 	StopwatchURN     string = lwm2mPrefix + "3350"
+	TemperatureURN   string = lwm2mPrefix + "3303"
+	WatermeterURN    string = lwm2mPrefix + "3424"
 	WaterMeterURN    string = lwm2mPrefix + "3424"
 )
 
@@ -92,7 +92,7 @@ type PeopleCounter struct {
 	CumulatedNumberOfPassages Value
 }
 
-func NewPeopleCounter(id, ref string, daily, cumulated int64, ts time.Time) PeopleCounter {
+func NewPeopleCounter(id, ref string, daily int, cumulated int64, ts time.Time) PeopleCounter {
 	return PeopleCounter{
 		DailyNumberOfPassages:     newDailyNumberOfPassages(id, ref, ts, daily),
 		CumulatedNumberOfPassages: newCumulatedNumberOfPassages(id, ref, ts, cumulated),
@@ -103,7 +103,7 @@ func (p PeopleCounter) Values() []Value {
 	return []Value{p.DailyNumberOfPassages, p.CumulatedNumberOfPassages}
 }
 
-func newDailyNumberOfPassages(id, ref string, ts time.Time, value int64) Value {
+func newDailyNumberOfPassages(id, ref string, ts time.Time, value int) Value {
 	id = fmt.Sprintf("%s/%s/%s", id, "3434", "5")
 	return newValue(id, PeopleCounterURN, ref, "", ts, float64(value))
 }

@@ -19,6 +19,7 @@ type ThingsApp interface {
 	SaveThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
+	DeleteThing(ctx context.Context, thingID string, tenants []string) error
 	GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error)
 	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
@@ -40,6 +41,7 @@ type ThingsReader interface {
 type ThingsWriter interface {
 	AddThing(ctx context.Context, t things.Thing) error
 	UpdateThing(ctx context.Context, t things.Thing) error
+	DeleteThing(ctx context.Context, thingID string) error
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
@@ -180,6 +182,27 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 	}
 
 	err = a.writer.UpdateThing(ctx, patchedThing)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
+	if len(tenants) == 0 {
+		return errors.New("tenants must be provided")
+	}
+
+	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
+	if err != nil {
+		return err
+	}
+	if len(result.Data) != 1 {
+		return ErrThingNotFound
+	}
+
+	err = a.writer.DeleteThing(ctx, thingID)
 	if err != nil {
 		return err
 	}
