@@ -1,6 +1,9 @@
 package things
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
 
 type Building struct {
 	thingImpl
@@ -16,35 +19,45 @@ func NewBuilding(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (b *Building) Handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (building *Building) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, building.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (building *Building) handle(m Measurement, onchange func(m ValueProvider) error) error {
 	if m.HasEnergy() {
-		previousValue := b.Energy
+		previousValue := building.Energy
 		value := *m.Value / 3600000.0 // convert from Joule to kWh
 
 		if hasChanged(previousValue, value) {
-			b.Energy = value
-			energy := NewEnergy(b.ID(), m.ID, b.Energy, m.Timestamp)
+			building.Energy = value
+			energy := NewEnergy(building.ID(), m.ID, building.Energy, m.Timestamp)
 			return onchange(energy)
 		}
 	}
 
 	if m.HasPower() {
-		previousValue := b.Power
+		previousValue := building.Power
 		value := *m.Value / 1000.0 // convert from Watt to kW
 
 		if hasChanged(previousValue, value) {
-			b.Power = value
-			power := NewPower(b.ID(), m.ID, b.Power, m.Timestamp)
+			building.Power = value
+			power := NewPower(building.ID(), m.ID, building.Power, m.Timestamp)
 			return onchange(power)
 		}
 	}
 
 	if m.HasTemperature() {
-		if !hasChanged(b.Temperature, *m.Value) {
+		if !hasChanged(building.Temperature, *m.Value) {
 			return nil
 		}
 
-		temp := NewTemperature(b.ID(), m.ID, *m.Value, m.Timestamp)
+		temp := NewTemperature(building.ID(), m.ID, *m.Value, m.Timestamp)
 		err := onchange(temp)
 		if err != nil {
 			return err
@@ -53,7 +66,7 @@ func (b *Building) Handle(m Measurement, onchange func(m ValueProvider) error) e
 		t := *m.Value
 		n := 1
 
-		for _, ref := range b.RefDevices {
+		for _, ref := range building.RefDevices {
 			if ref.DeviceID != m.ID {
 				for _, v := range ref.Measurements {
 					if v.HasTemperature() {
@@ -64,15 +77,16 @@ func (b *Building) Handle(m Measurement, onchange func(m ValueProvider) error) e
 			}
 		}
 
-		b.Temperature = t / float64(n)
+		building.Temperature = t / float64(n)
 
 		return nil
 	}
 
 	return nil
+
 }
 
-func (c *Building) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (building *Building) Byte() []byte {
+	b, _ := json.Marshal(building)
 	return b
 }

@@ -35,8 +35,11 @@ var _ ThingsApp = &ThingsAppMock{}
 //			GetTagsFunc: func(ctx context.Context, tenants []string) ([]string, error) {
 //				panic("mock out the GetTags method")
 //			},
-//			GetTypesFunc: func(ctx context.Context, tenants []string) ([]string, error) {
+//			GetTypesFunc: func(ctx context.Context, tenants []string) ([]things.ThingType, error) {
 //				panic("mock out the GetTypes method")
+//			},
+//			LoadConfigFunc: func(ctx context.Context, r io.Reader) error {
+//				panic("mock out the LoadConfig method")
 //			},
 //			MergeThingFunc: func(ctx context.Context, thingID string, b []byte, tenants []string) error {
 //				panic("mock out the MergeThing method")
@@ -79,7 +82,10 @@ type ThingsAppMock struct {
 	GetTagsFunc func(ctx context.Context, tenants []string) ([]string, error)
 
 	// GetTypesFunc mocks the GetTypes method.
-	GetTypesFunc func(ctx context.Context, tenants []string) ([]string, error)
+	GetTypesFunc func(ctx context.Context, tenants []string) ([]things.ThingType, error)
+
+	// LoadConfigFunc mocks the LoadConfig method.
+	LoadConfigFunc func(ctx context.Context, r io.Reader) error
 
 	// MergeThingFunc mocks the MergeThing method.
 	MergeThingFunc func(ctx context.Context, thingID string, b []byte, tenants []string) error
@@ -147,6 +153,13 @@ type ThingsAppMock struct {
 			// Tenants is the tenants argument value.
 			Tenants []string
 		}
+		// LoadConfig holds details about calls to the LoadConfig method.
+		LoadConfig []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// R is the r argument value.
+			R io.Reader
+		}
 		// MergeThing holds details about calls to the MergeThing method.
 		MergeThing []struct {
 			// Ctx is the ctx argument value.
@@ -202,6 +215,7 @@ type ThingsAppMock struct {
 	lockGetConnectedThings sync.RWMutex
 	lockGetTags            sync.RWMutex
 	lockGetTypes           sync.RWMutex
+	lockLoadConfig         sync.RWMutex
 	lockMergeThing         sync.RWMutex
 	lockQueryThings        sync.RWMutex
 	lockQueryValues        sync.RWMutex
@@ -399,7 +413,7 @@ func (mock *ThingsAppMock) GetTagsCalls() []struct {
 }
 
 // GetTypes calls GetTypesFunc.
-func (mock *ThingsAppMock) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
+func (mock *ThingsAppMock) GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error) {
 	if mock.GetTypesFunc == nil {
 		panic("ThingsAppMock.GetTypesFunc: method is nil but ThingsApp.GetTypes was just called")
 	}
@@ -431,6 +445,42 @@ func (mock *ThingsAppMock) GetTypesCalls() []struct {
 	mock.lockGetTypes.RLock()
 	calls = mock.calls.GetTypes
 	mock.lockGetTypes.RUnlock()
+	return calls
+}
+
+// LoadConfig calls LoadConfigFunc.
+func (mock *ThingsAppMock) LoadConfig(ctx context.Context, r io.Reader) error {
+	if mock.LoadConfigFunc == nil {
+		panic("ThingsAppMock.LoadConfigFunc: method is nil but ThingsApp.LoadConfig was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		R   io.Reader
+	}{
+		Ctx: ctx,
+		R:   r,
+	}
+	mock.lockLoadConfig.Lock()
+	mock.calls.LoadConfig = append(mock.calls.LoadConfig, callInfo)
+	mock.lockLoadConfig.Unlock()
+	return mock.LoadConfigFunc(ctx, r)
+}
+
+// LoadConfigCalls gets all the calls that were made to LoadConfig.
+// Check the length with:
+//
+//	len(mockedThingsApp.LoadConfigCalls())
+func (mock *ThingsAppMock) LoadConfigCalls() []struct {
+	Ctx context.Context
+	R   io.Reader
+} {
+	var calls []struct {
+		Ctx context.Context
+		R   io.Reader
+	}
+	mock.lockLoadConfig.RLock()
+	calls = mock.calls.LoadConfig
+	mock.lockLoadConfig.RUnlock()
 	return calls
 }
 

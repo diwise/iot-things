@@ -34,10 +34,11 @@ func main() {
 	ctx, log, cleanup := o11y.Init(ctx, serviceName, serviceVersion)
 	defer cleanup()
 
-	var opa, fp string
+	var opa, fp, cfgFile string
 
 	flag.StringVar(&opa, "policies", "/opt/diwise/config/authz.rego", "An authorization policy file")
 	flag.StringVar(&fp, "things", "/opt/diwise/config/things.csv", "A file with things")
+	flag.StringVar(&cfgFile, "config", "/opt/diwise/config/config.yaml", "A yaml file with configuration")
 	flag.Parse()
 
 	s, err := storage.New(ctx, storage.LoadConfiguration(ctx))
@@ -46,7 +47,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	a := app.New(s, s)
+	a, err := newApp(ctx, s, s, cfgFile)
+	if err != nil {
+		log.Error("could not configure application", "err", err.Error())
+		os.Exit(1)
+	}
 
 	r, err := newRouter(ctx, opa, a)
 	if err != nil {
@@ -87,6 +92,23 @@ func main() {
 	webServer.Shutdown(ctx)
 	messenger.Close()
 	s.Close()
+}
+
+func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, cfgFilePath string) (app.ThingsApp, error) {
+
+	f, err := os.Open(cfgFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open config file: %s", err.Error())
+	}
+	defer f.Close()
+
+	a := app.New(r, w)
+	err = a.LoadConfig(ctx, f)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load config: %s", err.Error())
+	}
+
+	return a, nil
 }
 
 func newRouter(ctx context.Context, opa string, a app.ThingsApp) (*chi.Mux, error) {

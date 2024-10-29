@@ -22,9 +22,9 @@ type Geometry struct {
 	Coordinates []float64 `json:"coordinates"`
 }
 
-type Resource struct {	
-	Id      string `json:"id"`
-	Type    string `json:"type"`
+type Resource struct {
+	Id   string `json:"id"`
+	Type string `json:"type"`
 }
 
 /* - - - - - - - - - - */

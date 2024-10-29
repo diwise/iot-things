@@ -30,6 +30,8 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, log := o11y.AddTraceIDToLoggerAndStoreInContext(span, logger, ctx)
 
+		log.Debug("received message", "body", string(d.Body()), "topic", d.TopicName(), "content-type", d.ContentType())
+
 		msg := struct {
 			Pack      senml.Pack `json:"pack"`
 			Timestamp time.Time  `json:"timestamp"`
@@ -69,27 +71,32 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
+		if len(measurements) == 0 {
+			log.Debug("no measurements found in pack")
+			return
+		}
+
 		errs := make([]error, 0)
 		changes := map[string]int{}
 
 		for i, t := range connectedThings { // for each connected thing... is it valid to connect a sensor to multiple things?
-			for _, m := range measurements {
-				err := t.Handle(m, func(m things.ValueProvider) error { // handle each measurement
-					var errs []error
+			err := t.Handle(measurements, func(m things.ValueProvider) error {
+				var errs []error
 
-					for _, v := range m.Values() {
-						errs = append(errs, app.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
-						changes[t.ID()] = i
-					}
-
-					return errors.Join(errs...)
-				})
-				if err != nil {
-					errs = append(errs, err)
-					continue
+				for _, v := range m.Values() {
+					errs = append(errs, app.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
+					changes[t.ID()] = i
 				}
-				t.SetLastObserved(m, m.Timestamp) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
+
+				return errors.Join(errs...)
+			})
+			if err != nil {
+				errs = append(errs, err)
+				continue
 			}
+
+			t.SetLastObserved(measurements) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
+
 			errs = append(errs, app.SaveThing(ctx, t))
 		}
 
@@ -123,7 +130,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 		return nil, fmt.Errorf("could not find header record (0)")
 	}
 
-	measurements := make([]things.Measurement, len(pack))
+	measurements := make([]things.Measurement, 0)
 
 	urn := header.StringValue
 
@@ -150,6 +157,10 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 		var vs *string
 		if rec.StringValue != "" {
 			vs = &rec.StringValue
+		}
+
+		if id == "" || urn == "" {
+			continue
 		}
 
 		m := things.Measurement{

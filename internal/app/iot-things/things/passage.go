@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -20,34 +21,50 @@ func NewPassage(id string, l Location, tenant string) Thing {
 		thingImpl: thing,
 	}
 }
-func (c *Passage) increasePassages() {
-	c.CumulatedNumberOfPassages++
+func (p *Passage) increasePassages(ts time.Time) {
+	p.CumulatedNumberOfPassages++
 
-	if c.passages == nil {
-		c.passages = make(map[int]int)
+	if p.passages == nil {
+		p.passages = make(map[int]int)
 	}
 
-	today := time.Now().Year() + time.Now().YearDay()
-	c.passages[today]++
+	current := ts.Year() + ts.YearDay()
+	if _, ok := p.passages[current]; !ok {
+		p.passages[current] = 0
+	}
 
-	c.PassagesToday = c.passages[today]
+	p.passages[current]++
+
+	today := time.Now().Year() + time.Now().YearDay()
+
+	p.PassagesToday = p.passages[today]
 }
 
-func (c *Passage) Handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (p *Passage) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, p.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (p *Passage) handle(m Measurement, onchange func(m ValueProvider) error) error {
 	if !m.HasDigitalInput() {
 		return nil
 	}
 
-	if !hasChanged(c.CurrentState, *m.BoolValue) {
+	if !hasChanged(p.CurrentState, *m.BoolValue) {
 		return nil
 	}
 
 	var err error
 
 	if *m.BoolValue {
-		c.increasePassages()
+		p.increasePassages(m.Timestamp)
 
-		peopleCounter := NewPeopleCounter(c.ID(), m.ID, c.PassagesToday, c.CumulatedNumberOfPassages, m.Timestamp)
+		peopleCounter := NewPeopleCounter(p.ID(), m.ID, p.PassagesToday, p.CumulatedNumberOfPassages, m.Timestamp)
 
 		err = onchange(peopleCounter)
 		if err != nil {
@@ -55,14 +72,14 @@ func (c *Passage) Handle(m Measurement, onchange func(m ValueProvider) error) er
 		}
 	}
 
-	c.CurrentState = *m.BoolValue
+	p.CurrentState = *m.BoolValue
 
-	door := NewDoor(c.ID(), m.ID, c.CurrentState, m.Timestamp)
+	door := NewDoor(p.ID(), m.ID, p.CurrentState, m.Timestamp)
 
 	return onchange(door)
 }
 
-func (c *Passage) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (p *Passage) Byte() []byte {
+	b, _ := json.Marshal(p)
 	return b
 }

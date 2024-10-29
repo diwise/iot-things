@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/functions"
@@ -29,13 +30,23 @@ func NewSewer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Sewer) Handle(v Measurement, onchange func(m ValueProvider) error) error {
+func (s *Sewer) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, s.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (s *Sewer) handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if v.HasDistance() {
-		return c.handleDistance(v, onchange)
+		return s.handleDistance(v, onchange)
 	}
 
 	if v.HasDigitalInput() {
-		return c.handleDigitalInput(v, onchange)
+		return s.handleDigitalInput(v, onchange)
 	}
 
 	return nil
@@ -95,7 +106,7 @@ func (s *Sewer) handleDigitalInput(v Measurement, onchange func(m ValueProvider)
 	return nil
 }
 
-func (c *Sewer) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (s *Sewer) Byte() []byte {
+	b, _ := json.Marshal(s)
 	return b
 }

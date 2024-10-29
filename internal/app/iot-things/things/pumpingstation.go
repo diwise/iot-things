@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/functions"
@@ -33,7 +34,17 @@ func (ps *PumpingStation) stopWatch() *functions.Stopwatch {
 	return ps.Sw
 }
 
-func (ps *PumpingStation) Handle(v Measurement, onchange func(m ValueProvider) error) error {
+func (ps *PumpingStation) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, ps.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (ps *PumpingStation) handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasDigitalInput() {
 		return nil
 	}

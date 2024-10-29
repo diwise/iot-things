@@ -25,7 +25,7 @@ func TestContainer(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	container.Handle(distance, func(m ValueProvider) error {
+	container.Handle([]Measurement{distance}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -39,19 +39,63 @@ func TestPassage(t *testing.T) {
 	thing := NewPassage("id", Location{Latitude: 62, Longitude: 17}, "default")
 	passage := thing.(*Passage)
 
-	v := true
-	digitalInput := Measurement{
+	on := true
+	digitalInputOn := Measurement{
 		ID:        "device/3200/5500",
 		Urn:       "urn:oma:lwm2m:ext:3200",
-		BoolValue: &v,
+		BoolValue: &on,
 		Timestamp: time.Now(),
 	}
 
-	passage.Handle(digitalInput, func(m ValueProvider) error {
+	off := false
+	digitalInputOff := Measurement{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &off,
+		Timestamp: time.Now(),
+	}
+
+	passage.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+		return nil
+	})
+	is.Equal(passage.CurrentState, true)
+	passage.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+		return nil
+	})
+	is.Equal(passage.CurrentState, false)
+
+	passage.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+		return nil
+	})
+	is.Equal(passage.CurrentState, true)
+	passage.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+		return nil
+	})
+	is.Equal(passage.CurrentState, false)
+
+	digitalInputOnYesterday := Measurement{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &on,
+		Timestamp: time.Now().Add(-24 * time.Hour),
+	}
+	digitalInputOffYesterday := Measurement{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &off,
+		Timestamp: time.Now().Add(-24 * time.Hour),
+	}
+
+	passage.Handle([]Measurement{digitalInputOnYesterday}, func(m ValueProvider) error {
+		return nil
+	})
+	passage.Handle([]Measurement{digitalInputOffYesterday}, func(m ValueProvider) error {
 		return nil
 	})
 
-	is.Equal(passage.CurrentState, true)
+	is.Equal(passage.CurrentState, false)
+	is.Equal(passage.CumulatedNumberOfPassages, int64(3))
+	is.Equal(passage.PassagesToday, 2)
 }
 
 func TestSewer(t *testing.T) {
@@ -72,7 +116,7 @@ func TestSewer(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	sewer.Handle(distance, func(m ValueProvider) error {
+	sewer.Handle([]Measurement{distance}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -89,7 +133,7 @@ func TestSewer(t *testing.T) {
 		Timestamp: now.Add(-1 * time.Hour),
 	}
 
-	sewer.Handle(digitalInputOn, func(m ValueProvider) error {
+	sewer.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -101,7 +145,7 @@ func TestSewer(t *testing.T) {
 		Timestamp: now.Add(1 * time.Hour),
 	}
 
-	sewer.Handle(digitalInputOff, func(m ValueProvider) error {
+	sewer.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
 		return nil
 	})
 

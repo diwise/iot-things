@@ -1,38 +1,50 @@
 package things
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
 
 type PointOfInterest struct {
 	thingImpl
 	Temperature float64 `json:"temperature"`
 }
 
-func NewPointOfInterest(id string, l Location, tenant string) PointOfInterest {
-	return PointOfInterest{
+func NewPointOfInterest(id string, l Location, tenant string) Thing {
+	return &PointOfInterest{
 		thingImpl: newThingImpl(id, "PointOfInterest", l, tenant),
 	}
 }
+func (poi *PointOfInterest) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
 
-func (c *PointOfInterest) Handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if !v.HasTemperature() {
+	for _, v := range m {
+		errs = append(errs, poi.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if !m.HasTemperature() {
 		return nil
 	}
 
-	if !hasChanged(c.Temperature, *v.Value) {
+	if !hasChanged(poi.Temperature, *m.Value) {
 		return nil
 	}
 
-	temp := NewTemperature(c.ID(), v.ID, *v.Value, v.Timestamp)
+	temp := NewTemperature(poi.ID(), m.ID, *m.Value, m.Timestamp)
 	err := onchange(temp)
 	if err != nil {
 		return err
 	}
 
-	t := *v.Value
+	t := *m.Value
 	n := 1
 
-	for _, ref := range c.RefDevices {
-		if ref.DeviceID != v.ID {
+	for _, ref := range poi.RefDevices {
+		if ref.DeviceID != m.ID {
 			for _, v := range ref.Measurements {
 				if v.HasTemperature() {
 					t += *v.Value
@@ -42,12 +54,12 @@ func (c *PointOfInterest) Handle(v Measurement, onchange func(m ValueProvider) e
 		}
 	}
 
-	c.Temperature = t / float64(n)
+	poi.Temperature = t / float64(n)
 
 	return nil
 }
 
-func (c *PointOfInterest) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (poi *PointOfInterest) Byte() []byte {
+	b, _ := json.Marshal(poi)
 	return b
 }

@@ -12,12 +12,18 @@ type Thing interface {
 	Type() string
 	Tenant() string
 	LatLon() (float64, float64)
-	Handle(m Measurement, onchange func(m ValueProvider) error) error
+	Handle(m []Measurement, onchange func(m ValueProvider) error) error
 	Byte() []byte
 
-	SetLastObserved(v Measurement, ts time.Time)
+	SetLastObserved(measurements []Measurement)
 	AddDevice(deviceID string)
 	AddTag(tag string)
+}
+
+type ThingType struct {
+	Type    string `json:"type"`
+	SubType string `json:"subType,omitempty"`
+	Name    string `json:"name"`
 }
 
 func newThingImpl(id, t string, l Location, tenant string) thingImpl {
@@ -53,6 +59,8 @@ type Location struct {
 	Longitude float64 `json:"longitude"`
 }
 
+var DefaultLocation = Location{Latitude: 0, Longitude: 0}
+
 type Device struct {
 	DeviceID     string                 `json:"deviceID"`
 	Measurements map[string]Measurement `json:"measurements,omitempty"`
@@ -86,30 +94,36 @@ func (t *thingImpl) AddTag(tag string) {
 	}
 }
 
-func (c *thingImpl) SetLastObserved(m Measurement, ts time.Time) {
-	if slices.Contains(c.ValidURN, m.Urn) {
-		for i := range c.RefDevices {
+func (c *thingImpl) SetLastObserved(measurements []Measurement) {
+	lastObserved := c.ObservedAt
 
-			if c.RefDevices[i].DeviceID == m.DeviceID() {
-				if c.RefDevices[i].Measurements == nil {
-					c.RefDevices[i].Measurements = make(map[string]Measurement)
+	for _, m := range measurements {
+		if slices.Contains(c.ValidURN, m.Urn) {
+			if m.Timestamp.After(lastObserved) {
+				lastObserved = m.Timestamp
+			}
+
+			for i := range c.RefDevices {
+				if c.RefDevices[i].DeviceID == m.DeviceID() {
+					if c.RefDevices[i].Measurements == nil {
+						c.RefDevices[i].Measurements = make(map[string]Measurement)
+					}
+
+					c.RefDevices[i].Measurements[m.ID] = m
 				}
-				
-				c.RefDevices[i].Measurements[m.ID] = m
 			}
 		}
 	}
 
-	if ts.After(c.ObservedAt) {
-		c.ObservedAt = ts
-	}
+	c.ObservedAt = lastObserved
+
 }
 
 func (c *thingImpl) Byte() []byte {
 	b, _ := json.Marshal(c)
 	return b
 }
-func (c *thingImpl) Handle(v Value, onchange func(m ValueProvider) error) error {
+func (c *thingImpl) Handle(v []Measurement, onchange func(m ValueProvider) error) error {
 	return nil
 }
 

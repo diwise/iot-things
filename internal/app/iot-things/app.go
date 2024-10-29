@@ -5,12 +5,14 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"gopkg.in/yaml.v2"
 )
 
 //go:generate moq -rm -out app_mock.go . ThingsApp
@@ -23,8 +25,10 @@ type ThingsApp interface {
 	GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error)
 	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
-	GetTypes(ctx context.Context, tenants []string) ([]string, error)
+	GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error)
 	Seed(ctx context.Context, r io.Reader) error
+
+	LoadConfig(ctx context.Context, r io.Reader) error
 
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 	QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error)
@@ -51,6 +55,16 @@ var ErrAlreadyExists = errors.New("thing already exists")
 type app struct {
 	reader ThingsReader
 	writer ThingsWriter
+	cfg    *config
+}
+
+type config struct {
+	Types []typeConfig `json:"types" yaml:"types"`
+}
+
+type typeConfig struct {
+	Type     string   `json:"type" yaml:"type"`
+	SubTypes []string `json:"subTypes" yaml:"subTypes"`
 }
 
 func New(r ThingsReader, w ThingsWriter) ThingsApp {
@@ -58,6 +72,18 @@ func New(r ThingsReader, w ThingsWriter) ThingsApp {
 		reader: r,
 		writer: w,
 	}
+}
+
+func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
+	c := config{}
+	err := yaml.NewDecoder(r).Decode(&c)
+	if err != nil {
+		return err
+	}
+
+	a.cfg = &c
+
+	return nil
 }
 
 func (a *app) AddThing(ctx context.Context, b []byte) error {
@@ -438,20 +464,25 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
-func (a *app) GetTypes(ctx context.Context, tenants []string) ([]string, error) {
-	return []string{
-		"Beach",
-		"Building",
-		"Container",
-		"WasteContainer",
-		"Lifebuoy",
-		"Passage",
-		"PointOfInterest",
-		"PumpingStation",
-		"Room",
-		"Sewer",
-		"WaterMeter",
-	}, nil
+func (a *app) GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error) {
+	types := make([]things.ThingType, 0)
+
+	for _, t := range a.cfg.Types {
+		types = append(types, things.ThingType{
+			Type: t.Type,
+			Name: t.Type,
+		})
+
+		for _, s := range t.SubTypes {
+			types = append(types, things.ThingType{
+				Type:    t.Type,
+				SubType: s,
+				Name:    fmt.Sprintf("%s:%s", t.Type, s),
+			})
+		}
+	}
+
+	return types, nil
 }
 
 func convToThing(b []byte) (things.Thing, error) {
@@ -464,18 +495,10 @@ func convToThing(b []byte) (things.Thing, error) {
 	}
 
 	switch strings.ToLower(t.Type) {
-	case "beach":
-		fallthrough
-	case "pointofinterest":
-		poi, err := unmarshal[things.PointOfInterest](b)
-		poi.ValidURN = things.PointOfInterestURNs
-		return &poi, err
 	case "building":
 		building, err := unmarshal[things.Building](b)
 		building.ValidURN = things.BuildingURNs
 		return &building, err
-	case "wastecontainer":
-		fallthrough
 	case "container":
 		c, err := unmarshal[things.Container](b)
 		c.ValidURN = things.ContainerURNs
@@ -488,6 +511,10 @@ func convToThing(b []byte) (things.Thing, error) {
 		p, err := unmarshal[things.Passage](b)
 		p.ValidURN = things.PassageURNs
 		return &p, err
+	case "pointofinterest":
+		poi, err := unmarshal[things.PointOfInterest](b)
+		poi.ValidURN = things.PointOfInterestURNs
+		return &poi, err
 	case "pumpingstation":
 		ps, err := unmarshal[things.PumpingStation](b)
 		ps.ValidURN = things.PumpingStationURNs

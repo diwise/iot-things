@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 )
 
@@ -21,7 +22,23 @@ type Watermeter struct {
 	Fraud            bool    `json:"fraud"`
 }
 
-func (c *Watermeter) Handle(v Measurement, onchange func(m ValueProvider) error) error {
+func NewWatermeter(id string, l Location, tenant string) Thing {
+	return &Watermeter{
+		thingImpl: newThingImpl(id, "Room", l, tenant),
+	}
+}
+
+func (wm *Watermeter) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, wm.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (wm *Watermeter) handle(v Measurement, onchange func(m ValueProvider) error) error {
 	if !v.HasWaterMeter() {
 		return nil
 	}
@@ -29,31 +46,32 @@ func (c *Watermeter) Handle(v Measurement, onchange func(m ValueProvider) error)
 	changed := false
 
 	if strings.HasSuffix(v.ID, CumulatedWaterVolumeSuffix) {
-		changed = hasChanged(c.CumulativeVolume, *v.Value)
-		c.CumulativeVolume = *v.Value
+		changed = hasChanged(wm.CumulativeVolume, *v.Value)
+		wm.CumulativeVolume = *v.Value
 	}
+
 	if strings.HasSuffix(v.ID, LeakageSuffix) {
-		changed = hasChanged(c.Leakage, *v.BoolValue)
-		c.Leakage = *v.BoolValue
+		changed = hasChanged(wm.Leakage, *v.BoolValue)
+		wm.Leakage = *v.BoolValue
 	}
 	if strings.HasSuffix(v.ID, BackflowSuffix) {
-		changed = hasChanged(c.Backflow, *v.BoolValue)
-		c.Backflow = *v.BoolValue
+		changed = hasChanged(wm.Backflow, *v.BoolValue)
+		wm.Backflow = *v.BoolValue
 	}
 	if strings.HasSuffix(v.ID, FraudSuffix) {
-		changed = hasChanged(c.Fraud, *v.BoolValue)
-		c.Fraud = *v.BoolValue
+		changed = hasChanged(wm.Fraud, *v.BoolValue)
+		wm.Fraud = *v.BoolValue
 	}
 
 	if changed {
-		wm := NewWaterMeter(c.ID(), v.ID, c.CumulativeVolume, c.Leakage, c.Backflow, c.Fraud, v.Timestamp)
+		wm := NewWaterMeter(wm.ID(), v.ID, wm.CumulativeVolume, wm.Leakage, wm.Backflow, wm.Fraud, v.Timestamp)
 		return onchange(wm)
 	}
 
 	return nil
 }
 
-func (c *Watermeter) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (wm *Watermeter) Byte() []byte {
+	b, _ := json.Marshal(wm)
 	return b
 }

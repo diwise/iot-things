@@ -1,28 +1,48 @@
 package things
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
 
 type Lifebuoy struct {
 	thingImpl
 	Presence bool `json:"presence"`
 }
 
-func (c *Lifebuoy) Handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if !(v.HasDigitalInput() || v.HasPresence()) {
+func NewLifebuoy(id string, l Location, tenant string) Thing {
+	thing := newThingImpl(id, "Lifebuoy", l, tenant)
+	return &Lifebuoy{
+		thingImpl: thing,
+	}
+}
+
+func (l *Lifebuoy) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, l.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (l *Lifebuoy) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if !(m.HasDigitalInput() || m.HasPresence()) {
 		return nil
 	}
 
-	if !hasChanged(c.Presence, *v.BoolValue) {
+	if !hasChanged(l.Presence, *m.BoolValue) {
 		return nil
 	}
 
-	c.Presence = *v.BoolValue
-	presence := NewPresence(c.ID(), v.ID, c.Presence, v.Timestamp)
+	l.Presence = *m.BoolValue
+	presence := NewPresence(l.ID(), m.ID, l.Presence, m.Timestamp)
 
 	return onchange(presence)
 }
 
-func (c *Lifebuoy) Byte() []byte {
-	b, _ := json.Marshal(c)
+func (l *Lifebuoy) Byte() []byte {
+	b, _ := json.Marshal(l)
 	return b
 }

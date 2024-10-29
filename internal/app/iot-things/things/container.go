@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/functions"
 )
@@ -32,8 +33,18 @@ func NewWasteContainer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Container) Handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if !v.HasDistance() {
+func (c *Container) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+	errs := []error{}
+
+	for _, v := range m {
+		errs = append(errs, c.handle(v, onchange))
+	}
+
+	return errors.Join(errs...)
+}
+
+func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if !m.HasDistance() {
 		return nil
 	}
 
@@ -42,18 +53,18 @@ func (c *Container) Handle(v Measurement, onchange func(m ValueProvider) error) 
 		return err
 	}
 
-	_, err = level.Calc(*v.Value, v.Timestamp)
+	_, err = level.Calc(*m.Value, m.Timestamp)
 	if err != nil {
 		return err
 	}
 
-	fillingLevel := NewFillingLevel(c.ID(), v.ID, level.Percent(), level.Current(), v.Timestamp)
+	fillingLevel := NewFillingLevel(c.ID(), m.ID, level.Percent(), level.Current(), m.Timestamp)
 
-	d := *v.Value
+	d := *m.Value
 	n := 1
 
 	for _, ref := range c.RefDevices {
-		if ref.DeviceID != v.ID {
+		if ref.DeviceID != m.ID {
 			for _, h := range ref.Measurements {
 				if h.HasDistance() {
 					d += *h.Value
@@ -65,7 +76,7 @@ func (c *Container) Handle(v Measurement, onchange func(m ValueProvider) error) 
 
 	avg_distance := d / float64(n)
 	avg_level, _ := functions.NewLevel(c.Angle, c.MaxDistance, c.MaxLevel, c.MeanLevel, c.Offset, c.CurrentLevel)
-	avg_level.Calc(avg_distance, v.Timestamp)
+	avg_level.Calc(avg_distance, m.Timestamp)
 
 	c.CurrentLevel = avg_level.Current()
 	c.Percent = avg_level.Percent()

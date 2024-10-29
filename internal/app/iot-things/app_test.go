@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"github.com/matryer/is"
 )
 
 func TestSeed(t *testing.T) {
@@ -65,6 +66,41 @@ func TestSeedUpdate(t *testing.T) {
 
 	app := New(r, w)
 	app.Seed(ctx, strings.NewReader(csvData))
+}
+
+func TestLoadConfig(t *testing.T) {
+	ctx := context.Background()
+	is := is.New(t)
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+			return QueryResult{
+				Data: [][]byte{},
+			}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddThingFunc: func(ctx context.Context, t things.Thing) error {
+			return nil
+		},
+	}
+
+	yamlConfig := `
+types:
+  - type: "exampleType1"
+    subTypes:
+      - "subType1A"
+      - "subType1B"
+  - type: "exampleType2"
+    subTypes:
+      - "subType2A"
+      - "subType2B"
+      - "subType2C"
+`
+
+	app := New(r, w)
+	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
+	is.NoErr(err)
 }
 
 func newConditions(conditions ...ConditionFunc) map[string]any {
