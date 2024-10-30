@@ -20,7 +20,7 @@ type Sewer struct {
 	OverflowDuration       *time.Duration `json:"overflowDuration"`
 	OverflowCumulativeTime time.Duration  `json:"overflowCumulativeTime"`
 
-	Sw *functions.Stopwatch `json:"stopwatch"`
+	Sw *functions.Stopwatch `json:"_stopwatch"`
 }
 
 func NewSewer(id string, l Location, tenant string) Thing {

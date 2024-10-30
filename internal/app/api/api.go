@@ -452,7 +452,13 @@ func mapToOutModel(m map[string]any) {
 			m["refDevices"] = ref
 		}
 	}
-	delete(m, "stopwatch")
+
+	// remove internal fields (i.e. fields starting with "_")
+	for k := range m {
+		if strings.HasPrefix(k, "_") {
+			delete(m, k)
+		}
+	}
 }
 
 func transformValues(r *http.Request, values [][]byte) any {

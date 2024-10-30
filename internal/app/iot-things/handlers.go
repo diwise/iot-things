@@ -107,12 +107,17 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 
 		if len(changes) > 0 {
 			for _, v := range changes {
-				err = msgCtx.PublishOnTopic(ctx, &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
-					ID:        connectedThings[v].ID(),
-					Type:      connectedThings[v].Type(),
-					Tenant:    connectedThings[v].Tenant(),
-					Timestamp: msg.Timestamp,
-				})
+				thing := connectedThings[v]
+				ts := msg.Timestamp
+				msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
+					ID:        thing.ID(),
+					Type:      thing.Type(),
+					Data:      thing,
+					Tenant:    thing.Tenant(),
+					Timestamp: ts.UTC(),
+				}
+
+				err = msgCtx.PublishOnTopic(ctx, msg)
 				if err != nil {
 					log.Error("could not publish thing update", "err", err.Error())
 					return

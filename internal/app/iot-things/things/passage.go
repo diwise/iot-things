@@ -12,7 +12,7 @@ type Passage struct {
 	PassagesToday             int   `json:"passagesToday"`
 	CurrentState              bool  `json:"currentState"`
 
-	passages map[int]int `json:"-"`
+	Passages map[int]int `json:"_passages"`
 }
 
 func NewPassage(id string, l Location, tenant string) Thing {
@@ -24,20 +24,20 @@ func NewPassage(id string, l Location, tenant string) Thing {
 func (p *Passage) increasePassages(ts time.Time) {
 	p.CumulatedNumberOfPassages++
 
-	if p.passages == nil {
-		p.passages = make(map[int]int)
+	if p.Passages == nil {
+		p.Passages = make(map[int]int)
 	}
 
 	current := ts.Year() + ts.YearDay()
-	if _, ok := p.passages[current]; !ok {
-		p.passages[current] = 0
+	if _, ok := p.Passages[current]; !ok {
+		p.Passages[current] = 0
 	}
 
-	p.passages[current]++
+	p.Passages[current]++
 
 	today := time.Now().Year() + time.Now().YearDay()
 
-	p.PassagesToday = p.passages[today]
+	p.PassagesToday = p.Passages[today]
 }
 
 func (p *Passage) Handle(m []Measurement, onchange func(m ValueProvider) error) error {

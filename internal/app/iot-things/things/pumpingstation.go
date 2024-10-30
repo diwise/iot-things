@@ -16,7 +16,7 @@ type PumpingStation struct {
 	PumpingDuration       *time.Duration `json:"pumpingDuration"`
 	PumpingCumulativeTime time.Duration  `json:"pumpingCumulativeTime"`
 
-	Sw *functions.Stopwatch `json:"stopwatch"`
+	Sw *functions.Stopwatch `json:"_stopwatch"`
 }
 
 func NewPumpingStation(id string, l Location, tenant string) Thing {

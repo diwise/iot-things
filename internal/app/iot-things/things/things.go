@@ -40,13 +40,13 @@ type thingImpl struct {
 	Type_       string        `json:"type"`
 	SubType     *string       `json:"subType,omitempty"`
 	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Location    Location      `json:"location,omitempty"`
+	Description string        `json:"description,omitempty"`
+	Location    Location      `json:"location"`
 	Area        *LineSegments `json:"area,omitempty"`
 	RefDevices  []Device      `json:"refDevices,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	Tenant_     string        `json:"tenant"`
-	ObservedAt  time.Time     `json:"observedAt,omitempty"`
+	ObservedAt  time.Time     `json:"observedAt"`
 	ValidURN    []string      `json:"validURN,omitempty"`
 }
 

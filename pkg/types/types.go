@@ -10,6 +10,7 @@ import (
 type ThingUpdated struct {
 	ID        string    `json:"id"`
 	Type      string    `json:"type"`
+	Data      any       `json:"data"`
 	Tenant    string    `json:"tenant"`
 	Timestamp time.Time `json:"timestamp"`
 }

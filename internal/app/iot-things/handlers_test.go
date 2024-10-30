@@ -19,7 +19,7 @@ func TestRoomTemperature(t *testing.T) {
 	r := things.NewRoom("room-001", things.DefaultLocation, "default")
 	r.AddDevice("c5a2ae17c239")
 
-	NewMeasurementsHandler(appMock(r, nil), msgCtxMock(nil))(ctx, msgMock(temperatureMsg), slog.Default())
+	NewMeasurementsHandler(appMock(r, nil), msgCtxMock())(ctx, msgMock(temperatureMsg), slog.Default())
 
 	is.Equal(r.(*things.Room).Temperature, 21.0)
 }
@@ -36,7 +36,7 @@ func TestContainerDistance(t *testing.T) {
 	c.(*things.Container).MaxDistance = &maxd
 	c.(*things.Container).MaxLevel = &maxl
 
-	NewMeasurementsHandler(appMock(c, nil), msgCtxMock(nil))(ctx, msgMock(distanceMsg), slog.Default())
+	NewMeasurementsHandler(appMock(c, nil), msgCtxMock())(ctx, msgMock(distanceMsg), slog.Default())
 
 	is.Equal(c.(*things.Container).CurrentLevel, 0.49) //3.0 - 2.51
 	is.Equal(c.(*things.Container).Percent, 17.5)
@@ -59,7 +59,7 @@ func TestPassageDigitalInput(t *testing.T) {
 
 	v := map[string][]things.Value{}
 	a := appMock(p, v)
-	m := msgCtxMock(nil)
+	m := msgCtxMock()
 
 	now := time.Now()
 	yesterday := now.AddDate(0, 0, -1)
@@ -106,12 +106,9 @@ func appMock(t things.Thing, v map[string][]things.Value) *ThingsAppMock {
 	}
 }
 
-func msgCtxMock(m []messaging.TopicMessage) *messaging.MsgContextMock {
+func msgCtxMock() *messaging.MsgContextMock {
 	return &messaging.MsgContextMock{
 		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
-			if m != nil {
-				m = append(m, message)
-			}
 			return nil
 		},
 	}

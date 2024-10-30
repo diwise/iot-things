@@ -477,7 +477,7 @@ func (a *app) GetTypes(ctx context.Context, tenants []string) ([]things.ThingTyp
 			types = append(types, things.ThingType{
 				Type:    t.Type,
 				SubType: s,
-				Name:    fmt.Sprintf("%s:%s", t.Type, s),
+				Name:    fmt.Sprintf("%s-%s", t.Type, s),
 			})
 		}
 	}
