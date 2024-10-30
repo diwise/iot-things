@@ -31,7 +31,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ctx, log, cleanup := o11y.Init(ctx, serviceName, serviceVersion)
+	ctx, log, cleanup := o11y.Init(ctx, serviceName, serviceVersion, "json")
 	defer cleanup()
 
 	var opa, fp, cfgFile string
