@@ -20,7 +20,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 WORKDIR /opt/diwise
 
-COPY --from=builder --chown=1001 /assets/config/config.yaml /opt/diwise/config
+COPY --from=builder --chown=1001 /app/assets/config/config.yaml /opt/diwise/config/config.yaml
 COPY --from=builder --chown=1001 /app/cmd/iot-things/iot-things /opt/diwise
 
 RUN chown 1001 /opt/diwise
