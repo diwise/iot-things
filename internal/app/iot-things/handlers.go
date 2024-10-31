@@ -30,8 +30,6 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, log := o11y.AddTraceIDToLoggerAndStoreInContext(span, logger, ctx)
 
-		log.Debug("received message", "body", string(d.Body()), "topic", d.TopicName(), "content-type", d.ContentType())
-
 		msg := struct {
 			Pack      senml.Pack `json:"pack"`
 			Timestamp time.Time  `json:"timestamp"`
@@ -105,14 +103,20 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
+		if len(changes) == 0 {
+			log.Debug("no changes detected")
+			return
+		}
+
 		if len(changes) > 0 {
 			for _, v := range changes {
 				thing := connectedThings[v]
 				ts := msg.Timestamp
+
 				msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
 					ID:        thing.ID(),
 					Type:      thing.Type(),
-					Data:      thing,
+					Thing:     thing,
 					Tenant:    thing.Tenant(),
 					Timestamp: ts.UTC(),
 				}
