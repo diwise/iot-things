@@ -28,12 +28,12 @@ func (p *Passage) increasePassages(ts time.Time) {
 		p.Passages = make(map[int]int)
 	}
 
-	current := ts.Year() + ts.YearDay()
-	if _, ok := p.Passages[current]; !ok {
-		p.Passages[current] = 0
+	dayNr := ts.Year() + ts.YearDay()
+	if _, ok := p.Passages[dayNr]; !ok {
+		p.Passages[dayNr] = 0
 	}
 
-	p.Passages[current]++
+	p.Passages[dayNr]++
 
 	today := time.Now().Year() + time.Now().YearDay()
 

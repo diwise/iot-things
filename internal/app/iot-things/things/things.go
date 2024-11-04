@@ -115,14 +115,18 @@ func (c *thingImpl) SetLastObserved(measurements []Measurement) {
 		}
 	}
 
-	c.ObservedAt = lastObserved
+	if lastObserved.IsZero(){
+		lastObserved = time.Now()
+	}
 
+	c.ObservedAt = lastObserved
 }
 
 func (c *thingImpl) Byte() []byte {
 	b, _ := json.Marshal(c)
 	return b
 }
+
 func (c *thingImpl) Handle(v []Measurement, onchange func(m ValueProvider) error) error {
 	return nil
 }

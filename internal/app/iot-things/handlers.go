@@ -116,7 +116,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 				msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
 					ID:        thing.ID(),
 					Type:      thing.Type(),
-					Thing:     thing,
+					Thing:     stripFields(thing),
 					Tenant:    thing.Tenant(),
 					Timestamp: ts.UTC(),
 				}
@@ -129,6 +129,37 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			}
 		}
 	}
+}
+
+func stripFields(t things.Thing) map[string]any {
+	m := make(map[string]any)
+	b, err := json.Marshal(t)
+	if err != nil {
+		return m
+	}
+	err = json.Unmarshal(b, &m)
+	if err != nil {
+		return m
+	}
+
+	if refDevices, ok := m["refDevices"]; ok {
+		if ref, ok := refDevices.([]any); ok {
+			for _, device := range ref {
+				x := device.(map[string]any)
+				delete(x, "measurements")
+			}
+			m["refDevices"] = ref
+		}
+	}
+
+	// remove internal fields (i.e. fields starting with "_")
+	for k := range m {
+		if strings.HasPrefix(k, "_") {
+			delete(m, k)
+		}
+	}
+
+	return m
 }
 
 func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error) {
