@@ -156,4 +156,3 @@ PATCH update/replace a things attribute
 ```
 
 Add or replace _attr_ attribute with _value_
-
