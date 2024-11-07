@@ -1,5 +1,1 @@
-thingID;thingType;location;props;relatedId;relatedType;location;tenant;tags
-forradet-bpn;CombinedSewageOverflow;62.4008,17.4135;name='Förrådet BPN';d4f3e2f1-d430-467b-85ec-7cd977b0335f;stopwatch;0.0,0.0;msva;;
-tradgarden-bpn;CombinedSewageOverflow;62.4008,17.4135;name='Trädgården BPN';527090f3-7f85-49f8-889b-99a50530dede;stopwatch;0.0,0.0;msva;;
-braddmatare-05;CombinedSewageOverflow;62.4008,17.4135;name='Bräddmätare 05';46a8ab5a-48c8-4f51-870b-b820f621a0a4;stopwatch;0.0,0.0;msva;Test
-5;WasteContainer;62.39095613,,17.31727909;capacity=160;level:5;level;62.39095613,,17.31727909;default;soptunna,linje 1;
+id;type;subType;name;decsription;location;tenant;tags;refDevices;args

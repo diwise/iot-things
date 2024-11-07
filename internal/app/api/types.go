@@ -23,9 +23,8 @@ type Geometry struct {
 }
 
 type Resource struct {
-	ThingID string `json:"thing_id"`
-	Id      string `json:"id"`
-	Type    string `json:"type"`
+	Id   string `json:"id"`
+	Type string `json:"type"`
 }
 
 /* - - - - - - - - - - */
@@ -46,13 +45,13 @@ type links struct {
 }
 
 type ApiResponse struct {
-	Meta     *meta           `json:"meta,omitempty"`
-	Data     json.RawMessage `json:"data"`
-	Links    *links          `json:"links,omitempty"`
-	Included []Resource      `json:"included,omitempty"`
+	Meta     *meta      `json:"meta,omitempty"`
+	Data     any        `json:"data"`
+	Links    *links     `json:"links,omitempty"`
+	Included []Resource `json:"included,omitempty"`
 }
 
-func NewApiResponse(r *http.Request, data json.RawMessage, count, total, offset, limit uint64) ApiResponse {
+func NewApiResponse(r *http.Request, data any, count, total, offset, limit uint64) ApiResponse {
 	meta := &meta{
 		TotalRecords: total,
 	}

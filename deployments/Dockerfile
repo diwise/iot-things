@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM docker.io/golang:1.22 AS builder
+FROM --platform=$BUILDPLATFORM docker.io/golang:1.23 AS builder
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -20,6 +20,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 WORKDIR /opt/diwise
 
+COPY --from=builder --chown=1001 /app/assets/config/config.yaml /opt/diwise/config/config.yaml
 COPY --from=builder --chown=1001 /app/cmd/iot-things/iot-things /opt/diwise
 
 RUN chown 1001 /opt/diwise
