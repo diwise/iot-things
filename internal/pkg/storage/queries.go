@@ -3,6 +3,8 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	app "github.com/diwise/iot-things/internal/app/iot-things"
 	"github.com/jackc/pgx/v5"
@@ -60,6 +62,41 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 
 	if refDevice, ok := c["refdevice"]; ok {
 		query += fmt.Sprintf(` AND data ? 'refDevices' AND data->'refDevices' @> '[{"deviceID": "%s"}]'`, refDevice)
+	}
+
+	for k, v := range c {
+		if strings.HasPrefix(k, "<") && strings.HasSuffix(k, ">") {
+			fieldname := k[1 : len(k)-1]
+			s, ok := v.([]string)
+			if !ok {
+				continue
+			}
+
+			f, err := strconv.ParseFloat(s[0], 64)
+			if err != nil {
+				continue
+			}
+
+			op, opOk := c["operator"]
+			if !opOk {
+				op = "gt"
+			}
+			
+			switch op {
+			case "eq":
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric = @%f", fieldname, fieldname, f)
+			case "gt":
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%f", fieldname, fieldname, f)
+			case "lt":
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric < @%f", fieldname, fieldname, f)
+			case "ne":
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric <> @%f", fieldname, fieldname, f)
+			default:
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%f", fieldname, fieldname, f)
+			}
+
+			args[fieldname] = f
+		}
 	}
 
 	query += " ORDER BY type ASC, data->>'subType' ASC, data->>'name' ASC"

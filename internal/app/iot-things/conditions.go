@@ -1,6 +1,7 @@
 package iotthings
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -179,6 +180,14 @@ func WithTimeUnit(timeUnit string) ConditionFunc {
 	}
 }
 
+func WithFieldNameValue(fieldName string, value any) ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		key := fmt.Sprintf("<%s>", fieldName)
+		m[key] = value
+		return m
+	}
+}
+
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
 
@@ -191,85 +200,62 @@ func WithParams(query map[string][]string) []ConditionFunc {
 		params[key] = v
 	}
 
-	if id, ok := params["id"]; ok {
-		conditions = append(conditions, WithID(id[0]))
-	}
-
-	if tenants, ok := params["tenant"]; ok {
-		conditions = append(conditions, WithTenants(tenants))
-	}
-
-	if types, ok := params["type"]; ok {
-		conditions = append(conditions, WithTypes(types))
-	}
-
-	if subType, ok := params["subtype"]; ok {
-		conditions = append(conditions, WithSubType(subType[0]))
-	}
-
-	if tags, ok := params["tags"]; ok {
-		conditions = append(conditions, WithTags(tags))
-	}
-
-	if refDevice, ok := params["refdevice"]; ok {
-		conditions = append(conditions, WithRefDevice(refDevice[0]))
-	}
-
-	if offset, ok := params["offset"]; ok {
-		i, err := strconv.Atoi(offset[0])
-		if err == nil {
-			conditions = append(conditions, WithOffset(i))
-		}
-	}
-
-	if limit, ok := params["limit"]; ok {
-		i, err := strconv.Atoi(limit[0])
-		if err == nil {
-			conditions = append(conditions, WithLimit(i))
-		}
-	}
-
-	if thing_id, ok := params["thingid"]; ok {
-		conditions = append(conditions, WithThingID(thing_id[0]))
-	}
-
-	if urn, ok := params["urn"]; ok {
-		conditions = append(conditions, WithUrn(urn))
-	}
-
-	if timeRel, ok := params["timerel"]; ok {
-		conditions = append(conditions, WithTimeRel(timeRel[0]))
-
-		if timeAt, ok := params["timeat"]; ok {
-			conditions = append(conditions, WithTimeAt(timeAt[0]))
+	for key, values := range params {
+		switch key {
+		case "id":
+			conditions = append(conditions, WithID(values[0]))
+		case "tenant":
+			conditions = append(conditions, WithTenants(values))
+		case "type":
+			conditions = append(conditions, WithTypes(values))
+		case "subtype":
+			conditions = append(conditions, WithSubType(values[0]))
+		case "tags":
+			conditions = append(conditions, WithTags(values))
+		case "refdevice":
+			conditions = append(conditions, WithRefDevice(values[0]))
+		case "offset":
+			if i, err := strconv.Atoi(values[0]); err == nil {
+				conditions = append(conditions, WithOffset(i))
+			}
+		case "limit":
+			if i, err := strconv.Atoi(values[0]); err == nil {
+				conditions = append(conditions, WithLimit(i))
+			}
+		case "thingid":
+			conditions = append(conditions, WithThingID(values[0]))
+		case "urn":
+			conditions = append(conditions, WithUrn(values))
+		case "timerel":
+			conditions = append(conditions, WithTimeRel(values[0]))
+			if timeAt, ok := params["timeat"]; ok {
+				conditions = append(conditions, WithTimeAt(timeAt[0]))
+			}
+			if endTimeAt, ok := params["endtimeat"]; ok {
+				conditions = append(conditions, WithEndTimeAt(endTimeAt[0]))
+			}
+		case "op":
+			conditions = append(conditions, WithOperator(values[0]))
+		case "value":
+			if _, ok := params["op"]; !ok {
+				conditions = append(conditions, WithOperator("eq"))
+			}
+			conditions = append(conditions, WithValue(values[0]))
+		case "vb":
+			conditions = append(conditions, WithBoolValue(values[0]))
+		case "n":
+			conditions = append(conditions, WithValueName(values[0]))
+		case "timeunit":
+			conditions = append(conditions, WithTimeUnit(values[0]))
 		}
 
-		if endTimeAt, ok := params["endtimeat"]; ok {
-			conditions = append(conditions, WithEndTimeAt(endTimeAt[0]))
+		if strings.HasPrefix(key, "v[") && strings.HasSuffix(key, "]") {
+			fieldname := key[2 : len(key)-1]
+			conditions = append(conditions, WithFieldNameValue(fieldname, values))
+			if _, ok := params["op"]; !ok {
+				conditions = append(conditions, WithOperator("gt"))
+			}
 		}
-	}
-
-	if operator, ok := params["op"]; ok {
-		conditions = append(conditions, WithOperator(operator[0]))
-	}
-
-	if value, ok := params["value"]; ok {
-		if _, ok := params["op"]; !ok {
-			conditions = append(conditions, WithOperator("eq"))
-		}
-		conditions = append(conditions, WithValue(value[0]))
-	}
-
-	if vb, ok := params["vb"]; ok {
-		conditions = append(conditions, WithBoolValue(vb[0]))
-	}
-
-	if n, ok := params["n"]; ok {
-		conditions = append(conditions, WithValueName(n[0]))
-	}
-
-	if timeUnit, ok := params["timeunit"]; ok {
-		conditions = append(conditions, WithTimeUnit(timeUnit[0]))
 	}
 
 	return conditions
