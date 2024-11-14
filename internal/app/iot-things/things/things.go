@@ -2,6 +2,7 @@ package things
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -36,18 +37,19 @@ func newThingImpl(id, t string, l Location, tenant string) thingImpl {
 }
 
 type thingImpl struct {
-	ID_         string        `json:"id"`
-	Type_       string        `json:"type"`
-	SubType     *string       `json:"subType,omitempty"`
-	Name        string        `json:"name"`
-	Description string        `json:"description,omitempty"`
-	Location    Location      `json:"location"`
-	Area        *LineSegments `json:"area,omitempty"`
-	RefDevices  []Device      `json:"refDevices,omitempty"`
-	Tags        []string      `json:"tags,omitempty"`
-	Tenant_     string        `json:"tenant"`
-	ObservedAt  time.Time     `json:"observedAt"`
-	ValidURN    []string      `json:"validURN,omitempty"`
+	ID_             string        `json:"id"`
+	Type_           string        `json:"type"`
+	SubType         *string       `json:"subType,omitempty"`
+	Name            string        `json:"name"`
+	AlternativeName string        `json:"alternativeName,omitempty"`
+	Description     string        `json:"description,omitempty"`
+	Location        Location      `json:"location"`
+	Area            *LineSegments `json:"area,omitempty"`
+	RefDevices      []Device      `json:"refDevices,omitempty"`
+	Tags            []string      `json:"tags,omitempty"`
+	Tenant_         string        `json:"tenant"`
+	ObservedAt      time.Time     `json:"observedAt"`
+	ValidURN        []string      `json:"validURN,omitempty"`
 }
 
 type Point []float64     // [x, y]
@@ -115,7 +117,7 @@ func (c *thingImpl) SetLastObserved(measurements []Measurement) {
 		}
 	}
 
-	if lastObserved.IsZero(){
+	if lastObserved.IsZero() {
 		lastObserved = time.Now()
 	}
 
@@ -200,4 +202,64 @@ func (m Measurement) HasWaterMeter() bool {
 
 func (m Measurement) DeviceID() string {
 	return strings.Split(m.ID, "/")[0]
+}
+
+func ConvToThing(b []byte) (Thing, error) {
+	t := struct {
+		Type string `json:"type"`
+	}{}
+	err := json.Unmarshal(b, &t)
+	if err != nil {
+		return nil, err
+	}
+
+	switch strings.ToLower(t.Type) {
+	case "building":
+		building, err := unmarshal[Building](b)
+		building.ValidURN = BuildingURNs
+		return &building, err
+	case "container":
+		c, err := unmarshal[Container](b)
+		c.ValidURN = ContainerURNs
+		return &c, err
+	case "lifebuoy":
+		l, err := unmarshal[Lifebuoy](b)
+		l.ValidURN = LifebuoyURNs
+		return &l, err
+	case "passage":
+		p, err := unmarshal[Passage](b)
+		p.ValidURN = PassageURNs
+		return &p, err
+	case "pointofinterest":
+		poi, err := unmarshal[PointOfInterest](b)
+		poi.ValidURN = PointOfInterestURNs
+		return &poi, err
+	case "pumpingstation":
+		ps, err := unmarshal[PumpingStation](b)
+		ps.ValidURN = PumpingStationURNs
+		return &ps, err
+	case "room":
+		r, err := unmarshal[Room](b)
+		r.ValidURN = RoomURNs
+		return &r, err
+	case "sewer":
+		s, err := unmarshal[Sewer](b)
+		s.ValidURN = SewerURNs
+		return &s, err
+	case "watermeter":
+		l, err := unmarshal[Watermeter](b)
+		l.ValidURN = WaterMeterURNs
+		return &l, err
+	default:
+		return nil, errors.New("unknown thing type [" + t.Type + "]")
+	}
+}
+
+func unmarshal[T any](b []byte) (T, error) {
+	var m T
+	err := json.Unmarshal(b, &m)
+	if err != nil {
+		return m, err
+	}
+	return m, nil
 }

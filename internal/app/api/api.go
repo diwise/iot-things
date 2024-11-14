@@ -13,6 +13,7 @@ import (
 	"time"
 
 	app "github.com/diwise/iot-things/internal/app/iot-things"
+	"github.com/diwise/iot-things/internal/app/iot-things/things"
 	"github.com/diwise/iot-things/internal/pkg/auth"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
@@ -89,6 +90,21 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		if r.Header.Get("Accept") == "text/csv" {
+			err := exportQueryResultAsCSV(result, w)
+			if err != nil {
+				logger.Error("could not export query response as CSV", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/csv")
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+
 		data := make([]map[string]any, 0, len(result.Data))
 		for _, b := range result.Data {
 			m := make(map[string]any)
@@ -117,6 +133,109 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
 	}
+}
+
+func exportQueryResultAsCSV(result app.QueryResult, w io.Writer) error {
+	if result.Count == 0 {
+		return nil
+	}
+
+	for i, b := range result.Data {
+		t, err := things.ConvToThing(b)
+		if err != nil {
+			return err
+		}
+
+		m := make(map[string]any)
+		err = json.Unmarshal(b, &m)
+		if err != nil {
+			return err
+		}
+
+		if i == 0 {
+			header := strings.Join([]string{"id", "type", "subType", "name", "decsription", "location", "tenant", "tags", "refDevices", "args"}, ";")
+			_, err := w.Write([]byte(fmt.Sprintln(header)))
+			if err != nil {
+				return err
+			}
+		}
+
+		asString := func(v any) string {
+			if v == nil {
+				return ""
+			}
+			return fmt.Sprintf("%v", v)
+		}
+		asTags := func(v any) string {
+			if v == nil {
+				return ""
+			}
+			values := v.([]any)
+			tags := make([]string, len(values))
+			for i, tag := range values {
+				tags[i] = fmt.Sprintf("%v", tag)
+			}
+
+			return strings.Join(tags, ",")
+		}
+		asRefDevices := func(v any) string {
+			if v == nil {
+				return ""
+			}
+			devices := v.([]any)
+			refDevices := make([]string, len(devices))
+			for i, device := range devices {
+				d := device.(map[string]any)
+				refDevices[i] = fmt.Sprintf("%v", d["deviceID"])
+			}
+			return strings.Join(refDevices, ",")
+		}
+		asArgs := func(m map[string]any) string {
+			args := []string{}
+
+			for k, v := range m {
+				if slices.Contains([]string{"maxd", "maxl", "meanl", "offset", "angle"}, k) {
+					args = append(args, fmt.Sprintf("'%s':%f", k, v.(float64)))
+				}
+				if slices.Contains([]string{"alternativeName"}, k) {
+					s := v.(string)
+					if s != "" {
+						args = append(args, fmt.Sprintf("'%s':'%s'", k, s))
+					}
+				}
+			}
+
+			if len(args) > 0 {
+				j := "{" + strings.Join(args, ",") + "}"
+				return j
+			}
+
+			return ""
+		}
+
+		lat, lon := t.LatLon()
+		values := []string{
+			t.ID(),
+			t.Type(),
+			asString(m["subType"]),
+			asString(m["name"]),
+			asString(m["description"]),
+			fmt.Sprintf("%f,%f", lat, lon),
+			t.Tenant(),
+			asTags(m["tags"]),
+			asRefDevices(m["refDevices"]),
+			asArgs(m),
+		}
+
+		row := strings.Join(values, ";")
+
+		_, err = w.Write([]byte(fmt.Sprintln(row)))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
