@@ -27,8 +27,8 @@ github.com/diwise/messaging-golang v0.0.0-20241021090331-143508a441a2 h1:OyfHG/O
 github.com/diwise/messaging-golang v0.0.0-20241021090331-143508a441a2/go.mod h1:oxItnOgjQbbE2Qn2nSC/qNL3eAUGy6lzGZjcjUd7nQY=
 github.com/diwise/senml v0.0.0-20240402140901-e4008e065e05 h1:+SdFJnEPvLR2XOPPR5Q4Wz5t6XQAXE61nnC46H4L6+8=
 github.com/diwise/senml v0.0.0-20240402140901-e4008e065e05/go.mod h1:ufA3dosHOpdrV7y/Cx5hOPNiWM4hD82YHNlsN3T4dLQ=
-github.com/diwise/service-chassis v0.0.0-20241029140839-0f982044ce69 h1:hMBFl8R5quPUJaKqlLTMVnsjY+c7TFkwvB7iwytShyc=
-github.com/diwise/service-chassis v0.0.0-20241029140839-0f982044ce69/go.mod h1:BYdAMYo8/7VoQhtnjRAssfznPSRFiS+a7ZI86E2FvSo=
+github.com/diwise/service-chassis v0.0.0-20241111144035-fc0fd331700b h1:IG1a/fVkLO8fVLdAamWOLeXG9lAMFFT7B+TpX9Ra1ts=
+github.com/diwise/service-chassis v0.0.0-20241111144035-fc0fd331700b/go.mod h1:BYdAMYo8/7VoQhtnjRAssfznPSRFiS+a7ZI86E2FvSo=
 github.com/dustin/go-humanize v1.0.0 h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
