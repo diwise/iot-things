@@ -8,10 +8,11 @@ types:
   - type: "Passage"
   - type: "PointOfInterest"
     subTypes:
-      - "Beach"    
+      - "Beach"
   - type: "Pumpingstation"
   - type: "Room"
   - type: "Sewer"
     subTypes:
       - "CombinedSewerOverflow"
   - type: "WaterMeter"
+  - type: "Desk"

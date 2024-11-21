@@ -49,8 +49,13 @@ type ThingsWriter interface {
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
-var ErrThingNotFound = errors.New("thing not found")
-var ErrAlreadyExists = errors.New("thing already exists")
+var (
+	ErrThingNotFound      = errors.New("thing not found")
+	ErrAlreadyExists      = errors.New("thing already exists")
+	ErrMissingThingID     = errors.New("thing ID must be provided")
+	ErrMissingThingTenant = errors.New("tenant must be provided")
+	ErrMissingThingType   = errors.New("thing type must be provided")
+)
 
 type app struct {
 	reader ThingsReader
@@ -87,19 +92,19 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 }
 
 func (a *app) AddThing(ctx context.Context, b []byte) error {
-	t, err := convToThing(b)
+	t, err := things.ConvToThing(b)
 	if err != nil {
 		return err
 	}
 
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	err = a.writer.AddThing(ctx, t)
@@ -115,19 +120,19 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 		return errors.New("tenants must be provided")
 	}
 
-	t, err := convToThing(b)
+	t, err := things.ConvToThing(b)
 	if err != nil {
 		return err
 	}
 
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	result, err := a.reader.QueryThings(ctx, WithID(t.ID()), WithTenants(tenants))
@@ -148,13 +153,13 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 
 func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	err := a.writer.UpdateThing(ctx, t)
@@ -167,7 +172,7 @@ func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
 
 func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
-		return errors.New("tenants must be provided")
+		return ErrMissingThingTenant
 	}
 
 	patch := make(map[string]any)
@@ -202,7 +207,7 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 		return err
 	}
 
-	patchedThing, err := convToThing(v)
+	patchedThing, err := things.ConvToThing(v)
 	if err != nil {
 		return err
 	}
@@ -217,7 +222,7 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 
 func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
 	if len(tenants) == 0 {
-		return errors.New("tenants must be provided")
+		return ErrMissingThingTenant
 	}
 
 	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
@@ -261,7 +266,7 @@ func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 		return nil
 	}
 
-	t, err := convToThing(result.Data[0])
+	t, err := things.ConvToThing(result.Data[0])
 	if err != nil {
 		return nil
 	}
@@ -275,18 +280,18 @@ func (a *app) GetConnectedThings(ctx context.Context, deviceID string) ([]things
 		return nil, err
 	}
 
-	things := make([]things.Thing, 0)
+	tt := make([]things.Thing, 0)
 
 	for _, b := range result.Data {
-		t, err := convToThing(b)
+		t, err := things.ConvToThing(b)
 		if err != nil {
 			return nil, err
 		}
 
-		things = append(things, t)
+		tt = append(tt, t)
 	}
 
-	return things, nil
+	return tt, nil
 }
 
 func (a *app) GetTags(ctx context.Context, tenants []string) ([]string, error) {
@@ -483,64 +488,4 @@ func (a *app) GetTypes(ctx context.Context, tenants []string) ([]things.ThingTyp
 	}
 
 	return types, nil
-}
-
-func convToThing(b []byte) (things.Thing, error) {
-	t := struct {
-		Type string `json:"type"`
-	}{}
-	err := json.Unmarshal(b, &t)
-	if err != nil {
-		return nil, err
-	}
-
-	switch strings.ToLower(t.Type) {
-	case "building":
-		building, err := unmarshal[things.Building](b)
-		building.ValidURN = things.BuildingURNs
-		return &building, err
-	case "container":
-		c, err := unmarshal[things.Container](b)
-		c.ValidURN = things.ContainerURNs
-		return &c, err
-	case "lifebuoy":
-		l, err := unmarshal[things.Lifebuoy](b)
-		l.ValidURN = things.LifebuoyURNs
-		return &l, err
-	case "passage":
-		p, err := unmarshal[things.Passage](b)
-		p.ValidURN = things.PassageURNs
-		return &p, err
-	case "pointofinterest":
-		poi, err := unmarshal[things.PointOfInterest](b)
-		poi.ValidURN = things.PointOfInterestURNs
-		return &poi, err
-	case "pumpingstation":
-		ps, err := unmarshal[things.PumpingStation](b)
-		ps.ValidURN = things.PumpingStationURNs
-		return &ps, err
-	case "room":
-		r, err := unmarshal[things.Room](b)
-		r.ValidURN = things.RoomURNs
-		return &r, err
-	case "sewer":
-		s, err := unmarshal[things.Sewer](b)
-		s.ValidURN = things.SewerURNs
-		return &s, err
-	case "watermeter":
-		l, err := unmarshal[things.Watermeter](b)
-		l.ValidURN = things.WaterMeterURNs
-		return &l, err
-	default:
-		return nil, errors.New("unknown thing type [" + t.Type + "]")
-	}
-}
-
-func unmarshal[T any](b []byte) (T, error) {
-	var m T
-	err := json.Unmarshal(b, &m)
-	if err != nil {
-		return m, err
-	}
-	return m, nil
 }
