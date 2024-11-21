@@ -38,6 +38,7 @@ var (
 	RoomURNs            = []string{TemperatureURN}
 	SewerURNs           = []string{DistanceURN, DigitalInputURN}
 	WaterMeterURNs      = []string{WatermeterURN}
+	DeskURNs            = []string{DigitalInputURN, PresenceURN}
 )
 
 func hasChanged(a, b any) bool {

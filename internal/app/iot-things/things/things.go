@@ -250,6 +250,10 @@ func ConvToThing(b []byte) (Thing, error) {
 		l, err := unmarshal[Watermeter](b)
 		l.ValidURN = WaterMeterURNs
 		return &l, err
+	case "desk":
+		d, err := unmarshal[Desk](b)
+		d.ValidURN = DeskURNs
+		return &d, err
 	default:
 		return nil, errors.New("unknown thing type [" + t.Type + "]")
 	}
