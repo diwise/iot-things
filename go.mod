@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.23.2
 
 require (
-	github.com/diwise/service-chassis v0.0.0-20241029140839-0f982044ce69
+	github.com/diwise/service-chassis v0.0.0-20241111144035-fc0fd331700b
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v2 v2.4.0
