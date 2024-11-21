@@ -49,8 +49,13 @@ type ThingsWriter interface {
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 }
 
-var ErrThingNotFound = errors.New("thing not found")
-var ErrAlreadyExists = errors.New("thing already exists")
+var (
+	ErrThingNotFound      = errors.New("thing not found")
+	ErrAlreadyExists      = errors.New("thing already exists")
+	ErrMissingThingID     = errors.New("thing ID must be provided")
+	ErrMissingThingTenant = errors.New("tenant must be provided")
+	ErrMissingThingType   = errors.New("thing type must be provided")
+)
 
 type app struct {
 	reader ThingsReader
@@ -93,13 +98,13 @@ func (a *app) AddThing(ctx context.Context, b []byte) error {
 	}
 
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	err = a.writer.AddThing(ctx, t)
@@ -121,13 +126,13 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	}
 
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	result, err := a.reader.QueryThings(ctx, WithID(t.ID()), WithTenants(tenants))
@@ -148,13 +153,13 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 
 func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
 	if t.ID() == "" {
-		return errors.New("thing ID must be provided")
+		return ErrMissingThingID
 	}
 	if t.Tenant() == "" {
-		return errors.New("tenant must be provided")
+		return ErrMissingThingTenant
 	}
 	if t.Type() == "" {
-		return errors.New("thing type must be provided")
+		return ErrMissingThingType
 	}
 
 	err := a.writer.UpdateThing(ctx, t)
@@ -167,7 +172,7 @@ func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
 
 func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
-		return errors.New("tenants must be provided")
+		return ErrMissingThingTenant
 	}
 
 	patch := make(map[string]any)
@@ -217,7 +222,7 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 
 func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
 	if len(tenants) == 0 {
-		return errors.New("tenants must be provided")
+		return ErrMissingThingTenant
 	}
 
 	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
