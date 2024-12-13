@@ -28,7 +28,7 @@ func (d *Desk) Handle(m []Measurement, onchange func(m ValueProvider) error) err
 }
 
 func (d *Desk) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if !(m.HasDigitalInput() || m.HasPresence()) {
+	if !(hasDigitalInput(&m) || hasPresence(&m)) {
 		return nil
 	}
 

@@ -15,6 +15,7 @@ type Thing interface {
 	LatLon() (float64, float64)
 	Handle(m []Measurement, onchange func(m ValueProvider) error) error
 	Byte() []byte
+	Refs() []Device
 
 	SetLastObserved(measurements []Measurement)
 	AddDevice(deviceID string)
@@ -88,6 +89,9 @@ func (t *thingImpl) AddDevice(deviceID string) {
 		t.RefDevices = append(t.RefDevices, Device{DeviceID: deviceID})
 	}
 }
+func (t *thingImpl) Refs() []Device {
+	return t.RefDevices
+}
 
 func (t *thingImpl) AddTag(tag string) {
 	exists := slices.Contains(t.Tags, tag)
@@ -146,7 +150,7 @@ func newValue(id, urn, ref, unit string, ts time.Time, value float64) Value {
 			Urn:       urn,
 			Value:     &value,
 			Unit:      unit,
-			Timestamp: ts},
+			Timestamp: ts.UTC()},
 		Ref: ref,
 	}
 }
@@ -158,7 +162,7 @@ func newBoolValue(id, urn, ref, unit string, ts time.Time, value bool) Value {
 			Urn:       urn,
 			BoolValue: &value,
 			Unit:      unit,
-			Timestamp: ts},
+			Timestamp: ts.UTC()},
 		Ref: ref,
 	}
 }
@@ -178,26 +182,52 @@ type Measurement struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
-func (m Measurement) HasDistance() bool {
+func hasDistance(m *Measurement) bool {
 	return m.Urn == DistanceURN && m.Value != nil
 }
-func (m Measurement) HasDigitalInput() bool {
+func hasDigitalInput(m *Measurement) bool {
 	return m.Urn == DigitalInputURN && m.BoolValue != nil
 }
-func (m Measurement) HasTemperature() bool {
+func hasTemperature(m *Measurement) bool {
 	return m.Urn == TemperatureURN && m.Value != nil
 }
-func (m Measurement) HasPresence() bool {
+func hasPresence(m *Measurement) bool {
 	return m.Urn == PresenceURN && m.BoolValue != nil
 }
-func (m Measurement) HasPower() bool {
+func hasHumidity(m *Measurement) bool {
+	return m.Urn == HumidityURN && m.Value != nil
+}
+func hasIlluminance(m *Measurement) bool {
+	return m.Urn == IlluminanceURN && m.Value != nil
+}
+func hasAirQuality(m *Measurement) bool {
+	return m.Urn == AirQualityURN && m.Value != nil
+}
+func hasPower(m *Measurement) bool {
 	return m.Urn == PowerURN && m.Value != nil
 }
-func (m Measurement) HasEnergy() bool {
+func hasEnergy(m *Measurement) bool {
 	return m.Urn == EnergyURN && m.Value != nil
 }
-func (m Measurement) HasWaterMeter() bool {
+func hasWaterMeter(m *Measurement) bool {
 	return m.Urn == WaterMeterURN && (m.Value != nil || m.BoolValue != nil)
+}
+
+func avg[T *Thing](r Thing, currentDeviceID string, v float64, has func(m *Measurement) bool) float64 {
+	n := 1
+
+	for _, refDevice := range r.Refs() {
+		if refDevice.DeviceID != currentDeviceID {
+			for _, m := range refDevice.Measurements {
+				if has(&m) {
+					v += *m.Value
+					n++
+				}
+			}
+		}
+	}
+
+	return v / float64(n)
 }
 
 func (m Measurement) DeviceID() string {

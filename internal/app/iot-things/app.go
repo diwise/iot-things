@@ -7,31 +7,38 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"github.com/diwise/iot-things/pkg/types"
+	"github.com/diwise/messaging-golang/pkg/messaging"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"gopkg.in/yaml.v2"
 )
 
 //go:generate moq -rm -out app_mock.go . ThingsApp
 type ThingsApp interface {
-	AddThing(ctx context.Context, b []byte) error
-	SaveThing(ctx context.Context, t things.Thing) error
-	UpdateThing(ctx context.Context, b []byte, tenants []string) error
-	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
-	DeleteThing(ctx context.Context, thingID string, tenants []string) error
-	GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error)
-	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
-	GetTags(ctx context.Context, tenants []string) ([]string, error)
-	GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error)
-	Seed(ctx context.Context, r io.Reader) error
+	HandleMeasurements(ctx context.Context, measurements []things.Measurement)
 
-	LoadConfig(ctx context.Context, r io.Reader) error
+	AddThing(ctx context.Context, b []byte) error
+	DeleteThing(ctx context.Context, thingID string, tenants []string) error
+	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
+	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
+	UpdateThing(ctx context.Context, b []byte, tenants []string) error
 
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
 	QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error)
+
+	GetTags(ctx context.Context, tenants []string) ([]string, error)
+	GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error)
+
+	LoadConfig(ctx context.Context, r io.Reader) error
+	Seed(ctx context.Context, r io.Reader) error
 }
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
@@ -61,6 +68,8 @@ type app struct {
 	reader ThingsReader
 	writer ThingsWriter
 	cfg    *config
+
+	pub chan string
 }
 
 type config struct {
@@ -72,11 +81,17 @@ type typeConfig struct {
 	SubTypes []string `json:"subTypes" yaml:"subTypes"`
 }
 
-func New(r ThingsReader, w ThingsWriter) ThingsApp {
-	return &app{
+func New(ctx context.Context, r ThingsReader, w ThingsWriter, msgCtx messaging.MsgContext) ThingsApp {
+	a := &app{
 		reader: r,
 		writer: w,
+
+		pub: make(chan string),
 	}
+
+	go publisher(ctx, a.reader, msgCtx, a.pub)
+
+	return a
 }
 
 func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
@@ -89,6 +104,130 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 	a.cfg = &c
 
 	return nil
+}
+
+var mu = sync.Mutex{}
+
+func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	changedThings := []string{}
+
+	for _, m := range measurements {
+		changedThings = append(changedThings, a.handle(ctx, m)...)
+	}
+
+	if len(changedThings) > 0 {
+		for _, thingID := range unique(changedThings) {
+			a.pub <- thingID
+		}
+	}
+}
+
+func (a *app) handle(ctx context.Context, m things.Measurement) []string {
+	connectedThings, err := a.getConnectedThings(ctx, m.DeviceID())
+	if err != nil {
+		return []string{}
+	}
+
+	changedThings := []string{}
+
+	for _, t := range connectedThings {
+		measurements := []things.Measurement{m}
+		err := t.Handle(measurements, func(m things.ValueProvider) error {
+			var errs []error
+
+			for _, v := range m.Values() {
+				errs = append(errs, a.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
+			}
+
+			return errors.Join(errs...)
+		})
+		if err != nil {
+			continue
+		}
+
+		t.SetLastObserved(measurements) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
+
+		err = a.saveThing(ctx, t)
+		if err != nil {
+			continue
+		}
+
+		changedThings = append(changedThings, t.ID())
+	}
+
+	return changedThings
+}
+
+func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, in chan string) {
+	log := logging.GetFromContext(ctx)
+
+	thingsToPub := new(sync.Map)
+	pub := make(chan string)
+
+	go func() {
+		for thingID := range pub {
+			result, err := r.QueryThings(ctx, WithID(thingID))
+			if err != nil {
+				log.Error("could not query thing", "err", err.Error())
+				continue
+			}
+
+			if len(result.Data) != 1 {
+				log.Debug("thing not found", "thingID", thingID, slog.Int("count", len(result.Data)))
+				continue
+			}
+
+			t, err := things.ConvToThing(result.Data[0])
+			if err != nil {
+				log.Error("could not convert thing", "err", err.Error())
+				continue
+			}
+
+			msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
+				ID:        t.ID(),
+				Type:      t.Type(),
+				Thing:     stripFields(t),
+				Tenant:    t.Tenant(),
+				Timestamp: time.Now().UTC(),
+			}
+
+			err = msgCtx.PublishOnTopic(ctx, msg)
+			if err != nil {
+				log.Error("could not publish message", "err", err.Error())
+				continue
+			}
+
+			thingsToPub.Delete(thingID)
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case thingID := <-in:
+			pubAfter := time.Now().Add(2 * time.Second)
+			thingsToPub.Store(thingID, pubAfter)
+
+		case ts := <-time.Tick(2 * time.Second):
+			thingsToPub.Range(func(key, value any) bool {
+				t, ok := value.(time.Time)
+				if ok {
+					if t.Before(ts) {
+						thingID, ok := key.(string)
+						if ok {
+							pub <- thingID
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
 }
 
 func (a *app) AddThing(ctx context.Context, b []byte) error {
@@ -151,7 +290,7 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 	return nil
 }
 
-func (a *app) SaveThing(ctx context.Context, t things.Thing) error {
+func (a *app) saveThing(ctx context.Context, t things.Thing) error {
 	if t.ID() == "" {
 		return ErrMissingThingID
 	}
@@ -274,7 +413,7 @@ func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 	return t
 }
 
-func (a *app) GetConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error) {
+func (a *app) getConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error) {
 	result, err := a.reader.QueryThings(ctx, WithRefDevice(deviceID))
 	if err != nil {
 		return nil, err

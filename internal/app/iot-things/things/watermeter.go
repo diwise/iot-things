@@ -38,33 +38,33 @@ func (wm *Watermeter) Handle(m []Measurement, onchange func(m ValueProvider) err
 	return errors.Join(errs...)
 }
 
-func (wm *Watermeter) handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if !v.HasWaterMeter() {
+func (wm *Watermeter) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if !hasWaterMeter(&m) {
 		return nil
 	}
 
 	changed := false
 
-	if strings.HasSuffix(v.ID, CumulatedWaterVolumeSuffix) {
-		changed = hasChanged(wm.CumulativeVolume, *v.Value)
-		wm.CumulativeVolume = *v.Value
+	if strings.HasSuffix(m.ID, CumulatedWaterVolumeSuffix) {
+		changed = hasChanged(wm.CumulativeVolume, *m.Value)
+		wm.CumulativeVolume = *m.Value
 	}
 
-	if strings.HasSuffix(v.ID, LeakageSuffix) {
-		changed = hasChanged(wm.Leakage, *v.BoolValue)
-		wm.Leakage = *v.BoolValue
+	if strings.HasSuffix(m.ID, LeakageSuffix) {
+		changed = hasChanged(wm.Leakage, *m.BoolValue)
+		wm.Leakage = *m.BoolValue
 	}
-	if strings.HasSuffix(v.ID, BackflowSuffix) {
-		changed = hasChanged(wm.Backflow, *v.BoolValue)
-		wm.Backflow = *v.BoolValue
+	if strings.HasSuffix(m.ID, BackflowSuffix) {
+		changed = hasChanged(wm.Backflow, *m.BoolValue)
+		wm.Backflow = *m.BoolValue
 	}
-	if strings.HasSuffix(v.ID, FraudSuffix) {
-		changed = hasChanged(wm.Fraud, *v.BoolValue)
-		wm.Fraud = *v.BoolValue
+	if strings.HasSuffix(m.ID, FraudSuffix) {
+		changed = hasChanged(wm.Fraud, *m.BoolValue)
+		wm.Fraud = *m.BoolValue
 	}
 
 	if changed {
-		wm := NewWaterMeter(wm.ID(), v.ID, wm.CumulativeVolume, wm.Leakage, wm.Backflow, wm.Fraud, v.Timestamp)
+		wm := NewWaterMeter(wm.ID(), m.ID, wm.CumulativeVolume, wm.Leakage, wm.Backflow, wm.Fraud, m.Timestamp)
 		return onchange(wm)
 	}
 

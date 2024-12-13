@@ -76,6 +76,7 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 
 		// Off -> Off = Do nothing
 		if !currentState {
+			onchange(*sw)
 			return nil
 		}
 	}

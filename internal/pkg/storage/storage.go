@@ -238,6 +238,10 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		return db.countValues(ctx, where, args)
 	}
 
+	if _,ok := args["showlatest"]; ok {
+		return db.showLatest(ctx, args["thingid"].(string))
+	}
+
 	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s ", where)
 
 	rows, err := db.pool.Query(ctx, query, args)
@@ -284,6 +288,63 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		TotalCount: total,
 		Limit:      args["limit"].(int),
 		Offset:     args["offset"].(int),
+	}, nil
+}
+
+func (db database) showLatest(ctx context.Context, thingID string) (app.QueryResult, error) {
+	log := logging.GetFromContext(ctx)
+
+	thingID = fmt.Sprintf("%s/%%", thingID)
+
+	query := fmt.Sprintf(`
+		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref
+		FROM things_values
+		WHERE id LIKE '%s'
+		ORDER BY id, "time" DESC;	
+	`, thingID)
+
+	rows, err := db.pool.Query(ctx, query)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	var ts time.Time
+	var id, urn, unit, ref string
+	var v *float64
+	var vb *bool
+	var vs *string
+
+	var t [][]byte
+
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &v, &vs, &vb, &unit, &ref}, func() error {
+		m := things.Value{
+			Measurement: things.Measurement{
+				ID:          id,
+				Urn:         urn,
+				BoolValue:   vb,
+				StringValue: vs,
+				Value:       v,
+				Unit:        unit,
+				Timestamp:   ts.UTC()},
+			Ref: ref,
+		}
+
+		b, _ := json.Marshal(m)
+		t = append(t, b)
+
+		return nil
+	})
+	if err != nil {
+		return app.QueryResult{}, err
+	}
+
+	return app.QueryResult{
+		Data:       t,
+		Count:      len(t),
+		TotalCount: int64(len(t)),
+		Limit:      0,
+		Offset:     len(t),
 	}, nil
 }
 

@@ -46,12 +46,21 @@ func main() {
 		log.Error("could not configure storage", "err", err.Error())
 		os.Exit(1)
 	}
+	config := messaging.LoadConfiguration(ctx, serviceName, log)
+	messenger, err := messaging.Initialize(ctx, config)
+	if err != nil {
+		log.Error("failed to init messenger")
+		os.Exit(1)
+	}
+	messenger.Start()
 
-	a, err := newApp(ctx, s, s, cfgFile)
+	a, err := newApp(ctx, s, s, messenger, cfgFile)
 	if err != nil {
 		log.Error("could not configure application", "err", err.Error())
 		os.Exit(1)
 	}
+
+	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
 
 	r, err := newRouter(ctx, opa, a)
 	if err != nil {
@@ -64,15 +73,6 @@ func main() {
 		log.Error("file with things found but could not seed data", "err", err.Error())
 		os.Exit(1)
 	}
-
-	config := messaging.LoadConfiguration(ctx, serviceName, log)
-	messenger, err := messaging.Initialize(ctx, config)
-	if err != nil {
-		log.Error("failed to init messenger")
-		os.Exit(1)
-	}
-	messenger.Start()
-	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
 
 	port := env.GetVariableOrDefault(ctx, "SERVICE_PORT", "8080")
 
@@ -94,15 +94,14 @@ func main() {
 	s.Close()
 }
 
-func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, cfgFilePath string) (app.ThingsApp, error) {
-
+func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, m messaging.MsgContext, cfgFilePath string) (app.ThingsApp, error) {
 	f, err := os.Open(cfgFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open config file: %s", err.Error())
 	}
 	defer f.Close()
 
-	a := app.New(r, w)
+	a := app.New(ctx, r, w, m)
 	err = a.LoadConfig(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load config: %s", err.Error())

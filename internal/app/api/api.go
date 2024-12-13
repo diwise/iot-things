@@ -53,7 +53,7 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Patch("/{id}", patchHandler(log, app))
 				r.Delete("/{id}", deleteHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
-				r.Get("/types", getTypesHandler(log, app))
+				r.Get("/types", getTypesHandler(log, app))				
 				r.Get("/values", getValuesHandler(log, app))
 			})
 		})
