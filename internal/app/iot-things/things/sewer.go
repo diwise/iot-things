@@ -40,13 +40,13 @@ func (s *Sewer) Handle(m []Measurement, onchange func(m ValueProvider) error) er
 	return errors.Join(errs...)
 }
 
-func (s *Sewer) handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if v.HasDistance() {
-		return s.handleDistance(v, onchange)
+func (s *Sewer) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if hasDistance(&m) {
+		return s.handleDistance(m, onchange)
 	}
 
-	if v.HasDigitalInput() {
-		return s.handleDigitalInput(v, onchange)
+	if hasDigitalInput(&m) {
+		return s.handleDigitalInput(m, onchange)
 	}
 
 	return nil
@@ -84,20 +84,28 @@ func (s *Sewer) handleDigitalInput(v Measurement, onchange func(m ValueProvider)
 		s.OverflowObservedAt = sw.StartTime
 		s.OverflowDuration = sw.Duration
 
-		switch sw.CurrentEvent {
-		case functions.Started:
-			stopwatch := NewStopwatch(s.ID(), v.ID, 0, true, *s.OverflowObservedAt)
-			return onchange(stopwatch)
-		case functions.Updated:
-			stopwatch := NewStopwatch(s.ID(), v.ID, s.OverflowDuration.Seconds(), s.OverflowObserved, v.Timestamp)
-			return onchange(stopwatch)
-		case functions.Stopped:
-			stopwatch := NewStopwatch(s.ID(), v.ID, s.OverflowDuration.Seconds(), false, v.Timestamp)
-			s.OverflowCumulativeTime += *s.OverflowDuration
-			return onchange(stopwatch)
+		var z, sec float64
+
+		z = 0.0
+		if s.OverflowDuration != nil {
+			sec = s.OverflowDuration.Seconds()
 		}
 
-		return nil
+		switch sw.CurrentEvent {
+		case functions.Started:
+			stopwatch := NewStopwatch(s.ID(), v.ID, &z, true, *s.OverflowObservedAt)
+			return onchange(stopwatch)
+		case functions.Updated:
+			stopwatch := NewStopwatch(s.ID(), v.ID, &sec, s.OverflowObserved, v.Timestamp)
+			return onchange(stopwatch)
+		case functions.Stopped:
+			stopwatch := NewStopwatch(s.ID(), v.ID, &sec, false, v.Timestamp)
+			s.OverflowCumulativeTime += *s.OverflowDuration
+			return onchange(stopwatch)
+		default:
+			stopwatch := NewStopwatch(s.ID(), v.ID, nil, sw.State, time.Now())
+			return onchange(stopwatch)
+		}
 	})
 	if err != nil {
 		return err

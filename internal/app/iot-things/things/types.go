@@ -18,13 +18,14 @@ const (
 	DoorURN          string = "urn:oma:lwm2m:x:10351"
 	EnergyURN        string = lwm2mPrefix + "3331"
 	FillingLevelURN  string = lwm2mPrefix + "3435"
+	HumidityURN      string = lwm2mPrefix + "3304"
+	IlluminanceURN   string = lwm2mPrefix + "3301"
 	PeopleCounterURN string = lwm2mPrefix + "3334"
 	PowerURN         string = lwm2mPrefix + "3328"
 	PresenceURN      string = lwm2mPrefix + "3302"
 	PressureURN      string = lwm2mPrefix + "3323"
 	StopwatchURN     string = lwm2mPrefix + "3350"
 	TemperatureURN   string = lwm2mPrefix + "3303"
-	WatermeterURN    string = lwm2mPrefix + "3424"
 	WaterMeterURN    string = lwm2mPrefix + "3424"
 )
 
@@ -35,9 +36,9 @@ var (
 	PassageURNs         = []string{DigitalInputURN}
 	PointOfInterestURNs = []string{TemperatureURN}
 	PumpingStationURNs  = []string{DigitalInputURN}
-	RoomURNs            = []string{TemperatureURN}
+	RoomURNs            = []string{TemperatureURN, HumidityURN, IlluminanceURN, AirQualityURN, PresenceURN}
 	SewerURNs           = []string{DistanceURN, DigitalInputURN}
-	WaterMeterURNs      = []string{WatermeterURN}
+	WaterMeterURNs      = []string{WaterMeterURN}
 	DeskURNs            = []string{DigitalInputURN, PresenceURN}
 )
 
@@ -148,6 +149,52 @@ func (t Temperature) Values() []Value {
 	return []Value{t.Value}
 }
 
+/* --------------------- Humidity --------------------- */
+
+type Humidity struct {
+	Value Value
+}
+
+func NewHumidity(id, ref string, value float64, ts time.Time) Humidity {
+	id = fmt.Sprintf("%s/%s/%s", id, "3304", "5700")
+	return Humidity{
+		Value: newValue(id, HumidityURN, ref, "%", ts, value),
+	}
+}
+func (h Humidity) Values() []Value {
+	return []Value{h.Value}
+}
+
+/* --------------------- Illuminance --------------------- */
+type Illuminance struct {
+	Value Value
+}
+
+func NewIlluminance(id, ref string, value float64, ts time.Time) Illuminance {
+	id = fmt.Sprintf("%s/%s/%s", id, "3301", "5700")
+	return Illuminance{
+		Value: newValue(id, IlluminanceURN, ref, "lux", ts, value),
+	}
+}
+func (i Illuminance) Values() []Value {
+	return []Value{i.Value}
+}
+
+/* --------------------- Air Quality --------------------- */
+type AirQuality struct {
+	CO2 Value
+}
+
+func NewAirQuality(id, ref string, value float64, ts time.Time) AirQuality {
+	id = fmt.Sprintf("%s/%s/%s", id, "3428", "17")
+	return AirQuality{
+		CO2: newValue(id, AirQualityURN, ref, "ppm", ts, value),
+	}
+}
+func (a AirQuality) Values() []Value {
+	return []Value{a.CO2}
+}
+
 /* --------------------- Presence --------------------- */
 
 type Presence struct {
@@ -168,13 +215,18 @@ func (d Presence) Values() []Value {
 /* --------------------- Stopwatch --------------------- */
 
 type Stopwatch struct {
-	CumulativeTime Value
-	OnOff          Value
+	CumulativeTime *Value
+	OnOff          *Value
 }
 
-func NewStopwatch(id, ref string, cumulativeTime float64, onOff bool, ts time.Time) Stopwatch {
-	ct := newValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5544"), StopwatchURN, ref, "s", ts, cumulativeTime)
-	oo := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5850"), StopwatchURN, ref, "", ts, onOff)
+func NewStopwatch(id, ref string, cumulativeTime *float64, onOff bool, ts time.Time) Stopwatch {
+	var ct, oo *Value
+	if cumulativeTime != nil {
+		c := newValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5544"), StopwatchURN, ref, "s", ts, *cumulativeTime)
+		ct = &c
+	}
+	o := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3350", "5850"), StopwatchURN, ref, "", ts, onOff)
+	oo = &o
 
 	return Stopwatch{
 		CumulativeTime: ct,
@@ -183,10 +235,13 @@ func NewStopwatch(id, ref string, cumulativeTime float64, onOff bool, ts time.Ti
 }
 
 func (sw Stopwatch) Values() []Value {
-	return []Value{
-		sw.CumulativeTime,
-		sw.OnOff,
+	values := []Value{}
+	if sw.CumulativeTime != nil {
+		values = append(values, *sw.CumulativeTime)
 	}
+	values = append(values, *sw.OnOff)
+
+	return values
 }
 
 /* --------------------- Energy --------------------- */
@@ -240,9 +295,9 @@ type WaterMeter struct {
 
 func NewWaterMeter(id, ref string, v float64, l, b, f bool, ts time.Time) WaterMeter {
 	vol := newValue(fmt.Sprintf("%s/%s/%s", id, "3424", "1"), PowerURN, ref, senml.UnitCubicMeter, ts, v)
-	leak := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "10"), WatermeterURN, ref, "", ts, l)
-	backflow := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "11"), WatermeterURN, ref, "", ts, b)
-	fraud := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "13"), WatermeterURN, ref, "", ts, f)
+	leak := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "10"), WaterMeterURN, ref, "", ts, l)
+	backflow := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "11"), WaterMeterURN, ref, "", ts, b)
+	fraud := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "13"), WaterMeterURN, ref, "", ts, f)
 
 	return WaterMeter{
 		CumulatedWaterVolume: vol,

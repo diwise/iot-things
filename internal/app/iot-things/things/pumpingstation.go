@@ -44,25 +44,32 @@ func (ps *PumpingStation) Handle(m []Measurement, onchange func(m ValueProvider)
 	return errors.Join(errs...)
 }
 
-func (ps *PumpingStation) handle(v Measurement, onchange func(m ValueProvider) error) error {
-	if !v.HasDigitalInput() {
+func (ps *PumpingStation) handle(m Measurement, onchange func(m ValueProvider) error) error {
+	if !hasDigitalInput(&m) {
 		return nil
 	}
 
-	err := ps.stopWatch().Push(*v.BoolValue, v.Timestamp, func(sw functions.Stopwatch) error {
+	err := ps.stopWatch().Push(*m.BoolValue, m.Timestamp, func(sw functions.Stopwatch) error {
 		ps.PumpingObserved = sw.State
 		ps.PumpingObservedAt = sw.StartTime
 		ps.PumpingDuration = sw.Duration
 
+		var z, sec float64
+
+		z = 0.0
+		if ps.PumpingDuration != nil {
+			sec = ps.PumpingDuration.Seconds()
+		}
+
 		switch sw.CurrentEvent {
 		case functions.Started:
-			stopwatch := NewStopwatch(ps.ID(), v.ID, 0, true, *ps.PumpingObservedAt)
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &z, true, *ps.PumpingObservedAt)
 			return onchange(stopwatch)
 		case functions.Updated:
-			stopwatch := NewStopwatch(ps.ID(), v.ID, ps.PumpingDuration.Seconds(), ps.PumpingObserved, v.Timestamp)
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, ps.PumpingObserved, m.Timestamp)
 			return onchange(stopwatch)
 		case functions.Stopped:
-			stopwatch := NewStopwatch(ps.ID(), v.ID, ps.PumpingDuration.Seconds(), false, v.Timestamp)
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, false, m.Timestamp)
 			ps.PumpingCumulativeTime += *ps.PumpingDuration
 			return onchange(stopwatch)
 		}

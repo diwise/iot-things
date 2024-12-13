@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
-	"github.com/diwise/iot-things/pkg/types"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/senml"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
@@ -46,20 +45,9 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
-		refDeviceID, ok := extractDeviceID(msg.Pack)
+		_, ok := extractDeviceID(msg.Pack)
 		if !ok {
 			log.Debug("no deviceID found in package")
-			return
-		}
-
-		connectedThings, err := app.GetConnectedThings(ctx, refDeviceID)
-		if err != nil {
-			log.Error("could not get connected things", "err", err.Error())
-			return
-		}
-
-		if len(connectedThings) == 0 { // is it OK if len > 1?
-			log.Debug("no connected things found")
 			return
 		}
 
@@ -74,61 +62,22 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
-		errs := make([]error, 0)
-		changes := map[string]int{}
-
-		for i, t := range connectedThings { // for each connected thing... is it valid to connect a sensor to multiple things?
-			err := t.Handle(measurements, func(m things.ValueProvider) error {
-				var errs []error
-
-				for _, v := range m.Values() {
-					errs = append(errs, app.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
-					changes[t.ID()] = i
-				}
-
-				return errors.Join(errs...)
-			})
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-
-			t.SetLastObserved(measurements) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
-
-			errs = append(errs, app.SaveThing(ctx, t))
-		}
-
-		if errors.Join(errs...) != nil {
-			log.Error("errors occured when handle measurements", "err", err.Error())
-			return
-		}
-
-		if len(changes) == 0 {
-			log.Debug("no changes detected")
-			return
-		}
-
-		if len(changes) > 0 {
-			for _, v := range changes {
-				thing := connectedThings[v]
-				ts := msg.Timestamp
-
-				msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
-					ID:        thing.ID(),
-					Type:      thing.Type(),
-					Thing:     stripFields(thing),
-					Tenant:    thing.Tenant(),
-					Timestamp: ts.UTC(),
-				}
-
-				err = msgCtx.PublishOnTopic(ctx, msg)
-				if err != nil {
-					log.Error("could not publish thing update", "err", err.Error())
-					return
-				}
-			}
-		}
+		app.HandleMeasurements(ctx, measurements)
 	}
+}
+
+func unique(arr []string) []string {
+	unique := make(map[string]struct{})
+	for _, s := range arr {
+		unique[s] = struct{}{}
+	}
+
+	result := make([]string, 0, len(unique))
+	for s := range unique {
+		result = append(result, s)
+	}
+
+	return result
 }
 
 func stripFields(t things.Thing) map[string]any {

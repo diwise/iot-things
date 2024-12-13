@@ -13,19 +13,25 @@ import (
 )
 
 func TestRoomTemperature(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	is := is.New(t)
 
 	r := things.NewRoom("room-001", things.DefaultLocation, "default")
 	r.AddDevice("c5a2ae17c239")
 
-	NewMeasurementsHandler(appMock(r, nil), msgCtxMock())(ctx, msgMock(temperatureMsg), slog.Default())
+	s := map[string]things.Thing{}
+	v := map[string][]things.Value{}
 
-	is.Equal(r.(*things.Room).Temperature, 21.0)
+	NewMeasurementsHandler(appMock(ctx, r, s, v), msgCtxMock())(ctx, msgMock(temperatureMsg), slog.Default())
+
+	is.Equal(s[r.ID()].(*things.Room).Temperature, 21.0)
 }
 
 func TestContainerDistance(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	is := is.New(t)
 
 	c := things.NewContainer("container-001", things.DefaultLocation, "default")
@@ -36,10 +42,13 @@ func TestContainerDistance(t *testing.T) {
 	c.(*things.Container).MaxDistance = &maxd
 	c.(*things.Container).MaxLevel = &maxl
 
-	NewMeasurementsHandler(appMock(c, nil), msgCtxMock())(ctx, msgMock(distanceMsg), slog.Default())
+	s := map[string]things.Thing{}
+	v := map[string][]things.Value{}
 
-	is.Equal(c.(*things.Container).CurrentLevel, 0.49) //3.0 - 2.51
-	is.Equal(c.(*things.Container).Percent, 17.5)
+	NewMeasurementsHandler(appMock(ctx, c, s, v), msgCtxMock())(ctx, msgMock(distanceMsg), slog.Default())
+
+	is.Equal(s[c.ID()].(*things.Container).CurrentLevel, 0.49) //3.0 - 2.51
+	is.Equal(s[c.ID()].(*things.Container).Percent, 17.5)
 }
 
 func TestPassageDigitalInput(t *testing.T) {
@@ -58,7 +67,8 @@ func TestPassageDigitalInput(t *testing.T) {
 	}
 
 	v := map[string][]things.Value{}
-	a := appMock(p, v)
+	s := map[string]things.Thing{}
+	a := appMock(ctx, p, s, v)
 	m := msgCtxMock()
 
 	now := time.Now()
@@ -83,27 +93,41 @@ func TestPassageDigitalInput(t *testing.T) {
 		h(ctx, msg, slog.Default())
 	}
 
-	is.Equal(p.(*things.Passage).CumulatedNumberOfPassages, int64(4))
-	is.Equal(p.(*things.Passage).PassagesToday, 2)
-	is.Equal(p.(*things.Passage).ObservedAt.Unix(), tomorrow.Unix())
+	is.Equal(s[p.ID()].(*things.Passage).CumulatedNumberOfPassages, int64(4))
+	is.Equal(s[p.ID()].(*things.Passage).PassagesToday, 2)
+	is.Equal(s[p.ID()].(*things.Passage).ObservedAt.Unix(), tomorrow.Unix())
 }
 
-func appMock(t things.Thing, v map[string][]things.Value) *ThingsAppMock {
-	return &ThingsAppMock{
-		GetConnectedThingsFunc: func(ctx context.Context, deviceID string) ([]things.Thing, error) {
-			return []things.Thing{t}, nil
+func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing, values map[string][]things.Value) ThingsApp {
+	store[t.ID()] = t
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+			return QueryResult{
+				Data: [][]byte{store[t.ID()].Byte()},
+			}, nil
 		},
+	}
+	w := &ThingsWriterMock{
 		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
-			if v == nil {
-				v = map[string][]things.Value{}
+			if values != nil {
+				values[t.ID()] = append(values[t.ID()], m)
 			}
-			v[t.ID()] = append(v[t.ID()], m)
 			return nil
 		},
-		SaveThingFunc: func(ctx context.Context, t things.Thing) error {
+		UpdateThingFunc: func(ctx context.Context, u things.Thing) error {
+			if store != nil {
+				store[u.ID()] = u
+			}
 			return nil
 		},
 	}
+
+	m := msgCtxMock()
+
+	a := New(ctx, r, w, m)
+
+	return a
 }
 
 func msgCtxMock() *messaging.MsgContextMock {

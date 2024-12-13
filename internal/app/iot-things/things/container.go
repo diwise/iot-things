@@ -44,7 +44,7 @@ func (c *Container) Handle(m []Measurement, onchange func(m ValueProvider) error
 }
 
 func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if !m.HasDistance() {
+	if !hasDistance(&m) {
 		return nil
 	}
 
@@ -66,7 +66,7 @@ func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) 
 	for _, ref := range c.RefDevices {
 		if ref.DeviceID != m.ID {
 			for _, h := range ref.Measurements {
-				if h.HasDistance() {
+				if hasDistance(&h) {
 					d += *h.Value
 					n++
 				}

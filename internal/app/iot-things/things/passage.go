@@ -51,7 +51,7 @@ func (p *Passage) Handle(m []Measurement, onchange func(m ValueProvider) error) 
 }
 
 func (p *Passage) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if !m.HasDigitalInput() {
+	if !hasDigitalInput(&m) {
 		return nil
 	}
 

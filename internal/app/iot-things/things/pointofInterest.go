@@ -26,7 +26,7 @@ func (poi *PointOfInterest) Handle(m []Measurement, onchange func(m ValueProvide
 }
 
 func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if !m.HasTemperature() {
+	if !hasTemperature(&m) {
 		return nil
 	}
 
@@ -46,7 +46,7 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 	for _, ref := range poi.RefDevices {
 		if ref.DeviceID != m.ID {
 			for _, v := range ref.Measurements {
-				if v.HasTemperature() {
+				if hasTemperature(&v) {
 					t += *v.Value
 					n++
 				}

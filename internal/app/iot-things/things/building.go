@@ -30,7 +30,7 @@ func (building *Building) Handle(m []Measurement, onchange func(m ValueProvider)
 }
 
 func (building *Building) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if m.HasEnergy() {
+	if hasEnergy(&m) {
 		previousValue := building.Energy
 		value := *m.Value / 3600000.0 // convert from Joule to kWh
 
@@ -41,7 +41,7 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 		}
 	}
 
-	if m.HasPower() {
+	if hasPower(&m) {
 		previousValue := building.Power
 		value := *m.Value / 1000.0 // convert from Watt to kW
 
@@ -52,7 +52,7 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 		}
 	}
 
-	if m.HasTemperature() {
+	if hasTemperature(&m) {
 		if !hasChanged(building.Temperature, *m.Value) {
 			return nil
 		}
@@ -69,7 +69,7 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 		for _, ref := range building.RefDevices {
 			if ref.DeviceID != m.ID {
 				for _, v := range ref.Measurements {
-					if v.HasTemperature() {
+					if hasTemperature(&v) {
 						t += *v.Value
 						n++
 					}

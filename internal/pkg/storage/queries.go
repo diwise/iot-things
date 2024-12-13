@@ -81,7 +81,7 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 			if !opOk {
 				op = "gt"
 			}
-			
+
 			switch op {
 			case "eq":
 				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric = @%f", fieldname, fieldname, f)
@@ -198,6 +198,13 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 			query += " LIMIT @limit"
 			args["limit"] = limit
 		}
+	}
+
+	if _, ok := c["showlatest"]; ok {
+		if thingID, ok := c["thingid"]; ok {
+			args["showlatest"] = true
+			args["thingid"] = fmt.Sprintf("%s", thingID)
+		}		
 	}
 
 	return query, args

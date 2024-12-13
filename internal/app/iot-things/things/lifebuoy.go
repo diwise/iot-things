@@ -28,7 +28,7 @@ func (l *Lifebuoy) Handle(m []Measurement, onchange func(m ValueProvider) error)
 }
 
 func (l *Lifebuoy) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if !(m.HasDigitalInput() || m.HasPresence()) {
+	if !(hasDigitalInput(&m) || hasPresence(&m)) {
 		return nil
 	}
 

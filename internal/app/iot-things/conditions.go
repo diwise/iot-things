@@ -188,6 +188,13 @@ func WithFieldNameValue(fieldName string, value any) ConditionFunc {
 	}
 }
 
+func WithShowLatest(showLatest bool) ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		m["showlatest"] = showLatest
+		return m
+	}
+}
+
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
 
@@ -247,6 +254,12 @@ func WithParams(query map[string][]string) []ConditionFunc {
 			conditions = append(conditions, WithValueName(values[0]))
 		case "timeunit":
 			conditions = append(conditions, WithTimeUnit(values[0]))
+		case "latest":
+			if values[0] == "true" {
+				if _, ok := params["thingid"]; ok {
+					conditions = append(conditions, WithShowLatest(true))
+				}
+			}
 		}
 
 		if strings.HasPrefix(key, "v[") && strings.HasSuffix(key, "]") {
