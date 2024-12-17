@@ -53,7 +53,7 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Patch("/{id}", patchHandler(log, app))
 				r.Delete("/{id}", deleteHandler(log, app))
 				r.Get("/tags", getTagsHandler(log, app))
-				r.Get("/types", getTypesHandler(log, app))				
+				r.Get("/types", getTypesHandler(log, app))
 				r.Get("/values", getValuesHandler(log, app))
 			})
 		})
@@ -532,6 +532,21 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		if r.Header.Get("Accept") == "text/csv" {
+			err := exportValuesAsCSV(result, w)
+			if err != nil {
+				logger.Error("could not export values as CSV", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/csv")
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+
 		if result.Count == 0 {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("[]"))
@@ -554,6 +569,57 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
 	}
+}
+
+func exportValuesAsCSV(result app.QueryResult, w io.Writer) error {
+	header := strings.Join([]string{"time", "id", "urn", "v", "vb", "vs", "unit", "ref"}, ";")
+
+	if result.Count == 0 {
+		w.Write([]byte(header))
+		return nil
+	}
+
+	for i, b := range result.Data {
+		m := make(map[string]any)
+		err := json.Unmarshal(b, &m)
+		if err != nil {
+			return err
+		}
+
+		if i == 0 {
+			_, err := w.Write([]byte(fmt.Sprintln(header)))
+			if err != nil {
+				return err
+			}
+		}
+
+		str := func(v any) string {
+			if v == nil {
+				return ""
+			}
+			return fmt.Sprintf("%v", v)
+		}
+
+		values := []string{
+			str(m["timestamp"]),
+			str(m["id"]),
+			str(m["urn"]),
+			str(m["v"]),
+			str(m["vb"]),
+			str(m["vs"]),
+			str(m["unit"]),
+			str(m["ref"]),
+		}
+
+		row := strings.Join(values, ";")
+
+		_, err = w.Write([]byte(fmt.Sprintln(row)))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func isMultipartFormData(r *http.Request) bool {
