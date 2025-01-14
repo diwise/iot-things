@@ -72,6 +72,9 @@ func (ps *PumpingStation) handle(m Measurement, onchange func(m ValueProvider) e
 			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, false, m.Timestamp)
 			ps.PumpingCumulativeTime += *ps.PumpingDuration
 			return onchange(stopwatch)
+		case functions.InitialState:
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &z, false, m.Timestamp)
+			return onchange(stopwatch)
 		}
 
 		return nil

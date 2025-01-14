@@ -17,9 +17,10 @@ type Stopwatch struct {
 type StopwatchEvent int
 
 const (
-	Started StopwatchEvent = 1
-	Stopped StopwatchEvent = 2
-	Updated StopwatchEvent = 3
+	InitialState StopwatchEvent = 0
+	Started      StopwatchEvent = 1
+	Stopped      StopwatchEvent = 2
+	Updated      StopwatchEvent = 3
 )
 
 func NewStopwatch() *Stopwatch {
@@ -76,6 +77,8 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 
 		// Off -> Off = Do nothing
 		if !currentState {
+			sw.CurrentEvent = InitialState
+
 			onchange(*sw)
 			return nil
 		}
