@@ -223,6 +223,28 @@ func TestPumpingStation(t *testing.T) {
 	is.NoErr(err)
 }
 
+
+func TestPumpingStationFalse(t *testing.T) {
+	is := is.New(t)
+
+	thing := NewPumpingStation("id", Location{Latitude: 62, Longitude: 17}, "default")
+	pumpingstation := thing.(*PumpingStation)
+
+	now := time.Now()
+
+	vb := false
+	err := pumpingstation.Handle([]Measurement{
+		{
+			ID:        "device/3200/5500",
+			Urn:       "urn:oma:lwm2m:ext:3200",
+			BoolValue: &vb,
+			Timestamp: now.Add(-1 * time.Hour),
+		}}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.NoErr(err)
+}
 func TestRoom(t *testing.T) {
 	is := is.New(t)
 

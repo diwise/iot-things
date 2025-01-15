@@ -98,6 +98,43 @@ func TestPassageDigitalInput(t *testing.T) {
 	is.Equal(s[p.ID()].(*things.Passage).ObservedAt.Unix(), tomorrow.Unix())
 }
 
+func TestPumpingStationDigitalInput(t *testing.T) {
+	ctx := context.Background()
+	is := is.New(t)
+
+	p := things.NewPumpingStation("pump-001", things.DefaultLocation, "default")
+	p.AddDevice("ce3acc09ab62")
+	p.(*things.PumpingStation).ValidURN = things.PumpingStationURNs
+
+	off := func(ts time.Time) *messaging.IncomingTopicMessageMock {
+		return msgMock(fmt.Sprintf(digitalInputMsg, ts.Unix(), "false"))
+	}
+	//on := func(ts time.Time) *messaging.IncomingTopicMessageMock {
+	//	return msgMock(fmt.Sprintf(digitalInputMsg, ts.Unix(), "true"))
+	//}
+
+	v := map[string][]things.Value{}
+	s := map[string]things.Thing{}
+	a := appMock(ctx, p, s, v)
+	m := msgCtxMock()
+
+	now := time.Now()
+	//yesterday := now.AddDate(0, 0, -1)
+	//tomorrow := now.AddDate(0, 0, 1)
+
+	messages := []*messaging.IncomingTopicMessageMock{
+		off(now),
+	}
+
+	h := NewMeasurementsHandler(a, m)
+
+	for _, msg := range messages {
+		h(ctx, msg, slog.Default())
+	}
+
+	is.Equal(s[p.ID()].(*things.PumpingStation).PumpingObserved, false)
+}
+
 func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing, values map[string][]things.Value) ThingsApp {
 	store[t.ID()] = t
 
