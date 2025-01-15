@@ -335,7 +335,7 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 	}
 
 	for k, v := range patch {
-		if slices.Contains([]string{"id", "type", "tenant"}, k) {
+		if slices.Contains([]string{"id", "type"}, k) {
 			continue
 		}
 		current[k] = v
