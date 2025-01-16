@@ -63,17 +63,21 @@ func (ps *PumpingStation) handle(m Measurement, onchange func(m ValueProvider) e
 
 		switch sw.CurrentEvent {
 		case functions.Started:
+			ps.PumpingObservedAt = &m.Timestamp
 			stopwatch := NewStopwatch(ps.ID(), m.ID, &z, true, *ps.PumpingObservedAt)
 			return onchange(stopwatch)
 		case functions.Updated:
-			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, ps.PumpingObserved, m.Timestamp)
+			ps.PumpingObservedAt = &m.Timestamp
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, ps.PumpingObserved, *ps.PumpingObservedAt)
 			return onchange(stopwatch)
 		case functions.Stopped:
-			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, false, m.Timestamp)
+			ps.PumpingObservedAt = &m.Timestamp
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &sec, false, *ps.PumpingObservedAt)
 			ps.PumpingCumulativeTime += *ps.PumpingDuration
 			return onchange(stopwatch)
 		case functions.InitialState:
-			stopwatch := NewStopwatch(ps.ID(), m.ID, &z, false, m.Timestamp)
+			ps.PumpingObservedAt = &m.Timestamp
+			stopwatch := NewStopwatch(ps.ID(), m.ID, &z, false, *ps.PumpingObservedAt)
 			return onchange(stopwatch)
 		}
 
