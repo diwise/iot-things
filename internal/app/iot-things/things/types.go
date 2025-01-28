@@ -294,7 +294,7 @@ type WaterMeter struct {
 }
 
 func NewWaterMeter(id, ref string, v float64, l, b, f bool, ts time.Time) WaterMeter {
-	vol := newValue(fmt.Sprintf("%s/%s/%s", id, "3424", "1"), PowerURN, ref, senml.UnitCubicMeter, ts, v)
+	vol := newValue(fmt.Sprintf("%s/%s/%s", id, "3424", "1"), WaterMeterURN, ref, senml.UnitCubicMeter, ts, v)
 	leak := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "10"), WaterMeterURN, ref, "", ts, l)
 	backflow := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "11"), WaterMeterURN, ref, "", ts, b)
 	fraud := newBoolValue(fmt.Sprintf("%s/%s/%s", id, "3424", "13"), WaterMeterURN, ref, "", ts, f)
