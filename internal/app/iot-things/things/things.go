@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -13,7 +14,7 @@ type Thing interface {
 	Type() string
 	Tenant() string
 	LatLon() (float64, float64)
-	Handle(m []Measurement, onchange func(m ValueProvider) error) error
+	Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error
 	Byte() []byte
 	Refs() []Device
 
@@ -284,6 +285,10 @@ func ConvToThing(b []byte) (Thing, error) {
 		d, err := unmarshal[Desk](b)
 		d.ValidURN = DeskURNs
 		return &d, err
+	case "sink":
+		s, err := unmarshal[Sink](b)
+		s.ValidURN = SinkURNs
+		return &s, err
 	default:
 		return nil, errors.New("unknown thing type [" + t.Type + "]")
 	}

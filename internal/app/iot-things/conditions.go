@@ -195,6 +195,15 @@ func WithShowLatest(showLatest bool) ConditionFunc {
 	}
 }
 
+func WithDistinctValues(distinct string) ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		if distinct == "v" || distinct == "vb" {
+			m["distinct"] = distinct
+		}
+		return m
+	}
+}
+
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
 
@@ -209,6 +218,8 @@ func WithParams(query map[string][]string) []ConditionFunc {
 
 	for key, values := range params {
 		switch key {
+		case "distinct":
+			conditions = append(conditions, WithDistinctValues(values[0]))
 		case "id":
 			conditions = append(conditions, WithID(values[0]))
 		case "tenant":

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	app "github.com/diwise/iot-things/internal/app/iot-things"
@@ -134,20 +137,24 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
 	lat, lon := t.LatLon()
-
-	insert := `INSERT INTO things(id, type, location, data, tenant) VALUES (@id, @thing_type, point(@lon,@lat), @data, @tenant);`
-	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
+	args := pgx.NamedArgs{
 		"id":         t.ID(),
 		"thing_type": t.Type(),
 		"lon":        lon,
 		"lat":        lat,
 		"data":       string(t.Byte()),
 		"tenant":     t.Tenant(),
-	})
+	}
+
+	insert := `INSERT INTO things(id, type, location, data, tenant) VALUES (@id, @thing_type, point(@lon,@lat), @data, @tenant);`
+
+	log.Debug("AddThing", logStr("sql", insert), slog.Any("args", args))
+
+	_, err := db.pool.Exec(ctx, insert, args)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
-			log.Debug("insert statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
+			log.Debug("AddThing statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
 		}
 
 		if isDuplicateKeyErr(err) {
@@ -166,14 +173,18 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
 	lat, lon := t.LatLon()
-
-	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
-	_, err := db.pool.Exec(ctx, update, pgx.NamedArgs{
+	args := pgx.NamedArgs{
 		"id":   t.ID(),
 		"lon":  lon,
 		"lat":  lat,
 		"data": string(t.Byte()),
-	})
+	}
+
+	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
+
+	log.Debug("UpdateThing", logStr("sql", update), slog.Any("args", args))
+
+	_, err := db.pool.Exec(ctx, update, args)
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
 		return err
@@ -202,6 +213,8 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 	log := logging.GetFromContext(ctx)
 
 	query := fmt.Sprintf("SELECT data, count(*) OVER () AS total FROM things %s", where)
+
+	log.Debug("QueryThings", logStr("sql", query), slog.Any("args", args))
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
@@ -238,11 +251,17 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		return db.countValues(ctx, where, args)
 	}
 
-	if _,ok := args["showlatest"]; ok {
+	if _, ok := args["showlatest"]; ok {
 		return db.showLatest(ctx, args["thingid"].(string))
 	}
 
+	if _, ok := args["distinct"]; ok {
+		return db.distinctValues(ctx, where, args)
+	}
+
 	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s ", where)
+
+	log.Debug("QueryValues", logStr("sql", query), slog.Any("args", args))
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
@@ -303,6 +322,8 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 		ORDER BY id, "time" DESC;	
 	`, thingID)
 
+	log.Debug("showLatest", logStr("sql", query))
+
 	rows, err := db.pool.Query(ctx, query)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
@@ -348,6 +369,72 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 	}, nil
 }
 
+func (db database) distinctValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
+	log := logging.GetFromContext(ctx)
+
+	distinct := args["distinct"].(string)
+	offset := args["offset"].(int)
+	limit := args["limit"].(int)
+	offsetLimit := fmt.Sprintf("OFFSET %d LIMIT %d", offset, limit)
+
+	query := fmt.Sprintf(`
+WITH changed AS (SELECT time, id, urn, location, v, vs, vb, unit, ref, LAG(%s) OVER (ORDER BY time) AS prev_vb FROM things_values %s)
+SELECT time, id, urn, location, v, vs, vb, unit, ref, COUNT(*) OVER () AS total FROM changed WHERE %s <> prev_vb OR prev_vb IS NULL %s;
+`, distinct, where, distinct, offsetLimit)
+
+	// set offset to 0 and limit to 1000 to not limit the window
+	args["limit"] = 1000
+	args["offset"] = 0
+
+	log.Debug("distinctValues", logStr("sql", query), slog.Any("args", args))
+
+	rows, err := db.pool.Query(ctx, query, args)
+	if err != nil {
+		log.Error("could not execute query", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	var t [][]byte
+	var total int64
+
+	var ts time.Time
+	var id, urn, unit, ref string
+	var location pgtype.Point
+	var v *float64
+	var vb *bool
+	var vs *string
+
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &total}, func() error {
+		m := things.Value{
+			Measurement: things.Measurement{
+				ID:          id,
+				Urn:         urn,
+				BoolValue:   vb,
+				StringValue: vs,
+				Value:       v,
+				Unit:        unit,
+				Timestamp:   ts.UTC()},
+			Ref: ref,
+		}
+
+		b, _ := json.Marshal(m)
+		t = append(t, b)
+
+		return nil
+	})
+	if err != nil {
+		return app.QueryResult{}, err
+	}
+
+	return app.QueryResult{
+		Data:       t,
+		Count:      len(t),
+		TotalCount: total,
+		Limit:      limit,
+		Offset:     offset,
+	}, nil
+}
+
 func (db database) countValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
@@ -364,6 +451,8 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 		GROUP BY e, id, ref 
 		ORDER BY e ASC;
 	`, timeUnit, where)
+
+	log.Debug("countValues", logStr("sql", query), slog.Any("args", args))
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
@@ -421,6 +510,9 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 	args := pgx.NamedArgs{
 		"tenants": tenants,
 	}
+
+	log.Debug("GetTags", logStr("sql", query), slog.Any("args", args))
+
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
@@ -456,7 +548,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 		ref = &m.Ref
 	}
 
-	_, err := db.pool.Exec(ctx, insert, pgx.NamedArgs{
+	args := pgx.NamedArgs{
 		"time": m.Timestamp.UTC(),
 		"id":   m.ID,
 		"urn":  m.Urn,
@@ -467,7 +559,11 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 		"vb":   m.BoolValue,
 		"unit": m.Unit,
 		"ref":  ref,
-	})
+	}
+
+	log.Debug("AddValue", logStr("sql", insert), slog.Any("args", args))
+
+	_, err := db.pool.Exec(ctx, insert, args)
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
 		return err
@@ -482,4 +578,12 @@ func isDuplicateKeyErr(err error) bool {
 		return pgErr.Code == "23505" // duplicate key value violates unique constraint
 	}
 	return false
+}
+
+var re = regexp.MustCompile(`[\t\n]`)
+
+func logStr(k, v string) slog.Attr {
+	v = re.ReplaceAllString(v, " ")
+	v = strings.ReplaceAll(v, "  ", " ")
+	return slog.String(k, v)
 }

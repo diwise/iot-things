@@ -1,11 +1,14 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/diwise/iot-things/internal/app/iot-things/functions"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 )
 
 type Sewer struct {
@@ -17,8 +20,11 @@ type Sewer struct {
 
 	OverflowObserved       bool           `json:"overflowObserved"`
 	OverflowObservedAt     *time.Time     `json:"overflowObservedAt"`
+	OverflowEndedAt        *time.Time     `json:"overflowEndedAt"`
 	OverflowDuration       *time.Duration `json:"overflowDuration"`
 	OverflowCumulativeTime time.Duration  `json:"overflowCumulativeTime"`
+
+	LastAction string `json:"lastAction"`
 
 	Sw *functions.Stopwatch `json:"_stopwatch"`
 }
@@ -30,29 +36,29 @@ func NewSewer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (s *Sewer) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (s *Sewer) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, s.handle(v, onchange))
+		errs = append(errs, s.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (s *Sewer) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (s *Sewer) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
 	if hasDistance(&m) {
-		return s.handleDistance(m, onchange)
+		return s.handleDistance(ctx, m, onchange)
 	}
 
 	if hasDigitalInput(&m) {
-		return s.handleDigitalInput(m, onchange)
+		return s.handleDigitalInput(ctx, m, onchange)
 	}
 
 	return nil
 }
 
-func (s *Sewer) handleDistance(v Measurement, onchange func(m ValueProvider) error) error {
+func (s *Sewer) handleDistance(_ context.Context, v Measurement, onchange func(m ValueProvider) error) error {
 	level, err := functions.NewLevel(s.Angle, s.MaxDistance, s.MaxLevel, s.MeanLevel, s.Offset, s.CurrentLevel)
 	if err != nil {
 		return err
@@ -78,11 +84,26 @@ func (s *Sewer) stopWatch() *functions.Stopwatch {
 	return s.Sw
 }
 
-func (s *Sewer) handleDigitalInput(v Measurement, onchange func(m ValueProvider) error) error {
+func (s *Sewer) handleDigitalInput(ctx context.Context, v Measurement, onchange func(m ValueProvider) error) error {
+	log := logging.GetFromContext(ctx).With(slog.String("id", v.ID), slog.Time("timestamp", v.Timestamp))
+
 	err := s.stopWatch().Push(*v.BoolValue, v.Timestamp, func(sw functions.Stopwatch) error {
 		s.OverflowObserved = sw.State
 		s.OverflowObservedAt = sw.StartTime
 		s.OverflowDuration = sw.Duration
+
+		var logOverflowObservedAt time.Time = time.Time{}
+		var logOverflowDuration time.Duration = time.Duration(0)
+
+		if s.OverflowObservedAt != nil {
+			logOverflowObservedAt = *s.OverflowObservedAt
+		}
+
+		if s.OverflowDuration != nil {
+			logOverflowDuration = *s.OverflowDuration
+		}
+
+		log.Debug("overflow observed", slog.Bool("state", s.OverflowObserved), slog.Time("start_time", logOverflowObservedAt), slog.Duration("duration", logOverflowDuration), slog.Int("event", int(sw.CurrentEvent)))
 
 		var z, sec float64
 
@@ -93,17 +114,40 @@ func (s *Sewer) handleDigitalInput(v Measurement, onchange func(m ValueProvider)
 
 		switch sw.CurrentEvent {
 		case functions.Started:
+			log.Debug("overflow started", slog.String("sewer_id", s.ID()), slog.String("measurement_id", v.ID), slog.Float64("cumulative_time", z), slog.Bool("on_off", true), slog.Time("ts", *s.OverflowObservedAt))
+
 			stopwatch := NewStopwatch(s.ID(), v.ID, &z, true, *s.OverflowObservedAt)
+
+			s.LastAction = "overflow started"
+			s.OverflowEndedAt = nil
+
 			return onchange(stopwatch)
 		case functions.Updated:
+			log.Debug("overflow updated", slog.String("sewer_id", s.ID()), slog.String("measurement_id", v.ID), slog.Float64("cumulative_time", sec), slog.Bool("on_off", s.OverflowObserved), slog.Time("ts", v.Timestamp))
+
 			stopwatch := NewStopwatch(s.ID(), v.ID, &sec, s.OverflowObserved, v.Timestamp)
+
+			s.LastAction = "overflow updated"
+			s.OverflowEndedAt = nil
+
 			return onchange(stopwatch)
 		case functions.Stopped:
+			log.Debug("overflow stopped", slog.String("sewer_id", s.ID()), slog.String("measurement_id", v.ID), slog.Float64("cumulative_time", sec), slog.Bool("on_off", false), slog.Time("ts", v.Timestamp))
+
 			stopwatch := NewStopwatch(s.ID(), v.ID, &sec, false, v.Timestamp)
+
+			s.LastAction = "overflow stopped"
 			s.OverflowCumulativeTime += *s.OverflowDuration
+			s.OverflowEndedAt = &v.Timestamp
+
 			return onchange(stopwatch)
 		default:
-			stopwatch := NewStopwatch(s.ID(), v.ID, nil, sw.State, time.Now())
+			log.Debug("overflow default", slog.String("sewer_id", s.ID()), slog.String("measurement_id", v.ID), slog.Float64("cumulative_time", -1), slog.Bool("on_off", sw.State), slog.Time("ts", v.Timestamp), slog.Time("now", time.Now()))
+
+			stopwatch := NewStopwatch(s.ID(), v.ID, nil, sw.State, v.Timestamp)
+
+			s.LastAction = "overflow unknown"
+
 			return onchange(stopwatch)
 		}
 	})

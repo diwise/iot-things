@@ -51,6 +51,8 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
+		log.Debug("received measurements", "pack", msg.Pack)
+
 		measurements, err := convPack(ctx, msg.Pack)
 		if err != nil {
 			log.Error("could not convert pack to measurements", "err", err.Error())
@@ -80,7 +82,7 @@ func unique(arr []string) []string {
 	return result
 }
 
-func stripFields(t things.Thing) map[string]any {
+func removeInternalState(t things.Thing) map[string]any {
 	m := make(map[string]any)
 	b, err := json.Marshal(t)
 	if err != nil {

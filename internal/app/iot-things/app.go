@@ -132,10 +132,14 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 	}
 
 	changedThings := []string{}
+	log := logging.GetFromContext(ctx)
 
 	for _, t := range connectedThings {
 		measurements := []things.Measurement{m}
-		err := t.Handle(measurements, func(m things.ValueProvider) error {
+
+		ctx = logging.NewContextWithLogger(ctx, log, slog.String("thing_id", t.ID()))
+
+		err := t.Handle(ctx, measurements, func(m things.ValueProvider) error {
 			var errs []error
 
 			for _, v := range m.Values() {
@@ -189,7 +193,7 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 			msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
 				ID:        t.ID(),
 				Type:      t.Type(),
-				Thing:     stripFields(t),
+				Thing:     removeInternalState(t),
 				Tenant:    t.Tenant(),
 				Timestamp: time.Now().UTC(),
 			}

@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 )
@@ -15,7 +16,7 @@ func NewPointOfInterest(id string, l Location, tenant string) Thing {
 		thingImpl: newThingImpl(id, "PointOfInterest", l, tenant),
 	}
 }
-func (poi *PointOfInterest) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (poi *PointOfInterest) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {

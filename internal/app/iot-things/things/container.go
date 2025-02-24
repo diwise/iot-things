@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -33,7 +34,7 @@ func NewWasteContainer(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (c *Container) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (c *Container) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {

@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestContainer(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	container.Handle([]Measurement{distance}, func(m ValueProvider) error {
+	container.Handle(context.Background(), []Measurement{distance}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -55,20 +56,20 @@ func TestPassage(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	passage.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOn}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(passage.CurrentState, true)
-	passage.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(passage.CurrentState, false)
 
-	passage.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOn}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(passage.CurrentState, true)
-	passage.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(passage.CurrentState, false)
@@ -86,10 +87,10 @@ func TestPassage(t *testing.T) {
 		Timestamp: time.Now().Add(-24 * time.Hour),
 	}
 
-	passage.Handle([]Measurement{digitalInputOnYesterday}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOnYesterday}, func(m ValueProvider) error {
 		return nil
 	})
-	passage.Handle([]Measurement{digitalInputOffYesterday}, func(m ValueProvider) error {
+	passage.Handle(context.Background(), []Measurement{digitalInputOffYesterday}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -116,7 +117,7 @@ func TestSewer(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	sewer.Handle([]Measurement{distance}, func(m ValueProvider) error {
+	sewer.Handle(context.Background(), []Measurement{distance}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -133,7 +134,7 @@ func TestSewer(t *testing.T) {
 		Timestamp: now.Add(-1 * time.Hour),
 	}
 
-	sewer.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+	sewer.Handle(context.Background(), []Measurement{digitalInputOn}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -145,7 +146,7 @@ func TestSewer(t *testing.T) {
 		Timestamp: now.Add(1 * time.Hour),
 	}
 
-	sewer.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+	sewer.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
 		return nil
 	})
 
@@ -169,7 +170,19 @@ func TestSewerDigitalInput(t *testing.T) {
 		Timestamp: now.Add(-2 * time.Hour),
 	}
 
-	sewer.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+	values := make([]Value, 0)
+	filter := func(m ValueProvider) []Value {
+		v := make([]Value, 0)
+		for _, x := range m.Values() {
+			if x.BoolValue != nil {
+				v = append(v, x)
+			}
+		}
+		return v
+	}
+
+	sewer.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
+		values = append(values, filter(m)...)
 		return nil
 	})
 
@@ -181,7 +194,8 @@ func TestSewerDigitalInput(t *testing.T) {
 		Timestamp: now.Add(-1 * time.Hour),
 	}
 
-	sewer.Handle([]Measurement{digitalInputOn}, func(m ValueProvider) error {
+	sewer.Handle(context.Background(), []Measurement{digitalInputOn}, func(m ValueProvider) error {
+		values = append(values, filter(m)...)
 		return nil
 	})
 
@@ -193,12 +207,27 @@ func TestSewerDigitalInput(t *testing.T) {
 		Timestamp: now.Add(1 * time.Hour),
 	}
 
-	sewer.Handle([]Measurement{digitalInputOff}, func(m ValueProvider) error {
+	sewer.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
+		values = append(values, filter(m)...)
+		return nil
+	})
+
+	vb = false
+	digitalInputOff = Measurement{
+		ID:        "device/3200/5500",
+		Urn:       "urn:oma:lwm2m:ext:3200",
+		BoolValue: &vb,
+		Timestamp: now.Add(2 * time.Hour),
+	}
+
+	sewer.Handle(context.Background(), []Measurement{digitalInputOff}, func(m ValueProvider) error {
+		values = append(values, filter(m)...)
 		return nil
 	})
 
 	is.Equal(sewer.OverflowObserved, false)
 	is.Equal(sewer.OverflowCumulativeTime, 2*time.Hour)
+	is.Equal(len(values), 4)
 }
 
 func TestPumpingStation(t *testing.T) {
@@ -210,7 +239,7 @@ func TestPumpingStation(t *testing.T) {
 	now := time.Now()
 
 	vb := true
-	err := pumpingstation.Handle([]Measurement{
+	err := pumpingstation.Handle(context.Background(), []Measurement{
 		{
 			ID:        "device/3200/5500",
 			Urn:       "urn:oma:lwm2m:ext:3200",
@@ -223,7 +252,6 @@ func TestPumpingStation(t *testing.T) {
 	is.NoErr(err)
 }
 
-
 func TestPumpingStationFalse(t *testing.T) {
 	is := is.New(t)
 
@@ -233,7 +261,7 @@ func TestPumpingStationFalse(t *testing.T) {
 	now := time.Now()
 
 	vb := false
-	err := pumpingstation.Handle([]Measurement{
+	err := pumpingstation.Handle(context.Background(), []Measurement{
 		{
 			ID:        "device/3200/5500",
 			Urn:       "urn:oma:lwm2m:ext:3200",
@@ -259,7 +287,7 @@ func TestRoom(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	room.Handle([]Measurement{temperature}, func(m ValueProvider) error {
+	room.Handle(context.Background(), []Measurement{temperature}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(room.Temperature, 20.0)
@@ -272,7 +300,7 @@ func TestRoom(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	room.Handle([]Measurement{humidity}, func(m ValueProvider) error {
+	room.Handle(context.Background(), []Measurement{humidity}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(room.Humidity, 50.0)
@@ -285,7 +313,7 @@ func TestRoom(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	room.Handle([]Measurement{illuminance}, func(m ValueProvider) error {
+	room.Handle(context.Background(), []Measurement{illuminance}, func(m ValueProvider) error {
 		return nil
 	})
 	is.Equal(room.Illuminance, 1000.0)
@@ -298,7 +326,7 @@ func TestRoom(t *testing.T) {
 		Value:     &v,
 		Timestamp: time.Now(),
 	}
-	room.Handle([]Measurement{airQuality}, func(m ValueProvider) error {
+	room.Handle(context.Background(), []Measurement{airQuality}, func(m ValueProvider) error {
 		return nil
 	})
 

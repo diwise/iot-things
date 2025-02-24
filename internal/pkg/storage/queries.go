@@ -204,7 +204,11 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 		if thingID, ok := c["thingid"]; ok {
 			args["showlatest"] = true
 			args["thingid"] = fmt.Sprintf("%s", thingID)
-		}		
+		}
+	}
+
+	if b, ok := c["distinct"]; ok {
+		args["distinct"] = b
 	}
 
 	return query, args

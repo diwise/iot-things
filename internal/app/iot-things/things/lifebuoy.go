@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 )
@@ -17,7 +18,7 @@ func NewLifebuoy(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (l *Lifebuoy) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (l *Lifebuoy) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {

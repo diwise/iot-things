@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -40,7 +41,7 @@ func (p *Passage) increasePassages(ts time.Time) {
 	p.PassagesToday = p.Passages[today]
 }
 
-func (p *Passage) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (p *Passage) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {

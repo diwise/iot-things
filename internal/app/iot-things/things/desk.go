@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 )
@@ -12,12 +13,12 @@ type Desk struct {
 
 func NewDesk(id string, l Location, tenant string) Thing {
 	thing := newThingImpl(id, "Desk", l, tenant)
-	return &Lifebuoy{
+	return &Desk{
 		thingImpl: thing,
 	}
 }
 
-func (d *Desk) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (d *Desk) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {
