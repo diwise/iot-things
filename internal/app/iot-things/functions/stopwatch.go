@@ -43,10 +43,7 @@ func (sw *Stopwatch) Push(state bool, ts time.Time, onchange func(sw Stopwatch) 
 			sw.CurrentEvent = Started
 
 			onchange(*sw)
-		}
-
-		// On -> On = Update duration
-		if currentState {
+		} else { // On -> On = Update duration
 			duration := ts.Sub(*sw.StartTime)
 			sw.Duration = &duration
 

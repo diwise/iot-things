@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -34,7 +35,7 @@ func (ps *PumpingStation) stopWatch() *functions.Stopwatch {
 	return ps.Sw
 }
 
-func (ps *PumpingStation) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (ps *PumpingStation) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {

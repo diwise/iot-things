@@ -1,6 +1,7 @@
 package things
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -21,7 +22,7 @@ func NewRoom(id string, l Location, tenant string) Thing {
 	}
 }
 
-func (r *Room) Handle(m []Measurement, onchange func(m ValueProvider) error) error {
+func (r *Room) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
 	errs := []error{}
 
 	for _, v := range m {
