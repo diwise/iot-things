@@ -18,6 +18,7 @@ import (
 	"github.com/diwise/iot-things/pkg/types"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -126,29 +127,43 @@ func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Meas
 }
 
 func (a *app) handle(ctx context.Context, m things.Measurement) []string {
+	log := logging.GetFromContext(ctx)
+
 	connectedThings, err := a.getConnectedThings(ctx, m.DeviceID())
 	if err != nil {
+		log.Error("could not get connected things", "err", err.Error())
+		return []string{}
+	}
+
+	if len(connectedThings) == 0 {
+		log.Debug("no connected things found", "device_id", m.DeviceID())
 		return []string{}
 	}
 
 	changedThings := []string{}
-	log := logging.GetFromContext(ctx)
+
+	log.Debug("found connected things", "device_id", m.DeviceID(), "count", len(connectedThings))
 
 	for _, t := range connectedThings {
 		measurements := []things.Measurement{m}
 
 		ctx = logging.NewContextWithLogger(ctx, log, slog.String("thing_id", t.ID()))
+		log.Debug("handle measurement", "device_id", m.DeviceID(), "measurement", m)
 
 		err := t.Handle(ctx, measurements, func(m things.ValueProvider) error {
 			var errs []error
 
-			for _, v := range m.Values() {
+			values := m.Values()
+
+			for _, v := range values {
+				log.Debug("add value", "thing_id", t.ID(), "measurement", v.ID)
 				errs = append(errs, a.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
 			}
 
 			return errors.Join(errs...)
 		})
 		if err != nil {
+			log.Error("could not handle measurement", "err", err.Error())
 			continue
 		}
 
@@ -156,11 +171,19 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 
 		err = a.saveThing(ctx, t)
 		if err != nil {
+			log.Error("could not save thing", "err", err.Error())
 			continue
 		}
 
 		changedThings = append(changedThings, t.ID())
 	}
+
+	if len(changedThings) == 0 {
+		log.Debug("no changed things found", "device_id", m.DeviceID())
+		return []string{}
+	}
+
+	log.Debug("found changed things", "device_id", m.DeviceID(), "count", len(changedThings), "things", strings.Join(changedThings, ","))
 
 	return changedThings
 }
@@ -197,6 +220,8 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 				Tenant:    t.Tenant(),
 				Timestamp: time.Now().UTC(),
 			}
+
+			log.Debug("publish message", "content_type", msg.ContentType(), "thing_id", t.ID(), "tenant", t.Tenant(), "type", t.Type())
 
 			err = msgCtx.PublishOnTopic(ctx, msg)
 			if err != nil {
