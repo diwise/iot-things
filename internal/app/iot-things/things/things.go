@@ -174,13 +174,14 @@ type Value struct {
 }
 
 type Measurement struct {
-	ID          string    `json:"id"`
-	Urn         string    `json:"urn"`
+	ID          string    `json:"id,omitzero"`
+	Urn         string    `json:"urn,omitzero"`
 	BoolValue   *bool     `json:"vb,omitempty"`
 	StringValue *string   `json:"vs,omitempty"`
 	Value       *float64  `json:"v,omitempty"`
 	Unit        string    `json:"unit,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
+	Source      *string   `json:"source,omitzero"`
 }
 
 func hasDistance(m *Measurement) bool {

@@ -332,3 +332,30 @@ func TestRoom(t *testing.T) {
 
 	is.Equal(room.CO2, 0.5)
 }
+
+func TestPointOfInterest(t *testing.T){
+	is := is.New(t)
+	ctx := context.Background()
+
+	thing := NewPointOfInterest("id", Location{Latitude: 62, Longitude: 17}, "default")
+	poi := thing.(*PointOfInterest)
+
+	v := 20.0
+	src := "www.example.com"
+	temperature := Measurement{
+		ID:        "device/3303/5700",
+		Urn:       "urn:oma:lwm2m:ext:3303",
+		Value:     &v,
+		Timestamp: time.Now(),
+		Source: &src,
+	}
+
+	err := poi.Handle(ctx, []Measurement{temperature}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.NoErr(err)
+
+	is.Equal(20.0, *poi.Temperature.Value)
+	is.Equal("www.example.com", *poi.Temperature.Source)
+}

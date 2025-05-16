@@ -121,9 +121,16 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 		return nil, fmt.Errorf("could not find header record (0)")
 	}
 
-	measurements := make([]things.Measurement, 0)
+	var source *string
+	if src, ok := pack.GetRecord(senml.FindByName("source")); ok {
+		if src.StringValue != "" {
+			vs := src.StringValue
+			source = &vs
+		}
+	}
 
 	urn := header.StringValue
+	measurements := make([]things.Measurement, 0)
 
 	var errs []error
 
@@ -145,6 +152,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 
 		id := rec.Name
 		ts, _ := rec.GetTime()
+		
 		var vs *string
 		if rec.StringValue != "" {
 			vs = &rec.StringValue
@@ -162,6 +170,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 			Value:       rec.Value,
 			StringValue: vs,
 			Unit:        rec.Unit,
+			Source:      source,
 		}
 
 		measurements = append(measurements, m)

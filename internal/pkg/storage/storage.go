@@ -82,6 +82,7 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
 			UNIQUE ("time", "id"));
 
+		ALTER TABLE things_values ADD COLUMN IF NOT EXISTS source TEXT NULL;
 
 		DO $$
 		DECLARE
@@ -259,7 +260,7 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		return db.distinctValues(ctx, where, args)
 	}
 
-	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref, count(*) OVER () AS total FROM things_values %s ", where)
+	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref,source, count(*) OVER () AS total FROM things_values %s ", where)
 
 	log.Debug("QueryValues", logStr("sql", query), slog.Any("args", args))
 
@@ -277,9 +278,9 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 	var location pgtype.Point
 	var v *float64
 	var vb *bool
-	var vs *string
+	var vs, src *string
 
-	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &total}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
 		m := things.Value{
 			Measurement: things.Measurement{
 				ID:          id,
@@ -288,6 +289,7 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 				StringValue: vs,
 				Value:       v,
 				Unit:        unit,
+				Source:      src,
 				Timestamp:   ts.UTC()},
 			Ref: ref,
 		}
@@ -316,7 +318,7 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 	thingID = fmt.Sprintf("%s/%%", thingID)
 
 	query := fmt.Sprintf(`
-		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref
+		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref, source
 		FROM things_values
 		WHERE id LIKE '%s'
 		ORDER BY id, "time" DESC;	
@@ -334,11 +336,11 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 	var id, urn, unit, ref string
 	var v *float64
 	var vb *bool
-	var vs *string
+	var vs, src *string
 
 	var t [][]byte
 
-	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &v, &vs, &vb, &unit, &ref}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &v, &vs, &vb, &unit, &ref, &src}, func() error {
 		m := things.Value{
 			Measurement: things.Measurement{
 				ID:          id,
@@ -347,7 +349,8 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 				StringValue: vs,
 				Value:       v,
 				Unit:        unit,
-				Timestamp:   ts.UTC()},
+				Timestamp:   ts.UTC(),
+				Source:      src},
 			Ref: ref,
 		}
 
@@ -378,7 +381,7 @@ func (db database) distinctValues(ctx context.Context, where string, args pgx.Na
 	offsetLimit := fmt.Sprintf("OFFSET %d LIMIT %d", offset, limit)
 
 	query := fmt.Sprintf(`
-WITH changed AS (SELECT time, id, urn, location, v, vs, vb, unit, ref, LAG(%s) OVER (ORDER BY time) AS prev_vb FROM things_values %s)
+WITH changed AS (SELECT time, id, urn, location, v, vs, vb, unit, ref, source, LAG(%s) OVER (ORDER BY time) AS prev_vb FROM things_values %s)
 SELECT time, id, urn, location, v, vs, vb, unit, ref, COUNT(*) OVER () AS total FROM changed WHERE %s <> prev_vb OR prev_vb IS NULL %s;
 `, distinct, where, distinct, offsetLimit)
 
@@ -402,9 +405,9 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, COUNT(*) OVER () AS total 
 	var location pgtype.Point
 	var v *float64
 	var vb *bool
-	var vs *string
+	var vs, src *string
 
-	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &total}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
 		m := things.Value{
 			Measurement: things.Measurement{
 				ID:          id,
@@ -413,6 +416,7 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, COUNT(*) OVER () AS total 
 				StringValue: vs,
 				Value:       v,
 				Unit:        unit,
+				Source:      src,
 				Timestamp:   ts.UTC()},
 			Ref: ref,
 		}
@@ -537,8 +541,8 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 	log := logging.GetFromContext(ctx)
 
 	insert := `
-		INSERT INTO things_values(time, id, urn, location, v, vs, vb, unit, ref)
-		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @ref)
+		INSERT INTO things_values(time, id, urn, location, v, vs, vb, unit, ref, source)
+		VALUES (@time, @id, @urn, point(@lon,@lat), @v, @vs, @vb, @unit, @ref, @source)
 		ON CONFLICT (time, id) DO NOTHING;`
 
 	lat, lon := t.LatLon()
@@ -549,16 +553,17 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 	}
 
 	args := pgx.NamedArgs{
-		"time": m.Timestamp.UTC(),
-		"id":   m.ID,
-		"urn":  m.Urn,
-		"lon":  lon,
-		"lat":  lat,
-		"v":    m.Value,
-		"vs":   m.StringValue,
-		"vb":   m.BoolValue,
-		"unit": m.Unit,
-		"ref":  ref,
+		"time":   m.Timestamp.UTC(),
+		"id":     m.ID,
+		"urn":    m.Urn,
+		"lon":    lon,
+		"lat":    lat,
+		"v":      m.Value,
+		"vs":     m.StringValue,
+		"vb":     m.BoolValue,
+		"unit":   m.Unit,
+		"ref":    ref,
+		"source": m.Source,
 	}
 
 	log.Debug("AddValue", logStr("sql", insert), slog.Any("args", args))

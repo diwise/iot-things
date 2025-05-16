@@ -8,7 +8,17 @@ import (
 
 type PointOfInterest struct {
 	thingImpl
-	Temperature float64 `json:"temperature"`
+	Temperature Measurement `json:"temperature"`
+}
+
+func NewBeach(id string, l Location, tenant string) Thing {
+	poi := newThingImpl(id, "PointOfInterest", l, tenant)
+	beach := "Beach"
+	poi.SubType = &beach
+
+	return &PointOfInterest{
+		thingImpl: poi,
+	}
 }
 
 func NewPointOfInterest(id string, l Location, tenant string) Thing {
@@ -35,7 +45,7 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 		return nil
 	}
 
-	temp := NewTemperature(poi.ID(), m.ID, *m.Value, m.Timestamp)
+	temp := NewTemperatureFromMeasurement(poi.ID(), m)
 	err := onchange(temp)
 	if err != nil {
 		return err
@@ -55,7 +65,13 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 		}
 	}
 
-	poi.Temperature = t / float64(n)
+	avgTemp := t / float64(n)
+
+	poi.Temperature = Measurement{
+		Value:     &avgTemp,
+		Source:    m.Source,
+		Timestamp: m.Timestamp,
+	}
 
 	return nil
 }
