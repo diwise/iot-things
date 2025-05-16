@@ -382,7 +382,7 @@ func (db database) distinctValues(ctx context.Context, where string, args pgx.Na
 
 	query := fmt.Sprintf(`
 WITH changed AS (SELECT time, id, urn, location, v, vs, vb, unit, ref, source, LAG(%s) OVER (ORDER BY time) AS prev_vb FROM things_values %s)
-SELECT time, id, urn, location, v, vs, vb, unit, ref, COUNT(*) OVER () AS total FROM changed WHERE %s <> prev_vb OR prev_vb IS NULL %s;
+SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () AS total FROM changed WHERE %s <> prev_vb OR prev_vb IS NULL %s;
 `, distinct, where, distinct, offsetLimit)
 
 	// set offset to 0 and limit to 1000 to not limit the window
