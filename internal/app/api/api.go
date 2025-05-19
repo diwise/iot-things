@@ -76,7 +76,10 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		result, err := a.QueryThings(ctx, r.URL.Query())
+		params := r.URL.Query()
+		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
+
+		result, err := a.QueryThings(ctx, params)
 		if err != nil {
 			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -255,7 +258,10 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		result, err := a.QueryThings(ctx, map[string][]string{"id": {thingId}})
+		params := map[string][]string{"id": {thingId}}
+		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
+
+		result, err := a.QueryThings(ctx, params)
 		if err != nil {
 			logger.Debug("failed to query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -524,7 +530,10 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		result, err := a.QueryValues(ctx, r.URL.Query())
+		params := r.URL.Query()
+		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
+
+		result, err := a.QueryValues(ctx, params)
 		if err != nil {
 			logger.Error("could not query for values", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
