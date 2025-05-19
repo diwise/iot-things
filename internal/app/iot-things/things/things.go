@@ -180,7 +180,7 @@ type Measurement struct {
 	StringValue *string   `json:"vs,omitempty"`
 	Value       *float64  `json:"v,omitempty"`
 	Unit        string    `json:"unit,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
+	Timestamp   time.Time `json:"timestamp,omitzero"`
 	Source      *string   `json:"source,omitzero"`
 }
 

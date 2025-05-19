@@ -9,10 +9,10 @@ import (
 
 type Room struct {
 	thingImpl
-	Temperature float64 `json:"temperature"`
-	Humidity    float64 `json:"humidity"`
-	Illuminance float64 `json:"illuminance"`
-	CO2         float64 `json:"co2"`
+	Temperature Measurement `json:"temperature"`
+	Humidity    float64     `json:"humidity"`
+	Illuminance float64     `json:"illuminance"`
+	CO2         float64     `json:"co2"`
 	//Presence    bool    `json:"presence"`
 }
 
@@ -167,7 +167,13 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 		return err
 	}
 
-	r.Temperature = avg(r, m.ID, *m.Value, hasTemperature)
+	avgTemp := avg(r, m.ID, *m.Value, hasTemperature)
+
+	r.Temperature = Measurement{
+		Value:     &avgTemp,
+		Source:    m.Source,
+		Timestamp: m.Timestamp,
+	}
 
 	return nil
 }

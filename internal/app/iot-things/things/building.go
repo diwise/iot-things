@@ -8,9 +8,9 @@ import (
 
 type Building struct {
 	thingImpl
-	Energy      float64 `json:"energy"`
-	Power       float64 `json:"power"`
-	Temperature float64 `json:"temperature"`
+	Energy      float64     `json:"energy"`
+	Power       float64     `json:"power"`
+	Temperature Measurement `json:"temperature"`
 }
 
 func NewBuilding(id string, l Location, tenant string) Thing {
@@ -78,7 +78,13 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 			}
 		}
 
-		building.Temperature = t / float64(n)
+		avgTemp := t / float64(n)
+
+		building.Temperature = Measurement{
+			Value:     &avgTemp,
+			Source:    m.Source,
+			Timestamp: m.Timestamp,
+		}
 
 		return nil
 	}
