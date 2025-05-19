@@ -26,7 +26,8 @@ func TestRoomTemperature(t *testing.T) {
 
 	NewMeasurementsHandler(appMock(ctx, r, s, v), msgCtxMock())(ctx, msgMock(temperatureMsg), slog.Default())
 
-	is.Equal(s[r.ID()].(*things.Room).Temperature, 21.0)
+	room := s[r.ID()].(*things.Room)
+	is.Equal(*room.Temperature.Value, 21.0)
 }
 
 func TestRoomTemperatureWithSource(t *testing.T) {
@@ -43,7 +44,9 @@ func TestRoomTemperatureWithSource(t *testing.T) {
 
 	NewMeasurementsHandler(appMock(ctx, r, s, v), msgCtxMock())(ctx, msgMock(temperatureWithSourceMsg), slog.Default())
 
-	is.Equal(s[r.ID()].(*things.Room).Temperature, 21.0)
+	room := s[r.ID()].(*things.Room)
+
+	is.Equal(*room.Temperature.Value, 21.0)
 }
 
 func TestPointOfInterest(t *testing.T) {
@@ -52,7 +55,7 @@ func TestPointOfInterest(t *testing.T) {
 
 	is := is.New(t)
 
-	poi := things.NewBeach("beach-001", things.DefaultLocation, "default")	
+	poi := things.NewBeach("beach-001", things.DefaultLocation, "default")
 	poi.AddDevice("c5a2ae17c239")
 
 	s := map[string]things.Thing{}

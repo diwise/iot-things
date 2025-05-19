@@ -290,7 +290,7 @@ func TestRoom(t *testing.T) {
 	room.Handle(context.Background(), []Measurement{temperature}, func(m ValueProvider) error {
 		return nil
 	})
-	is.Equal(room.Temperature, 20.0)
+	is.Equal(*room.Temperature.Value, 20.0)
 
 	//humidity
 	v = 50.0
