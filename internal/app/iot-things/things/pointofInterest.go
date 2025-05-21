@@ -69,10 +69,12 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 		avgTemp := t / float64(n)
 	*/
 
-	poi.Temperature = Measurement{
-		Value:     m.Value,
-		Source:    m.Source,
-		Timestamp: m.Timestamp,
+	if m.Timestamp.After(poi.Temperature.Timestamp) {
+		poi.Temperature = Measurement{
+			Value:     m.Value,
+			Source:    m.Source,
+			Timestamp: m.Timestamp,
+		}
 	}
 
 	return nil
