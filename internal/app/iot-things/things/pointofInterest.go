@@ -9,6 +9,7 @@ import (
 type PointOfInterest struct {
 	thingImpl
 	Temperature Measurement `json:"temperature"`
+	Current     Measurement `json:"current"`
 }
 
 func NewBeach(id string, l Location, tenant string) Thing {
@@ -75,6 +76,12 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 			Source:    m.Source,
 			Timestamp: m.Timestamp,
 		}
+	}
+
+	poi.Current = Measurement{
+		Value:     m.Value,
+		Source:    m.Source,
+		Timestamp: m.Timestamp,
 	}
 
 	return nil

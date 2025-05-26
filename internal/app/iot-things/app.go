@@ -233,16 +233,18 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 		}
 	}()
 
+	duration := 100 * time.Millisecond
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
 		case thingID := <-in:
-			pubAfter := time.Now().Add(2 * time.Second)
+			pubAfter := time.Now().Add(duration - 1)
 			thingsToPub.Store(thingID, pubAfter)
 
-		case ts := <-time.Tick(2 * time.Second):
+		case ts := <-time.Tick(duration):
 			thingsToPub.Range(func(key, value any) bool {
 				t, ok := value.(time.Time)
 				if ok {
