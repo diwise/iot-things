@@ -15,8 +15,9 @@ type Sewer struct {
 	thingImpl
 	functions.LevelConfig
 
-	CurrentLevel float64 `json:"currentLevel"`
-	Percent      float64 `json:"percent"`
+	CurrentLevel float64   `json:"currentLevel"`
+	Percent      float64   `json:"percent"`
+	Measured     *Measured `json:"measured,omitempty"`
 
 	OverflowObserved       bool           `json:"overflowObserved"`
 	OverflowObservedAt     *time.Time     `json:"overflowObservedAt"`
@@ -27,6 +28,12 @@ type Sewer struct {
 	LastAction string `json:"lastAction"`
 
 	Sw *functions.Stopwatch `json:"_stopwatch"`
+}
+
+type Measured struct {
+	Level      float64   `json:"level"`
+	Percent    float64   `json:"percent"`
+	ObservedAt time.Time `json:"observedAt"`
 }
 
 func NewSewer(id string, l Location, tenant string) Thing {
@@ -71,8 +78,17 @@ func (s *Sewer) handleDistance(_ context.Context, v Measurement, onchange func(m
 
 	fillingLevel := NewFillingLevel(s.ID(), v.ID, level.Percent(), level.Current(), v.Timestamp)
 
-	s.CurrentLevel = level.Current()
-	s.Percent = level.Percent()
+	s.Measured = &Measured{
+		Level:      level.Current(),
+		Percent:    level.Percent(),
+		ObservedAt: v.Timestamp,
+	}
+
+	if v.Timestamp.After(s.ObservedAt) {
+		s.ObservedAt = v.Timestamp
+		s.CurrentLevel = level.Current()
+		s.Percent = level.Percent()
+	}
 
 	return onchange(fillingLevel)
 }
