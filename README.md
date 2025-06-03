@@ -60,7 +60,6 @@ Add Authorization header with **any** Bearer token
 
 #### Paging
 
-
 offset - skip n rows
 
 limit - limit response to n rows
