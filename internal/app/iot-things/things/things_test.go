@@ -154,6 +154,35 @@ func TestSewer(t *testing.T) {
 	is.Equal(sewer.OverflowCumulativeTime, 2*time.Hour)
 }
 
+func TestSewer2(t *testing.T) {
+	is := is.New(t)
+
+	thing := NewSewer("id", Location{Latitude: 62, Longitude: 17}, "default")
+	sewer := thing.(*Sewer)
+
+	maxd := 2.17
+	maxl := 2.17
+	offset := 0.87
+
+	sewer.MaxDistance = &maxd
+	sewer.MaxLevel = &maxl
+	sewer.Offset = &offset
+
+	v := 0.5
+	distance := Measurement{
+		ID:        "device/3330/5700",
+		Urn:       "urn:oma:lwm2m:ext:3330",
+		Value:     &v,
+		Timestamp: time.Now(),
+	}
+	sewer.Handle(context.Background(), []Measurement{distance}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.Equal(sewer.CurrentLevel, 1.67)
+	is.Equal(int(sewer.Percent), 76)
+}
+
 func TestSewerDigitalInput(t *testing.T) {
 	is := is.New(t)
 
@@ -333,7 +362,7 @@ func TestRoom(t *testing.T) {
 	is.Equal(room.CO2, 0.5)
 }
 
-func TestPointOfInterest(t *testing.T){
+func TestPointOfInterest(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 
@@ -347,7 +376,7 @@ func TestPointOfInterest(t *testing.T){
 		Urn:       "urn:oma:lwm2m:ext:3303",
 		Value:     &v,
 		Timestamp: time.Now(),
-		Source: &src,
+		Source:    &src,
 	}
 
 	err := poi.Handle(ctx, []Measurement{temperature}, func(m ValueProvider) error {

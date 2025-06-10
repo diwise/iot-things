@@ -84,7 +84,9 @@ func (l *level) Calc(distance float64, ts time.Time) (bool, error) {
 	var errs []error
 
 	// Calculate the current level using the configured angle (if any) and round to two decimals
-	l.Current_ = math.Round((l.maxDistance-distance)*l.cosAlpha*100) / 100.0
+	currentLevel := (math.Round((l.maxDistance-distance)*l.cosAlpha*100) / 100.0) + l.offsetLevel
+
+	l.Current_ = math.Max(currentLevel, l.offsetLevel)
 
 	if !hasChanged(previousLevel, l.Current_) {
 		return false, nil
