@@ -104,12 +104,7 @@ func newRouter(ctx context.Context, opa string, a app.ThingsApp) (*chi.Mux, erro
 	}
 	defer policies.Close()
 
-	r, err := api.Register(ctx, a, policies)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	return r, nil
+	return api.Register(ctx, a, policies)
 }
 
 func seed(ctx context.Context, fp string, a app.ThingsApp) error {

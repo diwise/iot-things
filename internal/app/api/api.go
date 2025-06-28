@@ -30,6 +30,10 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 
 	r := chi.NewRouter()
 
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -57,10 +61,6 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Get("/values", getValuesHandler(log, app))
 			})
 		})
-	})
-
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
 	})
 
 	return r, nil
