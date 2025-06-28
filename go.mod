@@ -47,7 +47,7 @@ require (
 )
 
 require (
-	github.com/diwise/messaging-golang v0.0.0-20241021090331-143508a441a2
+	github.com/diwise/messaging-golang v0.0.0-20250628135946-f23f34d06003
 	github.com/diwise/senml v0.0.0-20240402140901-e4008e065e05
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -51,7 +51,7 @@ func main() {
 	messenger, err := messaging.Initialize(ctx, config)
 	exitIf(err, log, "failed to init messenger")
 	messenger.Start()
-	//defer messenger.Close()
+	defer messenger.Close()
 
 	a, err := newApp(ctx, s, s, messenger, cfgFile)
 	exitIf(err, log, "could not configure application")
