@@ -74,47 +74,46 @@ func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Read
 				logger.Error("auth failed", "err", err.Error())
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
-			} else {
-
-				binding := results[0].Bindings["x"]
-
-				// If authz fails we will get back a single bool. Check for that first.
-				allowed, ok := binding.(bool)
-				if ok && !allowed {
-					err = errors.New("authorization failed")
-					logger.Warn(err.Error())
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					return
-				}
-
-				// If authz succeeds we should expect a result object here
-				result, ok := binding.(map[string]any)
-
-				if !ok {
-					err = errors.New("unexpected result type")
-					logger.Error("opa error", "err", err.Error())
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				anyt, ok1 := result["tenants"]
-				t, ok2 := anyt.([]any)
-
-				if !ok1 || !ok2 {
-					err = errors.New("bad response from authz policy engine")
-					logger.Error("opa error", "err", err.Error())
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				tenants := make([]string, len(t))
-				for idx, tenant := range t {
-					tenants[idx] = tenant.(string)
-				}
-
-				ctx := context.WithValue(r.Context(), allowedTenantsCtxKey, tenants)
-				r = r.WithContext(ctx)
 			}
+
+			binding := results[0].Bindings["x"]
+
+			// If authz fails we will get back a single bool. Check for that first.
+			allowed, ok := binding.(bool)
+			if ok && !allowed {
+				err = errors.New("authorization failed")
+				logger.Warn(err.Error())
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// If authz succeeds we should expect a result object here
+			result, ok := binding.(map[string]any)
+
+			if !ok {
+				err = errors.New("unexpected result type")
+				logger.Error("opa error", "err", err.Error())
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			anyt, ok1 := result["tenants"]
+			t, ok2 := anyt.([]any)
+
+			if !ok1 || !ok2 {
+				err = errors.New("bad response from authz policy engine")
+				logger.Error("opa error", "err", err.Error())
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			tenants := make([]string, len(t))
+			for idx, tenant := range t {
+				tenants[idx] = tenant.(string)
+			}
+
+			ctx := context.WithValue(r.Context(), allowedTenantsCtxKey, tenants)
+			r = r.WithContext(ctx)
 
 			// Token is authenticated, pass it through
 			next.ServeHTTP(w, r)

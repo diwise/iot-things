@@ -30,22 +30,18 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 
 	r := chi.NewRouter()
 
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
-
 	authenticator, err := auth.NewAuthenticator(ctx, log, policies)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api authenticator: %w", err)
 	}
 
 	r.Route("/api/v0", func(r chi.Router) {
+		r.Use(middleware.RequestID)
+		r.Use(middleware.RealIP)
+		r.Use(middleware.Logger)
+		r.Use(middleware.Recoverer)
+		r.Use(middleware.Timeout(60 * time.Second))
+
 		r.Group(func(r chi.Router) {
 			r.Use(authenticator)
 
@@ -61,6 +57,10 @@ func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.
 				r.Get("/values", getValuesHandler(log, app))
 			})
 		})
+	})
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 	})
 
 	return r, nil
