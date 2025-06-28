@@ -6,10 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/diwise/iot-things/internal/app/api"
 	app "github.com/diwise/iot-things/internal/app/iot-things"
@@ -42,37 +44,25 @@ func main() {
 	flag.Parse()
 
 	s, err := storage.New(ctx, storage.LoadConfiguration(ctx))
-	if err != nil {
-		log.Error("could not configure storage", "err", err.Error())
-		os.Exit(1)
-	}
+	exitIf(err, log, "could not configure storage")
+	defer s.Close()
+
 	config := messaging.LoadConfiguration(ctx, serviceName, log)
 	messenger, err := messaging.Initialize(ctx, config)
-	if err != nil {
-		log.Error("failed to init messenger")
-		os.Exit(1)
-	}
+	exitIf(err, log, "failed to init messenger")
 	messenger.Start()
+	defer messenger.Close()
 
 	a, err := newApp(ctx, s, s, messenger, cfgFile)
-	if err != nil {
-		log.Error("could not configure application", "err", err.Error())
-		os.Exit(1)
-	}
+	exitIf(err, log, "could not configure application")
 
 	messenger.RegisterTopicMessageHandler("message.accepted", app.NewMeasurementsHandler(a, messenger))
 
 	r, err := newRouter(ctx, opa, a)
-	if err != nil {
-		log.Error("could not setup router", "err", err.Error())
-		os.Exit(1)
-	}
+	exitIf(err, log, "could not setup router")
 
 	err = seed(ctx, fp, a)
-	if err != nil {
-		log.Error("file with things found but could not seed data", "err", err.Error())
-		os.Exit(1)
-	}
+	exitIf(err, log, "file with things found but could not seed data")
 
 	port := env.GetVariableOrDefault(ctx, "SERVICE_PORT", "8080")
 
@@ -80,18 +70,15 @@ func main() {
 
 	go func() {
 		if err := webServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("could not listen and serve", "err", err.Error())
-			os.Exit(1)
+			exitIf(err, log, "could not listen and serve", "port", port)
 		}
 	}()
+
+	defer webServer.Shutdown(ctx)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-
-	webServer.Shutdown(ctx)
-	messenger.Close()
-	s.Close()
 }
 
 func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, m messaging.MsgContext, cfgFilePath string) (app.ThingsApp, error) {
@@ -138,4 +125,12 @@ func seed(ctx context.Context, fp string, a app.ThingsApp) error {
 	defer things.Close()
 
 	return a.Seed(ctx, things)
+}
+
+func exitIf(err error, logger *slog.Logger, msg string, args ...any) {
+	if err != nil {
+		logger.With(args...).Error(msg, "err", err.Error())
+		time.Sleep(2 * time.Second)
+		os.Exit(1)
+	}
 }
