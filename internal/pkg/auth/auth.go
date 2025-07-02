@@ -10,8 +10,7 @@ import (
 
 	"log/slog"
 
-	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
-	"github.com/open-policy-agent/opa/ast"
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"	
 	"github.com/open-policy-agent/opa/rego"
 	"go.opentelemetry.io/otel"
 )
@@ -33,7 +32,6 @@ func NewAuthenticator(ctx context.Context, logger *slog.Logger, policies io.Read
 	query, err := rego.New(
 		rego.Query("x = data.example.authz.allow"),
 		rego.Module("example.rego", string(module)),
-		rego.SetRegoVersion(ast.RegoV1),
 	).PrepareForEval(ctx)
 
 	if err != nil {
