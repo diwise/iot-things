@@ -41,7 +41,7 @@ Add this to launch.json
 }
 ```
 
-### Api
+### Api ()
 
 1: GET http://localhost:8080/api/v0/things?type=WasteContainer
 
