@@ -101,14 +101,18 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 
 	query += " ORDER BY type ASC, data->>'subType' ASC, data->>'name' ASC"
 
-	if offset, ok := c["offset"]; ok {
-		query += " OFFSET @offset"
-		args["offset"] = offset
-	}
+	_, exportOk := c["export"]
 
-	if limit, ok := c["limit"]; ok {
-		query += " LIMIT @limit"
-		args["limit"] = limit
+	if !exportOk {
+		if offset, ok := c["offset"]; ok {
+			query += " OFFSET @offset"
+			args["offset"] = offset
+		}
+
+		if limit, ok := c["limit"]; ok {
+			query += " LIMIT @limit"
+			args["limit"] = limit
+		}
 	}
 
 	return query, args
