@@ -204,6 +204,13 @@ func WithDistinctValues(distinct string) ConditionFunc {
 	}
 }
 
+func WithExport() ConditionFunc {
+	return func(m map[string]any) map[string]any {
+		m["export"] = true
+		return m
+	}
+}
+
 func WithParams(query map[string][]string) []ConditionFunc {
 	conditions := make([]ConditionFunc, 0)
 
@@ -271,6 +278,11 @@ func WithParams(query map[string][]string) []ConditionFunc {
 					conditions = append(conditions, WithShowLatest(true))
 				}
 			}
+		case "export":
+			if values[0] == "true" {
+				conditions = append(conditions, WithExport())
+			}
+
 		}
 
 		if strings.HasPrefix(key, "v[") && strings.HasSuffix(key, "]") {
