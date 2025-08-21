@@ -54,18 +54,18 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 	log := logging.GetFromContext(ctx)
 
 	ddl := `
-		CREATE TABLE IF NOT EXISTS things (		
-			id		 	TEXT 	NOT NULL,			
+		CREATE TABLE IF NOT EXISTS things (
+			id		 	TEXT 	NOT NULL,
 			type 		TEXT 	NOT NULL,
 			location 	POINT 	NULL,
-			data 		JSONB	NULL,	
-			tenant		TEXT 	NOT NULL,	
-			created_on 	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
+			data 		JSONB	NULL,
+			tenant		TEXT 	NOT NULL,
+			created_on 	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			modified_on	timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			deleted_on 	timestamp with time zone NULL,	
+			deleted_on 	timestamp with time zone NULL,
 			PRIMARY KEY (id)
-		);			
-			
+		);
+
 		CREATE INDEX IF NOT EXISTS thing_type_idx ON things (type, id);
 		CREATE INDEX IF NOT EXISTS thing_location_idx ON things USING GIST(location);
 
@@ -73,13 +73,13 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			time 		TIMESTAMPTZ NOT NULL,
 			id  		TEXT NOT NULL,
 			urn		  	TEXT NOT NULL,
-			location 	POINT NULL,										
+			location 	POINT NULL,
 			v 			NUMERIC NULL,
-			vs 			TEXT NULL,			
-			vb 			BOOLEAN NULL,			
-			unit 		TEXT NOT NULL DEFAULT '',	
-			ref 		TEXT NULL,		
-			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,			
+			vs 			TEXT NULL,
+			vb 			BOOLEAN NULL,
+			unit 		TEXT NOT NULL DEFAULT '',
+			ref 		TEXT NULL,
+			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE ("time", "id"));
 
 		ALTER TABLE things_values ADD COLUMN IF NOT EXISTS source TEXT NULL;
@@ -87,13 +87,13 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 		DO $$
 		DECLARE
 			n INTEGER;
-		BEGIN			
+		BEGIN
 			SELECT COUNT(*) INTO n
 			FROM timescaledb_information.hypertables
 			WHERE hypertable_name = 'things_values';
-			
-			IF n = 0 THEN				
-				PERFORM create_hypertable('things_values', 'time');				
+
+			IF n = 0 THEN
+				PERFORM create_hypertable('things_values', 'time');
 			END IF;
 		END $$;
 	`
@@ -235,12 +235,23 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 		return app.QueryResult{}, err
 	}
 
+	offset := 0
+	limit := len(t)
+
+	if o, ok := args["offset"]; ok {
+		offset = o.(int)
+	}
+
+	if l, ok := args["limit"]; ok {
+		limit = l.(int)
+	}
+
 	return app.QueryResult{
 		Data:       t,
 		Count:      len(t),
 		TotalCount: total,
-		Limit:      args["limit"].(int),
-		Offset:     args["offset"].(int),
+		Limit:      limit,
+		Offset:     offset,
 	}, nil
 }
 
@@ -321,7 +332,7 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref, source
 		FROM things_values
 		WHERE id LIKE '%s'
-		ORDER BY id, "time" DESC;	
+		ORDER BY id, "time" DESC;
 	`, thingID)
 
 	log.Debug("showLatest", logStr("sql", query))
@@ -452,7 +463,7 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 		SELECT DATE_TRUNC('%s', time) e, id, ref, count(*) n
 		FROM things_values
 		%s
-		GROUP BY e, id, ref 
+		GROUP BY e, id, ref
 		ORDER BY e ASC;
 	`, timeUnit, where)
 
