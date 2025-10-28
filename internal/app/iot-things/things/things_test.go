@@ -183,6 +183,35 @@ func TestSewer2(t *testing.T) {
 	is.Equal(int(sewer.Percent), 76)
 }
 
+func TestSewerNegativeValues(t *testing.T) {
+	is := is.New(t)
+
+	thing := NewSewer("id", Location{Latitude: 62, Longitude: 17}, "default")
+	sewer := thing.(*Sewer)
+
+	maxd := 2.17
+	maxl := 2.17
+	offset := 0.0
+
+	sewer.MaxDistance = &maxd
+	sewer.MaxLevel = &maxl
+	sewer.Offset = &offset
+
+	v := 2.18
+	distance := Measurement{
+		ID:        "device/3330/5700",
+		Urn:       "urn:oma:lwm2m:ext:3330",
+		Value:     &v,
+		Timestamp: time.Now(),
+	}
+	sewer.Handle(context.Background(), []Measurement{distance}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.Equal(sewer.CurrentLevel, -0.01)
+	is.Equal(int(sewer.Percent), 0)
+}
+
 func TestSewerDigitalInput(t *testing.T) {
 	is := is.New(t)
 

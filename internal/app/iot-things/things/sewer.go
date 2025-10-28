@@ -67,7 +67,7 @@ func (s *Sewer) handle(ctx context.Context, m Measurement, onchange func(m Value
 
 func (s *Sewer) handleDistance(ctx context.Context, v Measurement, onchange func(m ValueProvider) error) error {
 	log := logging.GetFromContext(ctx)
-	
+
 	level, err := functions.NewLevel(s.Angle, s.MaxDistance, s.MaxLevel, s.MeanLevel, s.Offset, s.CurrentLevel)
 	if err != nil {
 		return err
@@ -79,13 +79,14 @@ func (s *Sewer) handleDistance(ctx context.Context, v Measurement, onchange func
 	}
 
 	if level.Current() < 0 {
-		log.Warn("negative level detected", slog.String("id", v.ID), slog.Float64("level", level.Current()), slog.Time("timestamp", v.Timestamp))
-		return nil // Ignore negative levels
+		log.Warn("negative level value", slog.String("id", v.ID), slog.Float64("level", level.Current()), slog.Time("timestamp", v.Timestamp))
+		// CHANGE: okt 28 2025, do not ignore negative values
+		// return nil
 	}
 
 	pcnt := level.Percent()
 	if pcnt < 0 || pcnt > 100 {
-		log.Info("invalid percent detected", slog.String("id", v.ID), slog.Float64("percent", pcnt), slog.Time("timestamp", v.Timestamp))
+		log.Info("invalid percent value", slog.String("id", v.ID), slog.Float64("percent", pcnt), slog.Time("timestamp", v.Timestamp))
 		if pcnt < 0 {
 			pcnt = 0
 		}

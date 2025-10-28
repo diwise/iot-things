@@ -77,16 +77,21 @@ func NewLevel(angle, maxDistance, maxLevel, meanLevel, offset *float64, current 
 }
 
 func (l *level) Calc(distance float64, ts time.Time) (bool, error) {
-	distance += l.offsetLevel
-
-	previousLevel := l.Current_
+	rnd := func(v float64) float64 {
+		return math.Round(v*1e5) / 1e5
+	}
 
 	var errs []error
 
-	// Calculate the current level using the configured angle (if any) and round to two decimals
-	currentLevel := (math.Round((l.maxDistance-distance)*l.cosAlpha*100) / 100.0) + l.offsetLevel
+	previousLevel := l.Current_
 
-	l.Current_ = math.Max(currentLevel, l.offsetLevel)
+	currentLevel := rnd((l.maxDistance - distance) * l.cosAlpha)
+
+	if l.offsetLevel != 0 && currentLevel < l.offsetLevel {
+		currentLevel = l.offsetLevel
+	}
+
+	l.Current_ = currentLevel
 
 	if !hasChanged(previousLevel, l.Current_) {
 		return false, nil
@@ -95,7 +100,6 @@ func (l *level) Calc(distance float64, ts time.Time) (bool, error) {
 	if isNotZero(l.maxLevel) {
 		pct := math.Min((l.Current_*100.0)/l.maxLevel, 100.0)
 		l.Percent_ = &pct
-
 	}
 
 	if isNotZero(l.meanLevel) {
@@ -132,5 +136,5 @@ func hasChanged(prev, new float64) bool {
 }
 
 func isNotZero(value float64) bool {
-	return (math.Abs(value) >= 0.001)
+	return (math.Abs(value) >= 0.0001)
 }
