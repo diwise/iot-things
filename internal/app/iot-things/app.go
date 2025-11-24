@@ -190,11 +190,12 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan string) {
 	log := logging.GetFromContext(ctx)
 
-	//	thingsToPub := new(sync.Map)
-	pub := make(chan string, 1000)
+	for {
+		select {
+		case <-ctx.Done():
+			return
 
-	go func() {
-		for thingID := range pub {
+		case thingID := <-inbox:
 			result, err := r.QueryThings(ctx, WithID(thingID))
 			if err != nil {
 				log.Error("could not query thing", "err", err.Error())
@@ -227,41 +228,8 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 				log.Error("could not publish message", "err", err.Error())
 				continue
 			}
-
-			//			thingsToPub.Delete(thingID)
-		}
-	}()
-
-	//	duration := 100 * time.Millisecond
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case thingID := <-inbox:
-			pub <- thingID
-			log.Debug("queued thing for publishing", "thing_id", thingID)
-
-			//			pubAfter := time.Now().Add(duration - 1)
-			//			thingsToPub.Store(thingID, pubAfter)
-
-			//		case ts := <-time.Tick(duration):
-			//			thingsToPub.Range(func(key, value any) bool {
-			//				t, ok := value.(time.Time)
-			//				if ok {
-			//					if t.Before(ts) {
-			//						thingID, ok := key.(string)
-			//						if ok {
-			//							pub <- thingID
-			//						}
-			//					}
-			//				}
-			//				return true
-			//			})
 		}
 	}
-
 }
 
 func (a *app) AddThing(ctx context.Context, b []byte) error {
