@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -175,24 +176,40 @@ func TestPumpingStationDigitalInput(t *testing.T) {
 	is.Equal(s[p.ID()].(*things.PumpingStation).PumpingObserved, false)
 }
 
+var mu sync.Mutex
+
 func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing, values map[string][]things.Value) ThingsApp {
+	mu.Lock()
+	defer mu.Unlock()
+
 	store[t.ID()] = t
 
 	r := &ThingsReaderMock{
 		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+
+			mu.Lock()
+			defer mu.Unlock()
+			data := [][]byte{store[t.ID()].Byte()}
+
 			return QueryResult{
-				Data: [][]byte{store[t.ID()].Byte()},
+				Data: data,
 			}, nil
 		},
 	}
 	w := &ThingsWriterMock{
 		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+			mu.Lock()
+			defer mu.Unlock()
+
 			if values != nil {
 				values[t.ID()] = append(values[t.ID()], m)
 			}
 			return nil
 		},
 		UpdateThingFunc: func(ctx context.Context, u things.Thing) error {
+			mu.Lock()
+			defer mu.Unlock()
+
 			if store != nil {
 				store[u.ID()] = u
 			}
