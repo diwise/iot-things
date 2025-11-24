@@ -71,6 +71,7 @@ type app struct {
 	cfg    *config
 
 	pub chan string
+	mu  sync.Mutex
 }
 
 type config struct {
@@ -107,11 +108,9 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
-var mu = sync.Mutex{}
-
 func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {
-	mu.Lock()
-	defer mu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	changedThings := []string{}
 
@@ -188,11 +187,11 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 	return changedThings
 }
 
-func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, in chan string) {
+func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan string) {
 	log := logging.GetFromContext(ctx)
 
-	thingsToPub := new(sync.Map)
-	pub := make(chan string)
+	//	thingsToPub := new(sync.Map)
+	pub := make(chan string, 1000)
 
 	go func() {
 		for thingID := range pub {
@@ -229,36 +228,40 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 				continue
 			}
 
-			thingsToPub.Delete(thingID)
+			//			thingsToPub.Delete(thingID)
 		}
 	}()
 
-	duration := 100 * time.Millisecond
+	//	duration := 100 * time.Millisecond
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
-		case thingID := <-in:
-			pubAfter := time.Now().Add(duration - 1)
-			thingsToPub.Store(thingID, pubAfter)
+		case thingID := <-inbox:
+			pub <- thingID
+			log.Debug("queued thing for publishing", "thing_id", thingID)
 
-		case ts := <-time.Tick(duration):
-			thingsToPub.Range(func(key, value any) bool {
-				t, ok := value.(time.Time)
-				if ok {
-					if t.Before(ts) {
-						thingID, ok := key.(string)
-						if ok {
-							pub <- thingID
-						}
-					}
-				}
-				return true
-			})
+			//			pubAfter := time.Now().Add(duration - 1)
+			//			thingsToPub.Store(thingID, pubAfter)
+
+			//		case ts := <-time.Tick(duration):
+			//			thingsToPub.Range(func(key, value any) bool {
+			//				t, ok := value.(time.Time)
+			//				if ok {
+			//					if t.Before(ts) {
+			//						thingID, ok := key.(string)
+			//						if ok {
+			//							pub <- thingID
+			//						}
+			//					}
+			//				}
+			//				return true
+			//			})
 		}
 	}
+
 }
 
 func (a *app) AddThing(ctx context.Context, b []byte) error {
