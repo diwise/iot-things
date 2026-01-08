@@ -78,7 +78,7 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			vs 			TEXT NULL,
 			vb 			BOOLEAN NULL,
 			unit 		TEXT NOT NULL DEFAULT '',
-			ref 		TEXT NULL,
+			ref 			TEXT NULL,
 			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE ("time", "id"));
 
@@ -103,11 +103,11 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 		log.Error("could not begin transaction", "err", err.Error())
 		return err
 	}
+	defer tx.Rollback(ctx) // Safe: ignored if tx is committed
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
 		log.Error("could not execute ddl statement", "err", err.Error())
-		tx.Rollback(ctx)
 		return err
 	}
 
@@ -121,7 +121,18 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
-	conn, err := pgxpool.New(ctx, cfg.ConnStr())
+	poolConfig, err := pgxpool.ParseConfig(cfg.ConnStr())
+	if err != nil {
+		return nil, err
+	}
+
+	poolConfig.MaxConns = 20
+	poolConfig.MinConns = 2
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.HealthCheckPeriod = 30 * time.Second
+
+	conn, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +233,7 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -280,6 +292,7 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -342,6 +355,7 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var ts time.Time
 	var id, urn, unit, ref string
@@ -407,6 +421,7 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () A
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -474,6 +489,7 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 
@@ -533,6 +549,7 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 		log.Error("could not execute query", "err", err.Error())
 		return []string{}, err
 	}
+	defer rows.Close()
 
 	tags := make([]string, 0)
 	var tag string
