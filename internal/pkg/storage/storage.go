@@ -148,6 +148,13 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
+
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
 		"id":         t.ID(),
@@ -162,7 +169,7 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 
 	log.Debug("AddThing", logStr("sql", insert), slog.Any("args", args))
 
-	_, err := db.pool.Exec(ctx, insert, args)
+	_, err = conn.Exec(ctx, insert, args)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -184,6 +191,13 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
+
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
 		"id":   t.ID(),
@@ -196,7 +210,7 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	log.Debug("UpdateThing", logStr("sql", update), slog.Any("args", args))
 
-	_, err := db.pool.Exec(ctx, update, args)
+	_, err = conn.Exec(ctx, update, args)
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
 		return err
@@ -208,8 +222,15 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 func (db database) DeleteThing(ctx context.Context, id string) error {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
+
 	delete := `UPDATE things SET deleted_on=CURRENT_TIMESTAMP WHERE id=@id;`
-	_, err := db.pool.Exec(ctx, delete, pgx.NamedArgs{
+	_, err = conn.Exec(ctx, delete, pgx.NamedArgs{
 		"id": id,
 	})
 	if err != nil {
@@ -224,11 +245,18 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 	where, args := newQueryThingsParams(conditions...)
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+	defer conn.Release()
+
 	query := fmt.Sprintf("SELECT data, count(*) OVER () AS total FROM things %s", where)
 
 	log.Debug("QueryThings", logStr("sql", query), slog.Any("args", args))
 
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := conn.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
@@ -283,11 +311,18 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		return db.distinctValues(ctx, where, args)
 	}
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+	defer conn.Release()
+
 	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref,source, count(*) OVER () AS total FROM things_values %s ", where)
 
 	log.Debug("QueryValues", logStr("sql", query), slog.Any("args", args))
 
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := conn.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
@@ -339,6 +374,13 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 func (db database) showLatest(ctx context.Context, thingID string) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+	defer conn.Release()
+
 	thingID = fmt.Sprintf("%s/%%", thingID)
 
 	query := fmt.Sprintf(`
@@ -350,7 +392,7 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 
 	log.Debug("showLatest", logStr("sql", query))
 
-	rows, err := db.pool.Query(ctx, query)
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
@@ -400,6 +442,13 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 func (db database) distinctValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+	defer conn.Release()
+
 	distinct := args["distinct"].(string)
 	offset := args["offset"].(int)
 	limit := args["limit"].(int)
@@ -416,7 +465,7 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () A
 
 	log.Debug("distinctValues", logStr("sql", query), slog.Any("args", args))
 
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := conn.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
@@ -468,6 +517,13 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () A
 func (db database) countValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+	defer conn.Release()
+
 	timeUnit := args["timeunit"].(string)
 
 	if !slices.Contains([]string{"hour", "day"}, timeUnit) {
@@ -484,7 +540,7 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 
 	log.Debug("countValues", logStr("sql", query), slog.Any("args", args))
 
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := conn.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err
@@ -531,6 +587,13 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 func (db database) GetTags(ctx context.Context, tenants []string) ([]string, error) {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return []string{}, err
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT DISTINCT tag
 		FROM things,
@@ -544,7 +607,7 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 
 	log.Debug("GetTags", logStr("sql", query), slog.Any("args", args))
 
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := conn.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return []string{}, err
@@ -567,6 +630,13 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 
 func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	log := logging.GetFromContext(ctx)
+
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
 
 	insert := `
 		INSERT INTO things_values(time, id, urn, location, v, vs, vb, unit, ref, source)
@@ -596,7 +666,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 
 	log.Debug("AddValue", logStr("sql", insert), slog.Any("args", args))
 
-	_, err := db.pool.Exec(ctx, insert, args)
+	_, err = conn.Exec(ctx, insert, args)
 	if err != nil {
 		log.Error("could not execute statement", "err", err.Error())
 		return err
