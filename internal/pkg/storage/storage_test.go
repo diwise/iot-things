@@ -120,7 +120,7 @@ func TestUpdateThing(t *testing.T) {
 		t.SkipNow()
 	}
 
-	thingID := "7c263cda-3561-4510-bbdd-a19e52de30c7"
+	thingID := "7c263cda-3561-4510-bbdd-a19e52de30c7" //use id already in database
 	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 666, Longitude: 666}, "NewDefault")
 
 	err = db.UpdateThing(ctx, thing)
