@@ -200,13 +200,14 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
-		"id":   t.ID(),
-		"lon":  lon,
-		"lat":  lat,
-		"data": string(t.Byte()),
+		"id":     t.ID(),
+		"lon":    lon,
+		"lat":    lat,
+		"data":   string(t.Byte()),
+		"tenant": t.Tenant(),
 	}
 
-	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
+	update := `UPDATE things SET tenant=@tenant, location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
 
 	log.Debug("UpdateThing", logStr("sql", update), slog.Any("args", args))
 

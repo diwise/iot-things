@@ -110,6 +110,25 @@ func TestQueryThings(t *testing.T) {
 	}
 }
 
+func TestUpdateThing(t *testing.T) {
+	db, ctx, cancel, err := new()
+
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	thingID := "7c263cda-3561-4510-bbdd-a19e52de30c7"
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 666, Longitude: 666}, "NewDefault")
+
+	err = db.UpdateThing(ctx, thing)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func new() (Storage, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	ctx = auth.WithAllowedTenants(ctx, []string{"default"})
