@@ -152,7 +152,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 
 		id := rec.Name
 		ts, _ := rec.GetTime()
-		
+
 		var vs *string
 		if rec.StringValue != "" {
 			vs = &rec.StringValue

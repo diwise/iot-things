@@ -64,7 +64,7 @@ func TestSeedUpdate(t *testing.T) {
 		},
 	}
 
-	app := New(ctx,r, w, msgCtxMock())
+	app := New(ctx, r, w, msgCtxMock())
 	app.Seed(ctx, strings.NewReader(csvData))
 }
 
@@ -98,7 +98,7 @@ types:
       - "subType2C"
 `
 
-	app := New(ctx,r, w, msgCtxMock())
+	app := New(ctx, r, w, msgCtxMock())
 	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
 	is.NoErr(err)
 }

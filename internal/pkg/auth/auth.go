@@ -10,7 +10,7 @@ import (
 
 	"log/slog"
 
-	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"	
+	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
 	"github.com/open-policy-agent/opa/rego"
 	"go.opentelemetry.io/otel"
 )
