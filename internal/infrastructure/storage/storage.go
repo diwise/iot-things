@@ -326,18 +326,20 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 func (db database) showLatest(ctx context.Context, thingID string) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	thingID = fmt.Sprintf("%s/%%", thingID)
-
-	query := fmt.Sprintf(`
+	query := `
 		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref, source
 		FROM things_values
-		WHERE id LIKE '%s'
+		WHERE id LIKE @thingid_pattern
 		ORDER BY id, "time" DESC;
-	`, thingID)
+	`
 
-	log.Debug("showLatest", logStr("sql", query))
+	args := pgx.NamedArgs{
+		"thingid_pattern": fmt.Sprintf("%s/%%", thingID),
+	}
 
-	rows, err := db.pool.Query(ctx, query)
+	log.Debug("showLatest", logStr("sql", query), slog.Any("args", args))
+
+	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
 		log.Error("could not execute query", "err", err.Error())
 		return app.QueryResult{}, err

@@ -26,7 +26,10 @@ func TestSeed(t *testing.T) {
 	}
 
 	app := New(ctx, r, w, msgCtxMock())
-	app.Seed(ctx, strings.NewReader(csvData))
+	err := app.Seed(ctx, strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("Seed returned error: %v", err)
+	}
 }
 
 func TestSeedUpdate(t *testing.T) {
@@ -64,8 +67,32 @@ func TestSeedUpdate(t *testing.T) {
 		},
 	}
 
-	app := New(ctx,r, w, msgCtxMock())
-	app.Seed(ctx, strings.NewReader(csvData))
+	app := New(ctx, r, w, msgCtxMock())
+	err := app.Seed(ctx, strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("Seed returned error: %v", err)
+	}
+}
+
+func TestSeedRejectsMalformedCSVRow(t *testing.T) {
+	ctx := context.Background()
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+			return QueryResult{Data: [][]byte{}}, nil
+		},
+	}
+	w := &ThingsWriterMock{}
+
+	app := New(ctx, r, w, msgCtxMock())
+	err := app.Seed(ctx, strings.NewReader("id;type;subType;name;decsription;location;tenant;tags;refDevices;args\nshort;row\n"))
+	if err == nil {
+		t.Fatal("expected Seed to reject malformed CSV row")
+	}
+
+	if !strings.Contains(err.Error(), "failed to read csv row 2") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestLoadConfig(t *testing.T) {
@@ -98,7 +125,7 @@ types:
       - "subType2C"
 `
 
-	app := New(ctx,r, w, msgCtxMock())
+	app := New(ctx, r, w, msgCtxMock())
 	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
 	is.NoErr(err)
 }

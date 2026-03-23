@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,7 @@ import (
 	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/iot-things/internal/presentation/api/auth"
 	"github.com/go-chi/chi/v5"
-	
+
 	"github.com/diwise/service-chassis/pkg/infrastructure/net/http/router"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
@@ -80,9 +81,9 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		if r.Header.Get("Accept") == "text/csv" {
-			w.Header().Set("Content-Type", "text/csv")
-			
-			err := exportQueryResultAsCSV(result, w)
+			var csv bytes.Buffer
+
+			err := exportQueryResultAsCSV(result, &csv)
 			if err != nil {
 				logger.Error("could not export query response as CSV", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -90,7 +91,9 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 				return
 			}
 
+			w.Header().Set("Content-Type", "text/csv")
 			w.WriteHeader(http.StatusOK)
+			w.Write(csv.Bytes())
 
 			return
 		}

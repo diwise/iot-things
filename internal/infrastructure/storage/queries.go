@@ -3,12 +3,15 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	app "github.com/diwise/iot-things/internal/application"
 	"github.com/jackc/pgx/v5"
 )
+
+var safeJSONFieldName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func newConditions(conditions ...app.ConditionFunc) map[string]any {
 	m := make(map[string]any)
@@ -61,12 +64,22 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 	}
 
 	if refDevice, ok := c["refdevice"]; ok {
-		query += fmt.Sprintf(` AND data ? 'refDevices' AND data->'refDevices' @> '[{"deviceID": "%s"}]'`, refDevice)
+		b, err := json.Marshal([]map[string]string{{
+			"deviceID": fmt.Sprintf("%v", refDevice),
+		}})
+		if err == nil {
+			query += " AND data ? 'refDevices' AND data->'refDevices' @> CAST(@refdevice_filter AS jsonb)"
+			args["refdevice_filter"] = string(b)
+		}
 	}
 
 	for k, v := range c {
 		if strings.HasPrefix(k, "<") && strings.HasSuffix(k, ">") {
 			fieldname := k[1 : len(k)-1]
+			if !safeJSONFieldName.MatchString(fieldname) {
+				continue
+			}
+
 			s, ok := v.([]string)
 			if !ok {
 				continue
@@ -82,20 +95,22 @@ func newQueryThingsParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 				op = "gt"
 			}
 
+			paramName := fmt.Sprintf("field_%s", fieldname)
+
 			switch op {
 			case "eq":
-				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric = @%f", fieldname, fieldname, f)
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric = @%s", fieldname, fieldname, paramName)
 			case "gt":
-				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%f", fieldname, fieldname, f)
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%s", fieldname, fieldname, paramName)
 			case "lt":
-				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric < @%f", fieldname, fieldname, f)
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric < @%s", fieldname, fieldname, paramName)
 			case "ne":
-				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric <> @%f", fieldname, fieldname, f)
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric <> @%s", fieldname, fieldname, paramName)
 			default:
-				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%f", fieldname, fieldname, f)
+				query += fmt.Sprintf(" AND data ? '%s' AND (data->>'%s')::numeric > @%s", fieldname, fieldname, paramName)
 			}
 
-			args[fieldname] = f
+			args[paramName] = f
 		}
 	}
 
@@ -130,7 +145,8 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 	}
 
 	if thingID, ok := c["thingid"]; ok {
-		query += fmt.Sprintf(" AND id LIKE '%s/%%'", thingID)
+		query += " AND id LIKE @thingid_pattern"
+		args["thingid_pattern"] = fmt.Sprintf("%s/%%", thingID)
 	}
 
 	if urn, ok := c["urn"]; ok {
@@ -184,7 +200,8 @@ func newQueryValuesParams(conditions ...app.ConditionFunc) (string, pgx.NamedArg
 	}
 
 	if n, ok := c["n"]; ok {
-		query += fmt.Sprintf(" AND id LIKE '%%/%s'", n)
+		query += " AND id LIKE @value_name_pattern"
+		args["value_name_pattern"] = fmt.Sprintf("%%/%v", n)
 	}
 
 	// if timeunit is present, we are counting rows gouped by timeunit (hour, day)

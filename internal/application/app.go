@@ -527,9 +527,19 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			break
 		}
 
-		if rowNum == 0 {
-			rowNum++
+		currentRow := rowNum + 1
+		if err != nil {
+			return fmt.Errorf("failed to read csv row %d: %w", currentRow, err)
+		}
+
+		rowNum = currentRow
+
+		if rowNum == 1 {
 			continue
+		}
+
+		if len(record) != 10 {
+			return fmt.Errorf("invalid csv row %d: expected 10 columns, got %d", rowNum, len(record))
 		}
 
 		//  0	 1      2      3         4           5       6      7       8         9
