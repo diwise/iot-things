@@ -80,6 +80,8 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		if r.Header.Get("Accept") == "text/csv" {
+			w.Header().Set("Content-Type", "text/csv")
+			
 			err := exportQueryResultAsCSV(result, w)
 			if err != nil {
 				logger.Error("could not export query response as CSV", "err", err.Error())
@@ -88,7 +90,6 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 				return
 			}
 
-			w.Header().Set("Content-Type", "text/csv")
 			w.WriteHeader(http.StatusOK)
 
 			return
