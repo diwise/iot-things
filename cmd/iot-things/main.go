@@ -10,10 +10,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/diwise/iot-things/internal/app/api"
-	app "github.com/diwise/iot-things/internal/app/iot-things"
-	iotthings "github.com/diwise/iot-things/internal/app/iot-things"
-	"github.com/diwise/iot-things/internal/pkg/storage"
+	"github.com/diwise/iot-things/internal/application"
+	"github.com/diwise/iot-things/internal/infrastructure/storage"
+	"github.com/diwise/iot-things/internal/presentation/api"
 	k8shandlers "github.com/diwise/service-chassis/pkg/infrastructure/net/http/handlers"
 
 	"github.com/diwise/messaging-golang/pkg/messaging"
@@ -85,7 +84,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 	}
 
 	var msgCtx messaging.MsgContext
-	var app iotthings.ThingsApp
+	var app application.ThingsApp
 
 	s, err := storage.New(ctx, storage.NewConfig(flags[dbHost], flags[dbUser], flags[dbPassword], flags[dbPort], flags[dbName], flags[dbSSLMode]))
 	exitIf(err, log, "could not configure storage")
@@ -122,7 +121,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			log.Debug("starting servicerunner")
 
 			msgCtx.Start()
-			msgCtx.RegisterTopicMessageHandler("message.accepted", iotthings.NewMeasurementsHandler(app, msgCtx))
+			msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(app, msgCtx))
 
 			return nil
 		}),
@@ -173,8 +172,8 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	return ctx, flags
 }
 
-func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, m messaging.MsgContext, cfg io.Reader) (app.ThingsApp, error) {
-	a := app.New(ctx, r, w, m)
+func newApp(ctx context.Context, r application.ThingsReader, w application.ThingsWriter, m messaging.MsgContext, cfg io.Reader) (application.ThingsApp, error) {
+	a := application.New(ctx, r, w, m)
 	err := a.LoadConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load config: %s", err.Error())
@@ -183,7 +182,7 @@ func newApp(ctx context.Context, r app.ThingsReader, w app.ThingsWriter, m messa
 	return a, nil
 }
 
-func seed(ctx context.Context, fp io.Reader, a app.ThingsApp) error {
+func seed(ctx context.Context, fp io.Reader, a application.ThingsApp) error {
 	return a.Seed(ctx, fp)
 }
 

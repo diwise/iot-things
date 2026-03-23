@@ -11,12 +11,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/diwise/iot-things/internal/app/api/auth"
-	app "github.com/diwise/iot-things/internal/app/iot-things"
-	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	app "github.com/diwise/iot-things/internal/application"
+	"github.com/diwise/iot-things/internal/application/things"
+	"github.com/diwise/iot-things/internal/presentation/api/auth"
 	"github.com/go-chi/chi/v5"
-
-	//"github.com/diwise/iot-things/internal/pkg/auth"
+	
 	"github.com/diwise/service-chassis/pkg/infrastructure/net/http/router"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"

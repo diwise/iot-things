@@ -1,11 +1,11 @@
-package iotthings
+package application
 
 import (
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/matryer/is"
 )
 

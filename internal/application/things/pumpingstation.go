@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/diwise/iot-things/internal/app/iot-things/functions"
+	"github.com/diwise/iot-things/internal/application/functions"
 )
 
 type PumpingStation struct {

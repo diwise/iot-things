@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	app "github.com/diwise/iot-things/internal/app/iot-things"
+	app "github.com/diwise/iot-things/internal/application"
 	"github.com/jackc/pgx/v5"
 )
 

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/diwise/iot-things/internal/app/iot-things/functions"
+	"github.com/diwise/iot-things/internal/application/functions"
 )
 
 type Container struct {

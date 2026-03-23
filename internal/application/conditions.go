@@ -1,4 +1,4 @@
-package iotthings
+package application
 
 import (
 	"fmt"

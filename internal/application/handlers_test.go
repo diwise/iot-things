@@ -1,4 +1,4 @@
-package iotthings
+package application
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diwise/iot-things/internal/app/iot-things/things"
+	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/matryer/is"
 )

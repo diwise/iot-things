@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/diwise/iot-things/internal/app/iot-things/functions"
+	"github.com/diwise/iot-things/internal/application/functions"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 )
 

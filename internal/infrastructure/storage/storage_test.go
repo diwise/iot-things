@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	app "github.com/diwise/iot-things/internal/app/iot-things"
-	"github.com/diwise/iot-things/internal/app/iot-things/things"
-	"github.com/diwise/iot-things/internal/pkg/auth"
+	app "github.com/diwise/iot-things/internal/application"
+	"github.com/diwise/iot-things/internal/application/things"
+	"github.com/diwise/iot-things/internal/presentation/api/auth"
+
 	"github.com/google/uuid"
 )
 
