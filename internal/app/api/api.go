@@ -10,60 +10,47 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
+	"github.com/diwise/iot-things/internal/app/api/auth"
 	app "github.com/diwise/iot-things/internal/app/iot-things"
 	"github.com/diwise/iot-things/internal/app/iot-things/things"
-	"github.com/diwise/iot-things/internal/pkg/auth"
+	"github.com/go-chi/chi/v5"
+
+	//"github.com/diwise/iot-things/internal/pkg/auth"
+	"github.com/diwise/service-chassis/pkg/infrastructure/net/http/router"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+
 	"go.opentelemetry.io/otel"
 )
 
 var tracer = otel.Tracer("iot-things/api/things")
 
-func Register(ctx context.Context, app app.ThingsApp, policies io.Reader) (*chi.Mux, error) {
+func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp, policies io.Reader) error {
+	const apiPrefix string = "/api/v0"
+
 	log := logging.GetFromContext(ctx)
 
-	r := chi.NewRouter()
-
-	authenticator, err := auth.NewAuthenticator(ctx, log, policies)
+	authenticator, err := auth.NewAuthenticator(ctx, policies)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create api authenticator: %w", err)
+		return fmt.Errorf("failed to create api authenticator: %w", err)
 	}
 
-	r.Route("/api/v0", func(r chi.Router) {
-		r.Use(middleware.RequestID)
-		r.Use(middleware.RealIP)
-		r.Use(middleware.Logger)
-		r.Use(middleware.Recoverer)
-		r.Use(middleware.Timeout(60 * time.Second))
+	r := router.New(mux, router.WithPrefix(apiPrefix))
+	r.Use(authenticator)
 
-		r.Group(func(r chi.Router) {
-			r.Use(authenticator)
+	r.Get("/things", queryHandler(log, app))
+	r.Get("/things/{id}", getByIDHandler(log, app))
+	r.Post("/things", addHandler(log, app))
+	r.Put("/things/{id}", updateHandler(log, app))
+	r.Patch("/things/{id}", patchHandler(log, app))
+	r.Delete("/things/{id}", deleteHandler(log, app))
+	r.Get("/things/tags", getTagsHandler(log, app))
+	r.Get("/things/types", getTypesHandler(log, app))
+	r.Get("/things/values", getValuesHandler(log, app))
 
-			r.Route("/things", func(r chi.Router) {
-				r.Get("/", queryHandler(log, app))
-				r.Get("/{id}", getByIDHandler(log, app))
-				r.Post("/", addHandler(log, app))
-				r.Put("/{id}", updateHandler(log, app))
-				r.Patch("/{id}", patchHandler(log, app))
-				r.Delete("/{id}", deleteHandler(log, app))
-				r.Get("/tags", getTagsHandler(log, app))
-				r.Get("/types", getTypesHandler(log, app))
-				r.Get("/values", getValuesHandler(log, app))
-			})
-		})
-	})
-
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	return r, nil
+	return nil
 }
 
 func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
