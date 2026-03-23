@@ -139,7 +139,7 @@ type Temperature struct {
 	Value Value
 }
 
-func NewTemperatureFromMeasurement(id string, m Measurement) Temperature {
+func newTemperatureFromMeasurement(id string, m Measurement) Temperature {
 	id = fmt.Sprintf("%s/%s/%s", id, "3303", "5700")
 
 	ref := m.ID
@@ -154,7 +154,7 @@ func NewTemperatureFromMeasurement(id string, m Measurement) Temperature {
 	}
 }
 
-func NewTemperature(id, ref string, value float64, ts time.Time) Temperature {
+func newTemperature(id, ref string, value float64, ts time.Time) Temperature {
 	id = fmt.Sprintf("%s/%s/%s", id, "3303", "5700")
 	return Temperature{
 		Value: newValue(id, TemperatureURN, ref, "Cel", ts, value),

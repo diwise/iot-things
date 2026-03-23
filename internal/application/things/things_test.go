@@ -417,3 +417,44 @@ func TestPointOfInterest(t *testing.T) {
 	is.Equal(20.0, *poi.Temperature.Value)
 	is.Equal("www.example.com", *poi.Temperature.Source)
 }
+
+func TestPointOfInterestBeach(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	thing := NewBeach("id", Location{Latitude: 62, Longitude: 17}, "default")
+	poi := thing.(*PointOfInterest)
+
+	v := 20.0
+	src := "www.example.com"
+	temperature1 := Measurement{
+		ID:        "device_1/3303/5700",
+		Urn:       "urn:oma:lwm2m:ext:3303",
+		Value:     &v,
+		Timestamp: time.Now(),
+		Source:    &src,
+	}
+
+	temperature2 := Measurement{
+		ID:        "device_2/3303/5700",
+		Urn:       "urn:oma:lwm2m:ext:3303",
+		Value:     &v,
+		Timestamp: time.Now(),
+		Source:    &src,
+	}
+
+	err := poi.Handle(ctx, []Measurement{temperature1}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.NoErr(err)
+
+	is.Equal(20.0, *poi.Temperature.Value)
+	is.Equal("www.example.com", *poi.Temperature.Source)
+
+	err = poi.Handle(ctx, []Measurement{temperature2}, func(m ValueProvider) error {
+		return nil
+	})
+
+	is.NoErr(err)
+}

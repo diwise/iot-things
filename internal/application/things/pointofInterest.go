@@ -46,35 +46,18 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 		return nil
 	}
 
-	temp := NewTemperatureFromMeasurement(poi.ID(), m)
+	temp := newTemperatureFromMeasurement(poi.ID(), m)
 	err := onchange(temp)
 	if err != nil {
 		return err
 	}
-
-	/*
-		t := *m.Value
-		n := 1
-
-		for _, ref := range poi.RefDevices {
-			if ref.DeviceID != m.ID {
-				for _, v := range ref.Measurements {
-					if hasTemperature(&v) {
-						t += *v.Value
-						n++
-					}
-				}
-			}
-		}
-
-		avgTemp := t / float64(n)
-	*/
 
 	if m.Timestamp.After(poi.Temperature.Timestamp) {
 		poi.Temperature = Measurement{
 			Value:     m.Value,
 			Source:    m.Source,
 			Timestamp: m.Timestamp,
+			Ref:       m.Ref,
 		}
 	}
 
@@ -82,6 +65,7 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 		Value:     m.Value,
 		Source:    m.Source,
 		Timestamp: m.Timestamp,
+		Ref:       m.Ref,
 	}
 
 	return nil

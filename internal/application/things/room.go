@@ -161,7 +161,7 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 		return nil
 	}
 
-	temp := NewTemperatureFromMeasurement(r.ID(), m)
+	temp := newTemperatureFromMeasurement(r.ID(), m)
 	err := onchange(temp)
 	if err != nil {
 		return err

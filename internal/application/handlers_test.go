@@ -71,8 +71,7 @@ func TestPointOfInterest(t *testing.T) {
 }
 
 func TestContainerDistance(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	is := is.New(t)
 
 	c := things.NewContainer("container-001", things.DefaultLocation, "default")
@@ -185,7 +184,7 @@ func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing,
 	store[t.ID()] = t
 
 	r := &ThingsReaderMock{
-		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
 
 			mu.Lock()
 			defer mu.Unlock()

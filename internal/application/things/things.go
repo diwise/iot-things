@@ -182,6 +182,7 @@ type Measurement struct {
 	Unit        string    `json:"unit,omitempty"`
 	Timestamp   time.Time `json:"timestamp,omitzero"`
 	Source      *string   `json:"source,omitzero"`
+	Ref         string    `json:"ref,omitempty"`
 }
 
 func hasDistance(m *Measurement) bool {

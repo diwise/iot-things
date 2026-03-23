@@ -13,7 +13,7 @@ func TestSeed(t *testing.T) {
 	ctx := context.Background()
 
 	r := &ThingsReaderMock{
-		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
 			return QueryResult{
 				Data: [][]byte{},
 			}, nil
@@ -36,14 +36,12 @@ func TestSeedUpdate(t *testing.T) {
 	ctx := context.Background()
 
 	r := &ThingsReaderMock{
-		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
-			cond := newConditions(conditions...)
-			id, ok := cond["id"]
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
 			l := things.Location{
 				Latitude:  62.39095613,
 				Longitude: 17.31727909,
 			}
-			if ok && id == "5" {
+			if query.ID != nil && *query.ID == "5" {
 				wc := things.NewWasteContainer("5", l, "default")
 
 				return QueryResult{
@@ -78,7 +76,7 @@ func TestSeedRejectsMalformedCSVRow(t *testing.T) {
 	ctx := context.Background()
 
 	r := &ThingsReaderMock{
-		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
 			return QueryResult{Data: [][]byte{}}, nil
 		},
 	}
@@ -100,7 +98,7 @@ func TestLoadConfig(t *testing.T) {
 	is := is.New(t)
 
 	r := &ThingsReaderMock{
-		QueryThingsFunc: func(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error) {
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
 			return QueryResult{
 				Data: [][]byte{},
 			}, nil
@@ -128,24 +126,6 @@ types:
 	app := New(ctx, r, w, msgCtxMock())
 	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
 	is.NoErr(err)
-}
-
-func newConditions(conditions ...ConditionFunc) map[string]any {
-	m := make(map[string]any)
-
-	for _, f := range conditions {
-		m = f(m)
-	}
-
-	if _, ok := m["limit"]; !ok {
-		m["limit"] = 100
-	}
-
-	if _, ok := m["offset"]; !ok {
-		m["offset"] = 0
-	}
-
-	return m
 }
 
 const csvData string = `id;type;subType;name;decsription;location;tenant;tags;refDevices;args

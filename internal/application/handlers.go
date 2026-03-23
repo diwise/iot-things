@@ -152,7 +152,7 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 
 		id := rec.Name
 		ts, _ := rec.GetTime()
-		
+
 		var vs *string
 		if rec.StringValue != "" {
 			vs = &rec.StringValue
@@ -171,12 +171,21 @@ func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error
 			StringValue: vs,
 			Unit:        rec.Unit,
 			Source:      source,
+			Ref:         deviceID(id),
 		}
 
 		measurements = append(measurements, m)
 	}
 
 	return measurements, errors.Join(errs...)
+}
+
+func deviceID(id string) string {
+	parts := strings.Split(id, "/")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return id
 }
 
 func extractDeviceID(pack senml.Pack) (string, bool) {

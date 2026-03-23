@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -149,21 +147,19 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 
 	insert := `INSERT INTO things(id, type, location, data, tenant) VALUES (@id, @thing_type, point(@lon,@lat), @data, @tenant);`
 
-	log.Debug("AddThing", logStr("sql", insert), slog.Any("args", args))
-
 	_, err := db.pool.Exec(ctx, insert, args)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			log.Debug("AddThing statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+			log.Error("AddThing statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
 		}
 
 		if isDuplicateKeyErr(err) {
-			log.Debug("error is duplicate key")
+			log.Debug("thing already exists", "thing_id", t.ID(), "err", err.Error())
 			return app.ErrAlreadyExists
 		}
 
-		log.Error("could not execute statement", "err", err.Error())
+		log.Error("could not add thing", "thing_id", t.ID(), "err", err.Error())
+
 		return err
 	}
 
@@ -183,11 +179,9 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
 
-	log.Debug("UpdateThing", logStr("sql", update), slog.Any("args", args))
-
 	_, err := db.pool.Exec(ctx, update, args)
 	if err != nil {
-		log.Error("could not execute statement", "err", err.Error())
+		log.Error("could not update thing", "thing_id", t.ID(), "err", err.Error())
 		return err
 	}
 
@@ -202,24 +196,25 @@ func (db database) DeleteThing(ctx context.Context, id string) error {
 		"id": id,
 	})
 	if err != nil {
-		log.Error("could not execute statement", "err", err.Error())
+		log.Error("could not delete thing", "thing_id", id, "err", err.Error())
 		return err
 	}
 
 	return nil
 }
 
-func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
-	where, args := newQueryThingsParams(conditions...)
+func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	query := fmt.Sprintf("SELECT data, count(*) OVER () AS total FROM things %s", where)
-
-	log.Debug("QueryThings", logStr("sql", query), slog.Any("args", args))
-
-	rows, err := db.pool.Query(ctx, query, args)
+	sql, args, err := buildThingQuerySQL(query)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not build query things sql", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	rows, err := db.pool.Query(ctx, sql, args)
+	if err != nil {
+		log.Error("could not query things", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -232,6 +227,7 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for things query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -255,29 +251,27 @@ func (db database) QueryThings(ctx context.Context, conditions ...app.ConditionF
 	}, nil
 }
 
-func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionFunc) (app.QueryResult, error) {
-	where, args := newQueryValuesParams(conditions...)
+func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	if _, ok := args["timeunit"]; ok {
-		return db.countValues(ctx, where, args)
+	switch query.Mode {
+	case app.ValueQueryModeCountByTime:
+		return db.countValues(ctx, query)
+	case app.ValueQueryModeLatest:
+		return db.showLatest(ctx, query)
+	case app.ValueQueryModeDistinct:
+		return db.distinctValues(ctx, query)
 	}
 
-	if _, ok := args["showlatest"]; ok {
-		return db.showLatest(ctx, args["thingid"].(string))
-	}
-
-	if _, ok := args["distinct"]; ok {
-		return db.distinctValues(ctx, where, args)
-	}
-
-	query := fmt.Sprintf("SELECT time,id,urn,location,v,vs,vb,unit,ref,source, count(*) OVER () AS total FROM things_values %s ", where)
-
-	log.Debug("QueryValues", logStr("sql", query), slog.Any("args", args))
-
-	rows, err := db.pool.Query(ctx, query, args)
+	sql, args, err := buildValueQuerySQL(query)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not build value query sql", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	rows, err := db.pool.Query(ctx, sql, args)
+	if err != nil {
+		log.Error("could not execute query", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -311,6 +305,7 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for value query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -323,25 +318,18 @@ func (db database) QueryValues(ctx context.Context, conditions ...app.ConditionF
 	}, nil
 }
 
-func (db database) showLatest(ctx context.Context, thingID string) (app.QueryResult, error) {
+func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	query := `
-		SELECT DISTINCT ON (id) time, id, urn, v, vs, vb, unit, ref, source
-		FROM things_values
-		WHERE id LIKE @thingid_pattern
-		ORDER BY id, "time" DESC;
-	`
-
-	args := pgx.NamedArgs{
-		"thingid_pattern": fmt.Sprintf("%s/%%", thingID),
+	sql, args, err := buildShowLatestValuesSQL(query)
+	if err != nil {
+		log.Error("could not build show latest values sql", "err", err.Error())
+		return app.QueryResult{}, err
 	}
 
-	log.Debug("showLatest", logStr("sql", query), slog.Any("args", args))
-
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not query latest values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -373,6 +361,7 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for latest values query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -385,28 +374,18 @@ func (db database) showLatest(ctx context.Context, thingID string) (app.QueryRes
 	}, nil
 }
 
-func (db database) distinctValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
+func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	distinct := args["distinct"].(string)
-	offset := args["offset"].(int)
-	limit := args["limit"].(int)
-	offsetLimit := fmt.Sprintf("OFFSET %d LIMIT %d", offset, limit)
-
-	query := fmt.Sprintf(`
-WITH changed AS (SELECT time, id, urn, location, v, vs, vb, unit, ref, source, LAG(%s) OVER (ORDER BY time) AS prev_vb FROM things_values %s)
-SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () AS total FROM changed WHERE %s <> prev_vb OR prev_vb IS NULL %s;
-`, distinct, where, distinct, offsetLimit)
-
-	// set offset to 0 and limit to 1000 to not limit the window
-	args["limit"] = 1000
-	args["offset"] = 0
-
-	log.Debug("distinctValues", logStr("sql", query), slog.Any("args", args))
-
-	rows, err := db.pool.Query(ctx, query, args)
+	sql, args, err := buildDistinctValuesSQL(query)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not build distinct values query sql", "err", err.Error())
+		return app.QueryResult{}, err
+	}
+
+	rows, err := db.pool.Query(ctx, sql, args)
+	if err != nil {
+		log.Error("could not query distinct values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -440,6 +419,7 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () A
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for distinct values query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -447,33 +427,23 @@ SELECT time, id, urn, location, v, vs, vb, unit, ref, source, COUNT(*) OVER () A
 		Data:       t,
 		Count:      len(t),
 		TotalCount: total,
-		Limit:      limit,
-		Offset:     offset,
+		Limit:      query.Page.Limit,
+		Offset:     query.Page.Offset,
 	}, nil
 }
 
-func (db database) countValues(ctx context.Context, where string, args pgx.NamedArgs) (app.QueryResult, error) {
+func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
 	log := logging.GetFromContext(ctx)
 
-	timeUnit := args["timeunit"].(string)
-
-	if !slices.Contains([]string{"hour", "day"}, timeUnit) {
-		timeUnit = "hour"
+	sql, args, err := buildCountValuesSQL(query)
+	if err != nil {
+		log.Error("could not build count values sql", "err", err.Error())
+		return app.QueryResult{}, err
 	}
 
-	query := fmt.Sprintf(`
-		SELECT DATE_TRUNC('%s', time) e, id, ref, count(*) n
-		FROM things_values
-		%s
-		GROUP BY e, id, ref
-		ORDER BY e ASC;
-	`, timeUnit, where)
-
-	log.Debug("countValues", logStr("sql", query), slog.Any("args", args))
-
-	rows, err := db.pool.Query(ctx, query, args)
+	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not query count values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -502,6 +472,7 @@ func (db database) countValues(ctx context.Context, where string, args pgx.Named
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for count values query", "err", err.Error())
 		return app.QueryResult{}, err
 	}
 
@@ -528,11 +499,9 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 		"tenants": tenants,
 	}
 
-	log.Debug("GetTags", logStr("sql", query), slog.Any("args", args))
-
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
-		log.Error("could not execute query", "err", err.Error())
+		log.Error("could not query tags", "sql", query, "args", args, "err", err.Error())
 		return []string{}, err
 	}
 
@@ -544,6 +513,7 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 		return nil
 	})
 	if err != nil {
+		log.Error("could not scan rows for tags query", "err", err.Error())
 		return []string{}, err
 	}
 
@@ -583,7 +553,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 
 	_, err := db.pool.Exec(ctx, insert, args)
 	if err != nil {
-		log.Error("could not execute statement", "err", err.Error())
+		log.Error("could not add value", "things_id", t.ID(), "sql", insert, "args", args, "err", err.Error())
 		return err
 	}
 
@@ -591,8 +561,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 }
 
 func isDuplicateKeyErr(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23505" // duplicate key value violates unique constraint
 	}
 	return false

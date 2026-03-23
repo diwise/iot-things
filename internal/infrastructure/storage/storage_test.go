@@ -70,7 +70,11 @@ func TestQueryThings(t *testing.T) {
 		t.Error(err)
 	}
 
-	result, err := db.QueryThings(ctx, app.WithRefDevice(deviceID), app.WithTenants([]string{"default"}))
+	result, err := db.QueryThings(ctx, app.ThingQuery{
+		RefDeviceID: &deviceID,
+		Tenants:     []string{"default"},
+		Page:        app.Pagination{Limit: 100, Offset: 0},
+	})
 	if err != nil {
 		t.Error(err)
 	}
@@ -78,7 +82,7 @@ func TestQueryThings(t *testing.T) {
 		t.Errorf("no thing, or too many things, found")
 	}
 
-	result, err = db.QueryThings(ctx, app.WithID(thingID))
+	result, err = db.QueryThings(ctx, app.ThingQuery{ID: &thingID, Page: app.Pagination{Limit: 100, Offset: 0}})
 	if err != nil {
 		t.Error(err)
 	}
@@ -86,7 +90,7 @@ func TestQueryThings(t *testing.T) {
 		t.Errorf("no thing, or too many things, found")
 	}
 
-	result, err = db.QueryThings(ctx, app.WithTypes([]string{"Container"}))
+	result, err = db.QueryThings(ctx, app.ThingQuery{Types: []string{"Container"}, Page: app.Pagination{Limit: 100, Offset: 0}})
 	if err != nil {
 		t.Error(err)
 	}
@@ -94,7 +98,8 @@ func TestQueryThings(t *testing.T) {
 		t.Errorf("no thing, or too many things, found")
 	}
 
-	result, err = db.QueryThings(ctx, app.WithSubType("WasteContainer"))
+	subType := "WasteContainer"
+	result, err = db.QueryThings(ctx, app.ThingQuery{SubType: &subType, Page: app.Pagination{Limit: 100, Offset: 0}})
 	if err != nil {
 		t.Error(err)
 	}
@@ -102,7 +107,11 @@ func TestQueryThings(t *testing.T) {
 		t.Errorf("no thing, or too many things, found")
 	}
 
-	result, err = db.QueryThings(ctx, app.WithTags([]string{"tag1", "tag2"}), app.WithTenants([]string{"default"}))
+	result, err = db.QueryThings(ctx, app.ThingQuery{
+		Tags:    []string{"tag1", "tag2"},
+		Tenants: []string{"default"},
+		Page:    app.Pagination{Limit: 100, Offset: 0},
+	})
 	if err != nil {
 		t.Error(err)
 	}

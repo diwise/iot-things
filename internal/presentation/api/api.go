@@ -1,19 +1,15 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 
 	app "github.com/diwise/iot-things/internal/application"
-	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/iot-things/internal/presentation/api/auth"
 	"github.com/go-chi/chi/v5"
 
@@ -63,10 +59,15 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		params := r.URL.Query()
-		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
+		query, err := parseThingQuery(r.URL.Query(), auth.GetAllowedTenantsFromContext(ctx))
+		if err != nil {
+			logger.Error("invalid thing query", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
 
-		result, err := a.QueryThings(ctx, params)
+		result, err := a.Query(ctx, query)
 		if err != nil {
 			logger.Error("could not query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -81,9 +82,7 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		if r.Header.Get("Accept") == "text/csv" {
-			var csv bytes.Buffer
-
-			err := exportQueryResultAsCSV(result, &csv)
+			csv, err := presentThingQueryCSV(result)
 			if err != nil {
 				logger.Error("could not export query response as CSV", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -93,30 +92,14 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 			w.Header().Set("Content-Type", "text/csv")
 			w.WriteHeader(http.StatusOK)
-			w.Write(csv.Bytes())
+			w.Write(csv)
 
 			return
 		}
 
-		data := make([]map[string]any, 0, len(result.Data))
-		for _, b := range result.Data {
-			m := make(map[string]any)
-			err = json.Unmarshal(b, &m)
-			if err != nil {
-				logger.Error("could not unmarshal thing", "err", err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
-			}
-			mapToOutModel(m)
-			data = append(data, m)
-		}
-
-		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
-
-		b, err := json.Marshal(response)
+		b, err := presentThingQueryJSON(r, result)
 		if err != nil {
-			logger.Error("could not marshal query response", "err", err.Error())
+			logger.Error("could not render query response", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
@@ -126,109 +109,6 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
 	}
-}
-
-func exportQueryResultAsCSV(result app.QueryResult, w io.Writer) error {
-	if result.Count == 0 {
-		return nil
-	}
-
-	for i, b := range result.Data {
-		t, err := things.ConvToThing(b)
-		if err != nil {
-			return err
-		}
-
-		m := make(map[string]any)
-		err = json.Unmarshal(b, &m)
-		if err != nil {
-			return err
-		}
-
-		if i == 0 {
-			header := strings.Join([]string{"id", "type", "subType", "name", "decsription", "location", "tenant", "tags", "refDevices", "args"}, ";")
-			_, err := w.Write([]byte(fmt.Sprintln(header)))
-			if err != nil {
-				return err
-			}
-		}
-
-		asString := func(v any) string {
-			if v == nil {
-				return ""
-			}
-			return fmt.Sprintf("%v", v)
-		}
-		asTags := func(v any) string {
-			if v == nil {
-				return ""
-			}
-			values := v.([]any)
-			tags := make([]string, len(values))
-			for i, tag := range values {
-				tags[i] = fmt.Sprintf("%v", tag)
-			}
-
-			return strings.Join(tags, ",")
-		}
-		asRefDevices := func(v any) string {
-			if v == nil {
-				return ""
-			}
-			devices := v.([]any)
-			refDevices := make([]string, len(devices))
-			for i, device := range devices {
-				d := device.(map[string]any)
-				refDevices[i] = fmt.Sprintf("%v", d["deviceID"])
-			}
-			return strings.Join(refDevices, ",")
-		}
-		asArgs := func(m map[string]any) string {
-			args := []string{}
-
-			for k, v := range m {
-				if slices.Contains([]string{"maxd", "maxl", "meanl", "offset", "angle"}, k) {
-					args = append(args, fmt.Sprintf("'%s':%f", k, v.(float64)))
-				}
-				if slices.Contains([]string{"alternativeName"}, k) {
-					s := v.(string)
-					if s != "" {
-						args = append(args, fmt.Sprintf("'%s':'%s'", k, s))
-					}
-				}
-			}
-
-			if len(args) > 0 {
-				j := "{" + strings.Join(args, ",") + "}"
-				return j
-			}
-
-			return ""
-		}
-
-		lat, lon := t.LatLon()
-		values := []string{
-			t.ID(),
-			t.Type(),
-			asString(m["subType"]),
-			asString(m["name"]),
-			asString(m["description"]),
-			fmt.Sprintf("%f,%f", lat, lon),
-			t.Tenant(),
-			asTags(m["tags"]),
-			asRefDevices(m["refDevices"]),
-			asArgs(m),
-		}
-
-		row := strings.Join(values, ";")
-
-		_, err = w.Write([]byte(fmt.Sprintln(row)))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
@@ -248,10 +128,14 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		params := map[string][]string{"id": {thingId}}
-		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
-
-		result, err := a.QueryThings(ctx, params)
+		result, err := a.Query(ctx, app.ThingQuery{
+			ID:      &thingId,
+			Tenants: auth.GetAllowedTenantsFromContext(ctx),
+			Page: app.Pagination{
+				Limit:  100,
+				Offset: 0,
+			},
+		})
 		if err != nil {
 			logger.Debug("failed to query things", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -264,9 +148,16 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		q := r.URL.Query()
-		q.Set("thingid", thingId)
-		values, err := a.QueryValues(ctx, q)
+		valueQuery, err := parseValueQuery(r.URL.Query())
+		if err != nil {
+			logger.Error("invalid value query", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		valueQuery.ThingID = &thingId
+
+		values, err := a.Values(ctx, valueQuery)
 		if err != nil {
 			logger.Debug("failed to query values", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -274,23 +165,16 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		thing := make(map[string]any)
-		err = json.Unmarshal(result.Data[0], &thing)
+		response, err := presentThingDetailJSON(r, result.Data[0], values)
 		if err != nil {
-			logger.Debug("failed to marshal thing", "err", err.Error())
+			logger.Debug("failed to render thing detail", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
 		}
 
-		thing["values"] = transformValues(r, values.Data)
-
-		mapToOutModel(thing)
-
-		response := NewApiResponse(r, thing, uint64(values.Count), uint64(values.TotalCount), uint64(values.Offset), uint64(values.Limit))
-
 		w.WriteHeader(http.StatusOK)
-		w.Write(response.Byte())
+		w.Write(response)
 	}
 }
 
@@ -338,7 +222,7 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		err = a.AddThing(ctx, b)
+		err = a.Add(ctx, b)
 		if err != nil && errors.Is(err, app.ErrAlreadyExists) {
 			w.WriteHeader(http.StatusConflict)
 			return
@@ -374,7 +258,7 @@ func updateHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		err = a.UpdateThing(ctx, b, tenants)
+		err = a.Update(ctx, b, tenants)
 		if err != nil {
 			logger.Error("could not update thing", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -414,7 +298,7 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		err = a.MergeThing(ctx, thingId, b, tenants)
+		err = a.Merge(ctx, thingId, b, tenants)
 		if err != nil {
 			logger.Error("could not patch thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
@@ -445,7 +329,7 @@ func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		err = a.DeleteThing(ctx, thingId, tenants)
+		err = a.Delete(ctx, thingId, tenants)
 		if err != nil {
 			logger.Error("could not delete thing", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
@@ -468,7 +352,7 @@ func getTagsHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		tags, err := a.GetTags(ctx, tenants)
+		tags, err := a.Tags(ctx, tenants)
 		if err != nil {
 			logger.Error("could not get tags", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -494,7 +378,7 @@ func getTypesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
 
-		types, err := a.GetTypes(ctx, tenants)
+		types, err := a.Types(ctx, tenants)
 		if err != nil {
 			logger.Error("could not get tags", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -520,10 +404,15 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		params := r.URL.Query()
-		params["tenant"] = auth.GetAllowedTenantsFromContext(ctx)
+		query, err := parseValueQuery(r.URL.Query())
+		if err != nil {
+			logger.Error("invalid value query", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
 
-		result, err := a.QueryValues(ctx, params)
+		result, err := a.Values(ctx, query)
 		if err != nil {
 			logger.Error("could not query for values", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -532,7 +421,7 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		if r.Header.Get("Accept") == "text/csv" {
-			err := exportValuesAsCSV(result, w)
+			csv, err := presentValueQueryCSV(result)
 			if err != nil {
 				logger.Error("could not export values as CSV", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -542,6 +431,7 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 			w.Header().Set("Content-Type", "text/csv")
 			w.WriteHeader(http.StatusOK)
+			w.Write(csv)
 
 			return
 		}
@@ -552,13 +442,9 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		data := transformValues(r, result.Data)
-
-		response := NewApiResponse(r, data, uint64(result.Count), uint64(result.TotalCount), uint64(result.Offset), uint64(result.Limit))
-
-		b, err := json.Marshal(response)
+		b, err := presentValueQueryJSON(r, result)
 		if err != nil {
-			logger.Error("could not marshal query response", "err", err.Error())
+			logger.Error("could not render query response", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
@@ -568,57 +454,6 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
 	}
-}
-
-func exportValuesAsCSV(result app.QueryResult, w io.Writer) error {
-	header := strings.Join([]string{"time", "id", "urn", "v", "vb", "vs", "unit", "ref"}, ";")
-
-	if result.Count == 0 {
-		w.Write([]byte(header))
-		return nil
-	}
-
-	for i, b := range result.Data {
-		m := make(map[string]any)
-		err := json.Unmarshal(b, &m)
-		if err != nil {
-			return err
-		}
-
-		if i == 0 {
-			_, err := w.Write([]byte(fmt.Sprintln(header)))
-			if err != nil {
-				return err
-			}
-		}
-
-		str := func(v any) string {
-			if v == nil {
-				return ""
-			}
-			return fmt.Sprintf("%v", v)
-		}
-
-		values := []string{
-			str(m["timestamp"]),
-			str(m["id"]),
-			str(m["urn"]),
-			str(m["v"]),
-			str(m["vb"]),
-			str(m["vs"]),
-			str(m["unit"]),
-			str(m["ref"]),
-		}
-
-		row := strings.Join(values, ";")
-
-		_, err = w.Write([]byte(fmt.Sprintln(row)))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func isMultipartFormData(r *http.Request) bool {
@@ -643,56 +478,4 @@ func mapToOutModel(m map[string]any) {
 			delete(m, k)
 		}
 	}
-}
-
-func transformValues(r *http.Request, values [][]byte) any {
-	group := r.URL.Query().Get("options")
-
-	if !slices.Contains([]string{"", "groupByID", "groupByRef"}, group) {
-		group = ""
-	}
-
-	flatValues := make([]json.RawMessage, 0, len(values))
-	groupedValues := map[string][]json.RawMessage{}
-
-	for _, v := range values {
-		switch group {
-		case "":
-			flatValues = append(flatValues, json.RawMessage(v))
-		case "groupByID":
-			valueID := struct {
-				ID string `json:"id"`
-			}{}
-			err := json.Unmarshal(v, &valueID)
-			if err != nil {
-				continue
-			}
-
-			if _, ok := groupedValues[valueID.ID]; !ok {
-				groupedValues[valueID.ID] = []json.RawMessage{}
-			}
-
-			groupedValues[valueID.ID] = append(groupedValues[valueID.ID], json.RawMessage(v))
-		case "groupByRef":
-			valueID := struct {
-				Ref string `json:"ref"`
-			}{}
-			err := json.Unmarshal(v, &valueID)
-			if err != nil {
-				continue
-			}
-
-			if _, ok := groupedValues[valueID.Ref]; !ok {
-				groupedValues[valueID.Ref] = []json.RawMessage{}
-			}
-
-			groupedValues[valueID.Ref] = append(groupedValues[valueID.Ref], json.RawMessage(v))
-		}
-	}
-
-	if group == "" {
-		return flatValues
-	}
-
-	return groupedValues
 }

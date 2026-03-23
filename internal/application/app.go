@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,17 +27,17 @@ import (
 type ThingsApp interface {
 	HandleMeasurements(ctx context.Context, measurements []things.Measurement)
 
-	AddThing(ctx context.Context, b []byte) error
-	DeleteThing(ctx context.Context, thingID string, tenants []string) error
-	MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error
-	QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error)
-	UpdateThing(ctx context.Context, b []byte, tenants []string) error
+	Add(ctx context.Context, b []byte) error
+	Delete(ctx context.Context, thingID string, tenants []string) error
+	Merge(ctx context.Context, thingID string, b []byte, tenants []string) error
+	Query(ctx context.Context, query ThingQuery) (QueryResult, error)
+	Update(ctx context.Context, b []byte, tenants []string) error
 
 	AddValue(ctx context.Context, t things.Thing, m things.Value) error
-	QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error)
+	Values(ctx context.Context, query ValueQuery) (QueryResult, error)
 
-	GetTags(ctx context.Context, tenants []string) ([]string, error)
-	GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error)
+	Tags(ctx context.Context, tenants []string) ([]string, error)
+	Types(ctx context.Context, tenants []string) ([]things.ThingType, error)
 
 	LoadConfig(ctx context.Context, r io.Reader) error
 	Seed(ctx context.Context, r io.Reader) error
@@ -44,8 +45,8 @@ type ThingsApp interface {
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
 type ThingsReader interface {
-	QueryThings(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
-	QueryValues(ctx context.Context, conditions ...ConditionFunc) (QueryResult, error)
+	QueryThings(ctx context.Context, query ThingQuery) (QueryResult, error)
+	QueryValues(ctx context.Context, query ValueQuery) (QueryResult, error)
 	GetTags(ctx context.Context, tenants []string) ([]string, error)
 }
 
@@ -141,22 +142,19 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 
 	changedThings := []string{}
 
-	log.Debug("found connected things", "device_id", m.DeviceID(), "count", len(connectedThings))
-
 	for _, t := range connectedThings {
 		measurements := []things.Measurement{m}
 
-		ctx = logging.NewContextWithLogger(ctx, log, slog.String("thing_id", t.ID()))
-		log.Debug("handle measurement", "device_id", m.DeviceID(), "measurement", m)
+		ctx = logging.NewContextWithLogger(ctx, log, slog.String("device_id", m.DeviceID()), slog.String("thing_id", t.ID()))
 
-		err := t.Handle(ctx, measurements, func(m things.ValueProvider) error {
+		err := t.Handle(ctx, measurements, func(valueProvider things.ValueProvider) error {
 			var errs []error
 
-			values := m.Values()
+			values := valueProvider.Values()
 
 			for _, v := range values {
-				log.Debug("add value", "thing_id", t.ID(), "measurement", v.ID)
-				errs = append(errs, a.AddValue(ctx, t, v)) // add value to storage. A value is a measurement with the thingID instead of the deviceID
+				// add value to storage. A value is a measurement with the thingID instead of the deviceID
+				errs = append(errs, a.AddValue(ctx, t, v))
 			}
 
 			return errors.Join(errs...)
@@ -166,7 +164,8 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 			continue
 		}
 
-		t.SetLastObserved(measurements) // adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
+		// adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
+		t.SetLastObserved(measurements)
 
 		err = a.saveThing(ctx, t)
 		if err != nil {
@@ -182,8 +181,6 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 		return []string{}
 	}
 
-	log.Debug("found changed things", "device_id", m.DeviceID(), "count", len(changedThings), "things", strings.Join(changedThings, ","))
-
 	return changedThings
 }
 
@@ -196,7 +193,7 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 			return
 
 		case thingID := <-inbox:
-			result, err := r.QueryThings(ctx, WithID(thingID))
+			result, err := r.QueryThings(ctx, ThingByIDQuery(thingID, nil))
 			if err != nil {
 				log.Error("could not query thing", "err", err.Error())
 				continue
@@ -232,7 +229,7 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 	}
 }
 
-func (a *app) AddThing(ctx context.Context, b []byte) error {
+func (a *app) Add(ctx context.Context, b []byte) error {
 	t, err := things.ConvToThing(b)
 	if err != nil {
 		return err
@@ -256,7 +253,7 @@ func (a *app) AddThing(ctx context.Context, b []byte) error {
 	return nil
 }
 
-func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error {
+func (a *app) Update(ctx context.Context, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
 		return errors.New("tenants must be provided")
 	}
@@ -276,7 +273,8 @@ func (a *app) UpdateThing(ctx context.Context, b []byte, tenants []string) error
 		return ErrMissingThingType
 	}
 
-	result, err := a.reader.QueryThings(ctx, WithID(t.ID()), WithTenants(tenants))
+	thingID := t.ID()
+	result, err := a.reader.QueryThings(ctx, ThingByIDQuery(thingID, tenants))
 	if err != nil {
 		return err
 	}
@@ -311,7 +309,7 @@ func (a *app) saveThing(ctx context.Context, t things.Thing) error {
 	return nil
 }
 
-func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants []string) error {
+func (a *app) Merge(ctx context.Context, thingID string, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
 		return ErrMissingThingTenant
 	}
@@ -322,7 +320,7 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 		return err
 	}
 
-	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
+	result, err := a.reader.QueryThings(ctx, ThingByIDQuery(thingID, tenants))
 	if err != nil {
 		return err
 	}
@@ -361,12 +359,12 @@ func (a *app) MergeThing(ctx context.Context, thingID string, b []byte, tenants 
 	return nil
 }
 
-func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string) error {
+func (a *app) Delete(ctx context.Context, thingID string, tenants []string) error {
 	if len(tenants) == 0 {
 		return ErrMissingThingTenant
 	}
 
-	result, err := a.reader.QueryThings(ctx, WithID(thingID), WithTenants(tenants))
+	result, err := a.reader.QueryThings(ctx, ThingByIDQuery(thingID, tenants))
 	if err != nil {
 		return err
 	}
@@ -382,16 +380,16 @@ func (a *app) DeleteThing(ctx context.Context, thingID string, tenants []string)
 	return nil
 }
 
-func (a *app) QueryThings(ctx context.Context, params map[string][]string) (QueryResult, error) {
-	result, err := a.reader.QueryThings(ctx, WithParams(params)...)
+func (a *app) Query(ctx context.Context, query ThingQuery) (QueryResult, error) {
+	result, err := a.reader.QueryThings(ctx, query)
 	if err != nil {
 		return QueryResult{}, err
 	}
 	return result, nil
 }
 
-func (a *app) QueryValues(ctx context.Context, params map[string][]string) (QueryResult, error) {
-	result, err := a.reader.QueryValues(ctx, WithParams(params)...)
+func (a *app) Values(ctx context.Context, query ValueQuery) (QueryResult, error) {
+	result, err := a.reader.QueryValues(ctx, query)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -399,7 +397,7 @@ func (a *app) QueryValues(ctx context.Context, params map[string][]string) (Quer
 }
 
 func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
-	result, err := a.reader.QueryThings(ctx, WithID(thingID))
+	result, err := a.reader.QueryThings(ctx, ThingByIDQuery(thingID, nil))
 	if err != nil {
 		return nil
 	}
@@ -416,7 +414,7 @@ func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 }
 
 func (a *app) getConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error) {
-	result, err := a.reader.QueryThings(ctx, WithRefDevice(deviceID))
+	result, err := a.reader.QueryThings(ctx, ThingsByRefDeviceQuery(deviceID))
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +433,7 @@ func (a *app) getConnectedThings(ctx context.Context, deviceID string) ([]things
 	return tt, nil
 }
 
-func (a *app) GetTags(ctx context.Context, tenants []string) ([]string, error) {
+func (a *app) Tags(ctx context.Context, tenants []string) ([]string, error) {
 	return a.reader.GetTags(ctx, tenants)
 }
 
@@ -500,7 +498,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			return []things.Device{{DeviceID: t}}
 		}
 		devices := []things.Device{}
-		for _, s := range strings.Split(t, ",") {
+		for s := range strings.SplitSeq(t, ",") {
 			devices = append(devices, things.Device{DeviceID: s})
 		}
 		return devices
@@ -591,9 +589,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			delete(m, "refDevices")
 		}
 
-		for k, v := range args(record[9]) {
-			m[k] = v
-		}
+		maps.Copy(m, args(record[9]))
 
 		b, err := json.Marshal(m)
 		if err != nil {
@@ -605,12 +601,12 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		}
 
 		if current == nil {
-			err = a.AddThing(ctx, b)
+			err = a.Add(ctx, b)
 			if err != nil {
 				return err
 			}
 		} else {
-			err = a.UpdateThing(ctx, b, tenants)
+			err = a.Update(ctx, b, tenants)
 			if err != nil {
 				return err
 			}
@@ -620,7 +616,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
-func (a *app) GetTypes(ctx context.Context, tenants []string) ([]things.ThingType, error) {
+func (a *app) Types(ctx context.Context, tenants []string) ([]things.ThingType, error) {
 	types := make([]things.ThingType, 0)
 
 	for _, t := range a.cfg.Types {

@@ -248,7 +248,7 @@ func handleTemperature(s *Sink, m Measurement, onchange func(m ValueProvider) er
 		return nil, nil
 	}
 
-	temp := NewTemperature(s.ID(), m.ID, *m.Value, m.Timestamp)
+	temp := newTemperature(s.ID(), m.ID, *m.Value, m.Timestamp)
 	err := onchange(temp)
 	if err != nil {
 		return nil, err
