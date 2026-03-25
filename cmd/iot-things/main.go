@@ -99,28 +99,41 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		webserver("public", listen(flags[listenAddress]), port(flags[servicePort]), tracing(flags[enableTracing] == "true"),
 			muxinit(func(ctx context.Context, identifier string, port string, appCfg *appConfig, handler *http.ServeMux) error {
 				defer policiesFile.Close()
+				log.Debug("register api handlers...")
 				return api.RegisterHandlers(ctx, handler, app, policiesFile)
 			}),
 		),
 		oninit(func(ctx context.Context, ac *appConfig) error {
 			log.Debug("initializing servicerunner")
+
 			defer configFile.Close()
 			defer thingsFile.Close()
 
+			log.Debug("creating application...")
 			app, err = newApp(ctx, s, s, msgCtx, configFile)
 			if err != nil {
 				return fmt.Errorf("unable to initialize app: %s", err.Error())
 			}
 
-			seed(ctx, thingsFile, app)
+			log.Debug("seeding things...")
+			err = seed(ctx, thingsFile, app)
+			if err != nil {
+				return fmt.Errorf("unable to seed things: %s", err.Error())
+			}
 
 			return nil
 		}),
 		onstarting(func(ctx context.Context, appCfg *appConfig) (err error) {
 			log.Debug("starting servicerunner")
 
+			log.Debug("starting messaging...")
 			msgCtx.Start()
-			msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(app, msgCtx))
+
+			log.Debug("register topic handler...")
+			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(app, msgCtx))
+			if err != nil {
+				return fmt.Errorf("unable to register message handler: %s", err.Error())
+			}
 
 			return nil
 		}),
