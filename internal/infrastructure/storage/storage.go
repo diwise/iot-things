@@ -165,7 +165,7 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 
 	insert := `INSERT INTO things(id, type, location, data, tenant) VALUES (@id, @thing_type, point(@lon,@lat), @data, @tenant);`
 
-	_, err := db.pool.Exec(ctx, insert, args)
+	_, err = db.pool.Exec(ctx, insert, args)
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 			log.Error("AddThing statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
@@ -602,7 +602,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 		"source": m.Source,
 	}
 
-	_, err := db.pool.Exec(ctx, insert, args)
+	_, err = db.pool.Exec(ctx, insert, args)
 	if err != nil {
 		log.Error("could not add value", "things_id", t.ID(), "sql", insert, "args", args, "err", err.Error())
 		return err
