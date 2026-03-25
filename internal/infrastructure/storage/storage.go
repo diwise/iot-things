@@ -171,13 +171,14 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
-		"id":   t.ID(),
-		"lon":  lon,
-		"lat":  lat,
-		"data": string(t.Byte()),
+		"id":     t.ID(),
+		"lon":    lon,
+		"lat":    lat,
+		"tenant": t.Tenant(),
+		"data":   string(t.Byte()),
 	}
 
-	update := `UPDATE things SET location=point(@lon,@lat), data=@data, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
+	update := `UPDATE things SET location=point(@lon,@lat), data=@data, tenant=@tenant, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
 
 	_, err := db.pool.Exec(ctx, update, args)
 	if err != nil {
@@ -548,8 +549,6 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 		"ref":    ref,
 		"source": m.Source,
 	}
-
-	log.Debug("AddValue", logStr("sql", insert), slog.Any("args", args))
 
 	_, err := db.pool.Exec(ctx, insert, args)
 	if err != nil {

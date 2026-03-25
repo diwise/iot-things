@@ -19,6 +19,8 @@ import (
 	"github.com/diwise/iot-things/pkg/types"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 
 	"gopkg.in/yaml.v2"
 )
@@ -136,7 +138,6 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 	}
 
 	if len(connectedThings) == 0 {
-		log.Debug("no connected things found", "device_id", m.DeviceID())
 		return []string{}
 	}
 
@@ -177,7 +178,6 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 	}
 
 	if len(changedThings) == 0 {
-		log.Debug("no changed things found", "device_id", m.DeviceID())
 		return []string{}
 	}
 
@@ -186,6 +186,16 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 
 func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan string) {
 	log := logging.GetFromContext(ctx)
+
+	updatedCounter, err := otel.Meter("iot-things/measurements").Int64Counter(
+		"diwise.things.updated",
+		metric.WithUnit("1"),
+		metric.WithDescription("Total number of updated things"),
+	)
+
+	if err != nil {
+		log.Error("failed to create otel updated things counter", "err", err.Error())
+	}
 
 	for {
 		select {
@@ -225,6 +235,8 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 				log.Error("could not publish message", "err", err.Error())
 				continue
 			}
+
+			updatedCounter.Add(ctx, 1)
 		}
 	}
 }
@@ -338,6 +350,17 @@ func (a *app) Merge(ctx context.Context, thingID string, b []byte, tenants []str
 		if slices.Contains([]string{"id", "type"}, k) {
 			continue
 		}
+
+		if k == "tenant" {
+			s, ok := v.(string)
+			if !ok {
+				return errors.New("invalid tenant value")
+			}
+			if s != "" && !slices.Contains(tenants, s) {
+				return errors.New("you are not allowed to update the tenant of this thing")
+			}
+		}
+
 		current[k] = v
 	}
 

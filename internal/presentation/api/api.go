@@ -7,11 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	app "github.com/diwise/iot-things/internal/application"
+	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/iot-things/internal/presentation/api/auth"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/diwise/service-chassis/pkg/infrastructure/net/http/router"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
@@ -121,7 +122,7 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		thingId := chi.URLParam(r, "id")
+		thingId := r.PathValue("id")
 		if thingId == "" {
 			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
@@ -256,7 +257,28 @@ func updateHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		t, err := things.ConvToThing(b)
+		if err != nil {
+			logger.Error("could not convert to thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		thingID := r.PathValue("id")
+
+		if thingID != t.ID() {
+			logger.Error("id in path does not match id in body", "pathID", thingID, "bodyID", t.ID())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		if !slices.Contains(tenants, t.Tenant()) {
+			logger.Error("you are not allowed to update this thing")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 
 		err = a.Update(ctx, b, tenants)
 		if err != nil {
@@ -281,7 +303,7 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		thingId := chi.URLParam(r, "id")
+		thingId := r.PathValue("id")
 		if thingId == "" {
 			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)
@@ -320,7 +342,7 @@ func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		thingId := chi.URLParam(r, "id")
+		thingId := r.PathValue("id")
 		if thingId == "" {
 			logger.Error("no id parameter found in request")
 			w.WriteHeader(http.StatusBadRequest)

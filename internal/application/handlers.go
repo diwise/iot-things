@@ -17,11 +17,25 @@ import (
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 var tracer = otel.Tracer("iot-things")
 
 func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messaging.TopicMessageHandler {
+
+	log := logging.GetFromContext(context.Background())
+
+	totalCounter, err := otel.Meter("iot-things/measurements").Int64Counter(
+		"diwise.things.measurements.total",
+		metric.WithUnit("1"),
+		metric.WithDescription("Total number of received measurements"),
+	)
+
+	if err != nil {
+		log.Error("failed to create otel total measurements counter", "err", err.Error())
+	}
+
 	return func(ctx context.Context, d messaging.IncomingTopicMessage, logger *slog.Logger) {
 		var err error
 
@@ -47,11 +61,9 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 
 		_, ok := extractDeviceID(msg.Pack)
 		if !ok {
-			log.Debug("no deviceID found in package")
+			log.Warn("no deviceID found in package")
 			return
 		}
-
-		log.Debug("received measurements", "pack", msg.Pack)
 
 		measurements, err := convPack(ctx, msg.Pack)
 		if err != nil {
@@ -60,9 +72,11 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 		}
 
 		if len(measurements) == 0 {
-			log.Debug("no measurements found in pack")
+			log.Warn("no measurements found in pack")
 			return
 		}
+
+		totalCounter.Add(ctx, 1)
 
 		app.HandleMeasurements(ctx, measurements)
 	}
