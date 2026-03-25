@@ -76,7 +76,7 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 			vs 			TEXT NULL,
 			vb 			BOOLEAN NULL,
 			unit 		TEXT NOT NULL DEFAULT '',
-			ref 		TEXT NULL,
+			ref 			TEXT NULL,
 			created_on  timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE ("time", "id"));
 
@@ -101,11 +101,11 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 		log.Error("could not begin transaction", "err", err.Error())
 		return err
 	}
+	defer tx.Rollback(ctx) // Safe: ignored if tx is committed
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
 		log.Error("could not execute ddl statement", "err", err.Error())
-		tx.Rollback(ctx)
 		return err
 	}
 
@@ -119,7 +119,18 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
-	conn, err := pgxpool.New(ctx, cfg.ConnStr())
+	poolConfig, err := pgxpool.ParseConfig(cfg.ConnStr())
+	if err != nil {
+		return nil, err
+	}
+
+	poolConfig.MaxConns = 20
+	poolConfig.MinConns = 2
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.HealthCheckPeriod = 30 * time.Second
+
+	conn, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +145,13 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 
 func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
+
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
 
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
@@ -169,6 +187,13 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
+
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
 		"id":     t.ID(),
@@ -180,7 +205,7 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	update := `UPDATE things SET location=point(@lon,@lat), data=@data, tenant=@tenant, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`
 
-	_, err := db.pool.Exec(ctx, update, args)
+	_, err = conn.Exec(ctx, update, args)
 	if err != nil {
 		log.Error("could not update thing", "thing_id", t.ID(), "err", err.Error())
 		return err
@@ -192,8 +217,15 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 func (db database) DeleteThing(ctx context.Context, id string) error {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
+
 	delete := `UPDATE things SET deleted_on=CURRENT_TIMESTAMP WHERE id=@id;`
-	_, err := db.pool.Exec(ctx, delete, pgx.NamedArgs{
+	_, err = conn.Exec(ctx, delete, pgx.NamedArgs{
 		"id": id,
 	})
 	if err != nil {
@@ -218,6 +250,7 @@ func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.Q
 		log.Error("could not query things", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -275,6 +308,7 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 		log.Error("could not execute query", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -333,6 +367,7 @@ func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.Qu
 		log.Error("could not query latest values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var ts time.Time
 	var id, urn, unit, ref string
@@ -389,6 +424,7 @@ func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (ap
 		log.Error("could not query distinct values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 	var total int64
@@ -447,6 +483,7 @@ func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.Q
 		log.Error("could not query count values", "sql", sql, "args", args, "err", err.Error())
 		return app.QueryResult{}, err
 	}
+	defer rows.Close()
 
 	var t [][]byte
 
@@ -489,6 +526,13 @@ func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.Q
 func (db database) GetTags(ctx context.Context, tenants []string) ([]string, error) {
 	log := logging.GetFromContext(ctx)
 
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return []string{}, err
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT DISTINCT tag
 		FROM things,
@@ -505,6 +549,7 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 		log.Error("could not query tags", "sql", query, "args", args, "err", err.Error())
 		return []string{}, err
 	}
+	defer rows.Close()
 
 	tags := make([]string, 0)
 	var tag string
@@ -523,6 +568,13 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 
 func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	log := logging.GetFromContext(ctx)
+
+	conn, err := db.pool.Acquire(ctx)
+	if err != nil {
+		log.Error("could not acquire connection", "err", err.Error())
+		return err
+	}
+	defer conn.Release()
 
 	insert := `
 		INSERT INTO things_values(time, id, urn, location, v, vs, vb, unit, ref, source)
