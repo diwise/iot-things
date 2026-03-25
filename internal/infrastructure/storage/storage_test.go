@@ -1,0 +1,156 @@
+package storage
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	app "github.com/diwise/iot-things/internal/application"
+	"github.com/diwise/iot-things/internal/application/things"
+	"github.com/diwise/iot-things/internal/presentation/api/auth"
+
+	"github.com/google/uuid"
+)
+
+func TestAddThing(t *testing.T) {
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+	uuid := uuid.NewString()
+	thing := things.NewWasteContainer(uuid, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+
+	err = db.AddThing(ctx, thing)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestAddThingWithDevices(t *testing.T) {
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+	thingID := uuid.NewString()
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+
+	thing.AddDevice(uuid.NewString())
+
+	err = db.AddThing(ctx, thing)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestQueryThings(t *testing.T) {
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	thingID := uuid.NewString()
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+
+	deviceID := uuid.NewString()
+	thing.AddDevice(deviceID)
+	thing.AddTag("tag1")
+	thing.AddTag("tag2")
+
+	err = db.AddThing(ctx, thing)
+	if err != nil {
+		t.Error(err)
+	}
+
+	result, err := db.QueryThings(ctx, app.ThingQuery{
+		RefDeviceID: &deviceID,
+		Tenants:     []string{"default"},
+		Page:        app.Pagination{Limit: 100, Offset: 0},
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	if result.TotalCount != 1 {
+		t.Errorf("no thing, or too many things, found")
+	}
+
+	result, err = db.QueryThings(ctx, app.ThingQuery{ID: &thingID, Page: app.Pagination{Limit: 100, Offset: 0}})
+	if err != nil {
+		t.Error(err)
+	}
+	if result.TotalCount != 1 {
+		t.Errorf("no thing, or too many things, found")
+	}
+
+	result, err = db.QueryThings(ctx, app.ThingQuery{Types: []string{"Container"}, Page: app.Pagination{Limit: 100, Offset: 0}})
+	if err != nil {
+		t.Error(err)
+	}
+	if result.TotalCount == 0 {
+		t.Errorf("no thing, or too many things, found")
+	}
+
+	subType := "WasteContainer"
+	result, err = db.QueryThings(ctx, app.ThingQuery{SubType: &subType, Page: app.Pagination{Limit: 100, Offset: 0}})
+	if err != nil {
+		t.Error(err)
+	}
+	if result.TotalCount == 0 {
+		t.Errorf("no thing, or too many things, found")
+	}
+
+	result, err = db.QueryThings(ctx, app.ThingQuery{
+		Tags:    []string{"tag1", "tag2"},
+		Tenants: []string{"default"},
+		Page:    app.Pagination{Limit: 100, Offset: 0},
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	if result.TotalCount == 0 {
+		t.Errorf("no thing, or too many things, found")
+	}
+}
+
+func TestUpdateThing(t *testing.T) {
+	db, ctx, cancel, err := new()
+
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	thingID := "7c263cda-3561-4510-bbdd-a19e52de30c7" //use id already in database
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 666, Longitude: 666}, "NewDefault")
+
+	err = db.UpdateThing(ctx, thing)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func new() (Storage, context.Context, context.CancelFunc, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx = auth.WithAllowedTenants(ctx, []string{"default"})
+
+	db, err := New(ctx, Config{
+		host:     "localhost",
+		user:     "postgres",
+		password: "password",
+		port:     "5432",
+		dbname:   "postgres",
+		sslmode:  "disable",
+	})
+
+	return db, ctx, cancel, err
+}
