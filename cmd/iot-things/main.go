@@ -107,7 +107,6 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			defer configFile.Close()
 			defer thingsFile.Close()
 
-			msgCtx.Start()
 			app, err = newApp(ctx, s, s, msgCtx, configFile)
 			if err != nil {
 				return fmt.Errorf("unable to initialize app: %s", err.Error())
