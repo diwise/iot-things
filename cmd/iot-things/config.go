@@ -25,6 +25,8 @@ const (
 	policiesFile
 	thingsFile
 	configFile
+
+	logLevel
 )
 
 type appConfig struct {

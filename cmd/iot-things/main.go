@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/diwise/iot-things/internal/application"
@@ -42,6 +43,8 @@ func defaultFlags() flagMap {
 		policiesFile: "/opt/diwise/config/authz.rego",
 		thingsFile:   "/opt/diwise/config/things.csv",
 		configFile:   "/opt/diwise/config/config.yaml",
+
+		logLevel: "debug",
 	}
 }
 
@@ -51,6 +54,8 @@ func main() {
 	serviceVersion := buildinfo.SourceVersion()
 	ctx, logger, cleanup := o11y.Init(ctx, serviceName, serviceVersion, "json")
 	defer cleanup()
+
+	logging.SetLogLevel(parseLogLevel(flags[logLevel]))
 
 	policies, err := os.Open(flags[policiesFile])
 	exitIf(err, logger, "unable to open opa policy file")
@@ -75,7 +80,6 @@ func main() {
 }
 
 func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile, thingsFile, configFile io.ReadCloser) (servicerunner.Runner[appConfig], error) {
-
 	log := logging.GetFromContext(ctx)
 
 	probes := map[string]k8shandlers.ServiceProber{
@@ -168,6 +172,8 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flags[dbPassword] = envOrDef(ctx, "POSTGRES_PASSWORD", flags[dbPassword])
 	flags[dbSSLMode] = envOrDef(ctx, "POSTGRES_SSLMODE", flags[dbSSLMode])
 
+	flags[logLevel] = envOrDef(ctx, "LOG_LEVEL", flags[logLevel])
+
 	apply := func(f flagType) func(string) error {
 		return func(value string) error {
 			flags[f] = value
@@ -179,9 +185,25 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flag.Func("policies", "an authorization policy file", apply(policiesFile))
 	flag.Func("things", "list of known things", apply(thingsFile))
 	flag.Func("config", "a yaml file with configuration", apply(configFile))
+	flag.Func("loglevel", "set the log level", apply(logLevel))
 	flag.Parse()
 
 	return ctx, flags
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelDebug
+	}
 }
 
 func newApp(ctx context.Context, r application.ThingsReader, w application.ThingsWriter, m messaging.MsgContext, cfg io.Reader) (application.ThingsApp, error) {
