@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/diwise/iot-things/internal/application/things"
+	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/matryer/is"
 )
 
@@ -122,10 +124,92 @@ types:
       - "subType2B"
       - "subType2C"
 `
-	
+
 	app := New(ctx, r, w, msgCtxMock())
 	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
 	is.NoErr(err)
+}
+
+func TestHandleMeasurementsPublishesWithContextValuesAfterCancellation(t *testing.T) {
+	type contextKey string
+
+	const traceKey contextKey = "trace-id"
+	const traceValue = "trace-123"
+
+	appCtx := t.Context()
+
+	ingressCtx, cancelIngress := context.WithCancel(context.WithValue(context.Background(), traceKey, traceValue))
+
+	room := things.NewRoom("room-001", things.DefaultLocation, "default")
+	room.AddDevice("device-1")
+
+	currentThing := room
+	allowPublishQuery := make(chan struct{})
+	published := make(chan struct{}, 1)
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			if query.RefDeviceID != nil {
+				return QueryResult{Data: [][]byte{currentThing.Byte()}}, nil
+			}
+
+			if query.ID != nil && *query.ID == currentThing.ID() {
+				<-allowPublishQuery
+
+				if got := ctx.Value(traceKey); got != traceValue {
+					t.Fatalf("expected trace value %q in publisher query context, got %v", traceValue, got)
+				}
+				if err := ctx.Err(); err != nil {
+					return QueryResult{}, err
+				}
+
+				return QueryResult{Data: [][]byte{currentThing.Byte()}}, nil
+			}
+
+			return QueryResult{Data: [][]byte{}}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+			return nil
+		},
+		UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
+			currentThing = t
+			return nil
+		},
+	}
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
+			if got := ctx.Value(traceKey); got != traceValue {
+				t.Fatalf("expected trace value %q in publish context, got %v", traceValue, got)
+			}
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("expected detached publish context, got err %v", err)
+			}
+
+			published <- struct{}{}
+			return nil
+		},
+	}
+
+	a := New(appCtx, r, w, m)
+
+	value := 21.0
+	a.HandleMeasurements(ingressCtx, []things.Measurement{{
+		ID:        "device-1/3303/5700",
+		Urn:       things.TemperatureURN,
+		Value:     &value,
+		Timestamp: time.Now().UTC(),
+	}})
+
+	cancelIngress()
+	close(allowPublishQuery)
+
+	select {
+	case <-published:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for thing.updated publish")
+	}
 }
 
 const csvData string = `id;type;subType;name;decsription;location;tenant;tags;refDevices;args

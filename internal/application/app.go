@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
@@ -68,12 +67,17 @@ var (
 	ErrMissingThingType   = errors.New("thing type must be provided")
 )
 
+type changedThing struct {
+	ID      string
+	Context context.Context
+}
+
 type app struct {
 	reader ThingsReader
 	writer ThingsWriter
 	cfg    *config
 
-	pub chan string
+	pub chan changedThing
 	mu  sync.Mutex
 }
 
@@ -91,7 +95,7 @@ func New(ctx context.Context, r ThingsReader, w ThingsWriter, msgCtx messaging.M
 		reader: r,
 		writer: w,
 
-		pub: make(chan string),
+		pub: make(chan changedThing),
 	}
 
 	go publisher(ctx, a.reader, msgCtx, a.pub)
@@ -117,13 +121,13 @@ func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Meas
 
 	changedThings := []string{}
 
-	for _, m := range measurements {
-		changedThings = append(changedThings, a.handle(ctx, m)...)
+	for _, measurement := range measurements {
+		changedThings = append(changedThings, a.handle(ctx, measurement)...)
 	}
 
 	if len(changedThings) > 0 {
 		for _, thingID := range unique(changedThings) {
-			a.pub <- thingID
+			a.pub <- changedThing{ID: thingID, Context: context.WithoutCancel(ctx)}
 		}
 	}
 }
@@ -143,19 +147,19 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 
 	changedThings := []string{}
 
-	for _, t := range connectedThings {
+	for _, thing := range connectedThings {
+		ctx = logging.NewContextWithLogger(ctx, log, "thing_id", thing.ID())
+
 		measurements := []things.Measurement{m}
 
-		ctx = logging.NewContextWithLogger(ctx, log, slog.String("device_id", m.DeviceID()), slog.String("thing_id", t.ID()))
-
-		err := t.Handle(ctx, measurements, func(valueProvider things.ValueProvider) error {
+		err := thing.Handle(ctx, measurements, func(valueProvider things.ValueProvider) error {
 			var errs []error
 
 			values := valueProvider.Values()
 
 			for _, v := range values {
 				// add value to storage. A value is a measurement with the thingID instead of the deviceID
-				errs = append(errs, a.AddValue(ctx, t, v))
+				errs = append(errs, a.AddValue(ctx, thing, v))
 			}
 
 			return errors.Join(errs...)
@@ -166,15 +170,15 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 		}
 
 		// adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
-		t.SetLastObserved(measurements)
+		thing.SetLastObserved(measurements)
 
-		err = a.saveThing(ctx, t)
+		err = a.saveThing(ctx, thing)
 		if err != nil {
 			log.Error("could not save thing", "err", err.Error())
 			continue
 		}
 
-		changedThings = append(changedThings, t.ID())
+		changedThings = append(changedThings, thing.ID())
 	}
 
 	if len(changedThings) == 0 {
@@ -184,7 +188,7 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 	return changedThings
 }
 
-func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan string) {
+func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan changedThing) {
 	log := logging.GetFromContext(ctx)
 
 	updatedCounter, err := otel.Meter("iot-things/measurements").Int64Counter(
@@ -202,15 +206,19 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 		case <-ctx.Done():
 			return
 
-		case thingID := <-inbox:
-			result, err := r.QueryThings(ctx, ThingByIDQuery(thingID, nil))
+		case changedThing := <-inbox:
+			log := logging.GetFromContext(changedThing.Context)
+			log = log.With("thing_id", changedThing.ID)
+			ctx := logging.NewContextWithLogger(changedThing.Context, log)
+
+			result, err := r.QueryThings(ctx, ThingByIDQuery(changedThing.ID, nil))
 			if err != nil {
 				log.Error("could not query thing", "err", err.Error())
 				continue
 			}
 
 			if len(result.Data) != 1 {
-				log.Debug("thing not found", "thingID", thingID, slog.Int("count", len(result.Data)))
+				log.Debug("thing not found", "count", len(result.Data))
 				continue
 			}
 
@@ -228,7 +236,7 @@ func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext,
 				Timestamp: time.Now().UTC(),
 			}
 
-			log.Debug("publish message", "content_type", msg.ContentType(), "thing_id", t.ID(), "tenant", t.Tenant(), "type", t.Type())
+			log.Debug("publish message", "content_type", msg.ContentType(), "tenant", t.Tenant(), "type", t.Type())
 
 			err = msgCtx.PublishOnTopic(ctx, msg)
 			if err != nil {

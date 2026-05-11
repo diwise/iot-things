@@ -22,9 +22,8 @@ import (
 
 var tracer = otel.Tracer("iot-things")
 
-func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messaging.TopicMessageHandler {
-
-	log := logging.GetFromContext(context.Background())
+func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMessageHandler {
+	log := logging.GetFromContext(c)
 
 	totalCounter, err := otel.Meter("iot-things/measurements").Int64Counter(
 		"diwise.things.measurements.total",
@@ -36,10 +35,12 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 		log.Error("failed to create otel total measurements counter", "err", err.Error())
 	}
 
-	return func(ctx context.Context, d messaging.IncomingTopicMessage, logger *slog.Logger) {
+	return func(ctx context.Context, topicMessage messaging.IncomingTopicMessage, logger *slog.Logger) {
 		var err error
 
-		ctx, span := tracer.Start(ctx, d.TopicName())
+		logger = logger.With("topic_name", topicMessage.TopicName())
+
+		ctx, span := tracer.Start(ctx, "receive-measurements")
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, log := o11y.AddTraceIDToLoggerAndStoreInContext(span, logger, ctx)
 
@@ -48,7 +49,7 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			Timestamp time.Time  `json:"timestamp"`
 		}{}
 
-		err = json.Unmarshal(d.Body(), &msg)
+		err = json.Unmarshal(topicMessage.Body(), &msg)
 		if err != nil {
 			log.Error("could not unmarshal message", "err", err.Error())
 			return
@@ -59,11 +60,13 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 			return
 		}
 
-		_, ok := extractDeviceID(msg.Pack)
+		deviceID, ok := extractDeviceID(msg.Pack)
 		if !ok {
 			log.Warn("no deviceID found in package")
 			return
 		}
+
+		logger = logger.With("device_id", deviceID)
 
 		measurements, err := convPack(ctx, msg.Pack)
 		if err != nil {
@@ -77,6 +80,8 @@ func NewMeasurementsHandler(app ThingsApp, msgCtx messaging.MsgContext) messagin
 		}
 
 		totalCounter.Add(ctx, 1)
+
+		ctx = logging.NewContextWithLogger(ctx, logger)
 
 		app.HandleMeasurements(ctx, measurements)
 	}

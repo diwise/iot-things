@@ -130,7 +130,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			msgCtx.Start()
 
 			log.Debug("register topic handler...")
-			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(app, msgCtx))
+			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
 			if err != nil {
 				return fmt.Errorf("unable to register message handler: %s", err.Error())
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -11,7 +12,6 @@ import (
 
 	app "github.com/diwise/iot-things/internal/application"
 	"github.com/diwise/iot-things/internal/application/things"
-	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -49,7 +49,6 @@ func (db database) Close() {
 }
 
 func initialize(ctx context.Context, pool *pgxpool.Pool) error {
-	log := logging.GetFromContext(ctx)
 
 	ddl := `
 		CREATE TABLE IF NOT EXISTS things (
@@ -98,21 +97,19 @@ func initialize(ctx context.Context, pool *pgxpool.Pool) error {
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		log.Error("could not begin transaction", "err", err.Error())
-		return err
+
+		return fmt.Errorf("could not begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx) // Safe: ignored if tx is committed
 
 	_, err = tx.Exec(ctx, ddl)
 	if err != nil {
-		log.Error("could not execute ddl statement", "err", err.Error())
-		return err
+		return fmt.Errorf("could not execute ddl statement: %w", err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		log.Error("could not commit transaction", "err", err.Error())
-		return err
+		return fmt.Errorf("could not commit transaction: %w", err)
 	}
 
 	return nil
@@ -144,12 +141,9 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 }
 
 func (db database) AddThing(ctx context.Context, t things.Thing) error {
-	log := logging.GetFromContext(ctx)
-
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
-		log.Error("could not acquire connection", "err", err.Error())
-		return err
+		return fmt.Errorf("could not acquire connection: %w", err)
 	}
 	defer conn.Release()
 
@@ -168,29 +162,23 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	_, err = db.pool.Exec(ctx, insert, args)
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
-			log.Error("AddThing statement failed", "err", pgErr.Error(), "code", pgErr.Code, "message", pgErr.Message)
+			return fmt.Errorf("AddThing statement failed: %w", pgErr)
 		}
 
 		if isDuplicateKeyErr(err) {
-			log.Debug("thing already exists", "thing_id", t.ID(), "err", err.Error())
 			return app.ErrAlreadyExists
 		}
 
-		log.Error("could not add thing", "thing_id", t.ID(), "err", err.Error())
-
-		return err
+		return fmt.Errorf("could not add thing: %w", err)
 	}
 
 	return nil
 }
 
 func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
-	log := logging.GetFromContext(ctx)
-
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
-		log.Error("could not acquire connection", "err", err.Error())
-		return err
+		return fmt.Errorf("could not acquire connection: %w", err)
 	}
 	defer conn.Release()
 
@@ -207,20 +195,16 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 
 	_, err = conn.Exec(ctx, update, args)
 	if err != nil {
-		log.Error("could not update thing", "thing_id", t.ID(), "err", err.Error())
-		return err
+		return fmt.Errorf("could not update thing: %w", err)
 	}
 
 	return nil
 }
 
 func (db database) DeleteThing(ctx context.Context, id string) error {
-	log := logging.GetFromContext(ctx)
-
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
-		log.Error("could not acquire connection", "err", err.Error())
-		return err
+		return fmt.Errorf("could not acquire connection: %w", err)
 	}
 	defer conn.Release()
 
@@ -229,26 +213,21 @@ func (db database) DeleteThing(ctx context.Context, id string) error {
 		"id": id,
 	})
 	if err != nil {
-		log.Error("could not delete thing", "thing_id", id, "err", err.Error())
-		return err
+		return fmt.Errorf("could not delete thing: %w", err)
 	}
 
 	return nil
 }
 
 func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
 	sql, args, err := buildThingQuerySQL(query)
 	if err != nil {
-		log.Error("could not build query things sql", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not build query things sql: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not query things", "sql", sql, "args", args, "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not query things: %w", err)
 	}
 	defer rows.Close()
 
@@ -261,8 +240,7 @@ func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.Q
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for things query", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not scan rows for things query: %w", err)
 	}
 
 	offset := 0
@@ -286,8 +264,6 @@ func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.Q
 }
 
 func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
 	switch query.Mode {
 	case app.ValueQueryModeCountByTime:
 		return db.countValues(ctx, query)
@@ -299,14 +275,12 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 
 	sql, args, err := buildValueQuerySQL(query)
 	if err != nil {
-		log.Error("could not build value query sql", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not build value query sql: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not execute query", "sql", sql, "args", args, "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not execute query: %w", err)
 	}
 	defer rows.Close()
 
@@ -340,8 +314,7 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for value query", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not scan rows for value query: %w", err)
 	}
 
 	return app.QueryResult{
@@ -354,18 +327,14 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 }
 
 func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
 	sql, args, err := buildShowLatestValuesSQL(query)
 	if err != nil {
-		log.Error("could not build show latest values sql", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not build show latest values sql: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not query latest values", "sql", sql, "args", args, "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not query latest values: %w", err)
 	}
 	defer rows.Close()
 
@@ -397,8 +366,7 @@ func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.Qu
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for latest values query", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not scan rows for latest values query: %w", err)
 	}
 
 	return app.QueryResult{
@@ -411,18 +379,14 @@ func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.Qu
 }
 
 func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
 	sql, args, err := buildDistinctValuesSQL(query)
 	if err != nil {
-		log.Error("could not build distinct values query sql", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not build distinct values query sql: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not query distinct values", "sql", sql, "args", args, "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not query distinct values: %w", err)
 	}
 	defer rows.Close()
 
@@ -456,8 +420,7 @@ func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (ap
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for distinct values query", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not scan rows for distinct values query: %w", err)
 	}
 
 	return app.QueryResult{
@@ -470,18 +433,14 @@ func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (ap
 }
 
 func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
-	log := logging.GetFromContext(ctx)
-
 	sql, args, err := buildCountValuesSQL(query)
 	if err != nil {
-		log.Error("could not build count values sql", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not build count values sql: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, sql, args)
 	if err != nil {
-		log.Error("could not query count values", "sql", sql, "args", args, "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not query count values: %w", err)
 	}
 	defer rows.Close()
 
@@ -510,8 +469,7 @@ func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.Q
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for count values query", "err", err.Error())
-		return app.QueryResult{}, err
+		return app.QueryResult{}, fmt.Errorf("could not scan rows for count values query: %w", err)
 	}
 
 	return app.QueryResult{
@@ -524,12 +482,9 @@ func (db database) countValues(ctx context.Context, query app.ValueQuery) (app.Q
 }
 
 func (db database) GetTags(ctx context.Context, tenants []string) ([]string, error) {
-	log := logging.GetFromContext(ctx)
-
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
-		log.Error("could not acquire connection", "err", err.Error())
-		return []string{}, err
+		return []string{}, fmt.Errorf("could not acquire connection: %w", err)
 	}
 	defer conn.Release()
 
@@ -546,8 +501,7 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 
 	rows, err := db.pool.Query(ctx, query, args)
 	if err != nil {
-		log.Error("could not query tags", "sql", query, "args", args, "err", err.Error())
-		return []string{}, err
+		return []string{}, fmt.Errorf("could not query tags: %w", err)
 	}
 	defer rows.Close()
 
@@ -559,20 +513,16 @@ func (db database) GetTags(ctx context.Context, tenants []string) ([]string, err
 		return nil
 	})
 	if err != nil {
-		log.Error("could not scan rows for tags query", "err", err.Error())
-		return []string{}, err
+		return []string{}, fmt.Errorf("could not scan rows for tags query: %w", err)
 	}
 
 	return tags, nil
 }
 
 func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
-	log := logging.GetFromContext(ctx)
-
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
-		log.Error("could not acquire connection", "err", err.Error())
-		return err
+		return fmt.Errorf("could not acquire connection: %w", err)
 	}
 	defer conn.Release()
 
@@ -604,8 +554,7 @@ func (db database) AddValue(ctx context.Context, t things.Thing, m things.Value)
 
 	_, err = db.pool.Exec(ctx, insert, args)
 	if err != nil {
-		log.Error("could not add value", "things_id", t.ID(), "sql", insert, "args", args, "err", err.Error())
-		return err
+		return fmt.Errorf("could not add value: %w", err)
 	}
 
 	return nil
