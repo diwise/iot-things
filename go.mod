@@ -3,7 +3,7 @@ module github.com/diwise/iot-things
 go 1.26
 
 require (
-	github.com/diwise/service-chassis v0.0.0-20260601131324-5a8797d98a03
+	github.com/diwise/service-chassis v0.0.0-20260602135046-9f4adf349775
 	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v2 v2.4.0
 )
