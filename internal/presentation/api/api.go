@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +25,8 @@ import (
 )
 
 var tracer = otel.Tracer("iot-things/api/things")
+
+var errUnauthorizedTenant = errors.New("unauthorized tenant")
 
 const (
 	CreateThings auth.Scope = "things.create"
@@ -245,6 +249,12 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 			_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
+			tenants := createTenantsFromRequest(r)
+			if len(tenants) == 0 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
 			file, _, err := r.FormFile("fileupload")
 			if err != nil {
 				logger.Error("unable to get file from fileupload", "err", err.Error())
@@ -253,7 +263,28 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			}
 			defer file.Close()
 
-			err = a.Seed(ctx, file)
+			payload, err := io.ReadAll(file)
+			if err != nil {
+				logger.Error("could not read uploaded seed file", "err", err.Error())
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			err = validateSeedTenants(bytes.NewReader(payload), tenants)
+			if err != nil {
+				if errors.Is(err, errUnauthorizedTenant) {
+					logger.Error("seed contains unauthorized tenant", "err", err.Error())
+					w.WriteHeader(http.StatusForbidden)
+				} else {
+					logger.Error("invalid seed file", "err", err.Error())
+					w.WriteHeader(http.StatusBadRequest)
+				}
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			err = a.Seed(ctx, bytes.NewReader(payload))
 			if err != nil {
 				logger.Error("could not seed", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -277,6 +308,26 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		tenants := createTenantsFromRequest(r)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		t, err := things.ConvToThing(b)
+		if err != nil {
+			logger.Error("could not convert to thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		if !slices.Contains(tenants, t.Tenant()) {
+			logger.Error("you are not allowed to create this thing")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
 		err = a.Add(ctx, b)
 		if err != nil && errors.Is(err, app.ErrAlreadyExists) {
 			w.WriteHeader(http.StatusConflict)
@@ -290,6 +341,38 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func createTenantsFromRequest(r *http.Request) []string {
+	return auth.GetTenantsWithAllowedScopes(r.Context(), CreateThings)
+}
+
+func validateSeedTenants(r io.Reader, tenants []string) error {
+	reader := csv.NewReader(r)
+
+	row := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read csv row %d: %w", row+1, err)
+		}
+
+		row++
+		if row == 1 {
+			continue
+		}
+
+		if len(record) != 10 {
+			return fmt.Errorf("invalid csv row %d: expected 10 columns, got %d", row, len(record))
+		}
+
+		if tenant := record[6]; !slices.Contains(tenants, tenant) {
+			return fmt.Errorf("%w: tenant %q on row %d is not allowed", errUnauthorizedTenant, tenant, row)
+		}
 	}
 }
 
