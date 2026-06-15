@@ -210,6 +210,7 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 		valueQuery.ThingID = &thingId
+		valueQuery.Tenants = tenants
 
 		values, err := a.Values(ctx, valueQuery)
 		if err != nil {
@@ -500,6 +501,12 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		query, err := parseValueQuery(r.URL.Query())
 		if err != nil {
 			logger.Error("invalid value query", "err", err.Error())
@@ -507,6 +514,7 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			w.Write([]byte(err.Error()))
 			return
 		}
+		query.Tenants = tenants
 
 		result, err := a.Values(ctx, query)
 		if err != nil {

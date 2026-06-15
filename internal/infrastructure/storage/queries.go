@@ -24,6 +24,7 @@ var allowedDistinctFields = map[string]string{
 
 func buildThingQuerySQL(query app.ThingQuery) (string, pgx.NamedArgs, error) {
 	b := newSQLBuilder()
+	addValueTenantFilter(b, query.Tenants)
 	b.Where("deleted_on IS NULL")
 
 	if query.ID != nil {
@@ -239,4 +240,18 @@ func sqlCompareOperator(op app.CompareOperator) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported compare operator: %s", op)
 	}
+}
+
+func addValueTenantFilter(b *sqlBuilder, tenants []string) {
+	if len(tenants) == 0 {
+		return
+	}
+
+	b.Where(`EXISTS (
+		SELECT 1
+		FROM things t
+		WHERE t.deleted_on IS NULL
+		  AND t.tenant = ANY(` + b.Bind("tenants", tenants) + `)
+		  AND things_values.id LIKE t.id || '/%'
+	)`)
 }
