@@ -20,7 +20,7 @@ type accessContextKey struct{ name string }
 
 var accessCtxKey = &accessContextKey{"access"}
 
-var tracer = otel.Tracer("iot-device-mgmt/authz")
+var tracer = otel.Tracer("iot-things/authz")
 
 type Scope string
 
