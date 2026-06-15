@@ -24,28 +24,69 @@ import (
 
 var tracer = otel.Tracer("iot-things/api/things")
 
-func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp, policies io.Reader) error {
+const (
+	CreateThings auth.Scope = "things.create"
+	ReadThings   auth.Scope = "things.read"
+	UpdateThings auth.Scope = "things.update"
+	DeleteThings auth.Scope = "things.delete"
+)
+
+type registerOptions struct {
+	authOptions []auth.Option
+}
+
+type RegisterOption func(*registerOptions)
+
+func WithAccessObjectAuthorization(enabled bool) RegisterOption {
+	return func(o *registerOptions) {
+		o.authOptions = append(o.authOptions, auth.WithAccessObjectAuthorization(enabled))
+	}
+}
+
+func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp, policies io.Reader, opts ...RegisterOption) error {
 	const apiPrefix string = "/api/v0"
 
 	log := logging.GetFromContext(ctx)
 
-	authenticator, err := auth.NewAuthenticator(ctx, policies)
+	registerOpts := registerOptions{}
+	for _, apply := range opts {
+		apply(&registerOpts)
+	}
+
+	authz, err := auth.NewAuthenticator(ctx, policies, registerOpts.authOptions...)
+
 	if err != nil {
 		return fmt.Errorf("failed to create api authenticator: %w", err)
 	}
 
 	r := router.New(mux, router.WithPrefix(apiPrefix))
-	r.Use(authenticator)
 
-	r.Get("/things", queryHandler(log, app))
-	r.Get("/things/{id}", getByIDHandler(log, app))
-	r.Post("/things", addHandler(log, app))
-	r.Put("/things/{id}", updateHandler(log, app))
-	r.Patch("/things/{id}", patchHandler(log, app))
-	r.Delete("/things/{id}", deleteHandler(log, app))
-	r.Get("/things/tags", getTagsHandler(log, app))
-	r.Get("/things/types", getTypesHandler(log, app))
-	r.Get("/things/values", getValuesHandler(log, app))
+	r.Route("things", func(r router.ServeMux) {
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(ReadThings))
+			r.Get("", queryHandler(log, app))
+			r.Get("tags", getTagsHandler(log, app))
+			r.Get("types", getTypesHandler(log, app))
+			r.Get("values", getValuesHandler(log, app))
+			r.Get("{id}", getByIDHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(CreateThings))
+			r.Post("", addHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(UpdateThings))
+			r.Put("{id}", updateHandler(log, app))
+			r.Patch("{id}", patchHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(DeleteThings))
+			r.Delete("{id}", deleteHandler(log, app))
+		})
+	})
 
 	return nil
 }
@@ -60,7 +101,13 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		query, err := parseThingQuery(r.URL.Query(), auth.GetAllowedTenantsFromContext(ctx))
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		query, err := parseThingQuery(r.URL.Query(), tenants)
 		if err != nil {
 			logger.Error("invalid thing query", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
@@ -129,9 +176,15 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		result, err := a.Query(ctx, app.ThingQuery{
 			ID:      &thingId,
-			Tenants: auth.GetAllowedTenantsFromContext(ctx),
+			Tenants: tenants,
 			Page: app.Pagination{
 				Limit:  100,
 				Offset: 0,
@@ -273,7 +326,12 @@ func updateHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), UpdateThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		if !slices.Contains(tenants, t.Tenant()) {
 			logger.Error("you are not allowed to update this thing")
 			w.WriteHeader(http.StatusForbidden)
@@ -318,7 +376,11 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), UpdateThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		err = a.Merge(ctx, thingId, b, tenants)
 		if err != nil {
@@ -349,7 +411,11 @@ func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), DeleteThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		err = a.Delete(ctx, thingId, tenants)
 		if err != nil {
@@ -372,7 +438,11 @@ func getTagsHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		tags, err := a.Tags(ctx, tenants)
 		if err != nil {
@@ -398,7 +468,11 @@ func getTypesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		types, err := a.Types(ctx, tenants)
 		if err != nil {
