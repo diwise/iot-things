@@ -24,7 +24,6 @@ var allowedDistinctFields = map[string]string{
 
 func buildThingQuerySQL(query app.ThingQuery) (string, pgx.NamedArgs, error) {
 	b := newSQLBuilder()
-	addValueTenantFilter(b, query.Tenants)
 	b.Where("deleted_on IS NULL")
 
 	if query.ID != nil {
@@ -113,6 +112,7 @@ func buildShowLatestValuesSQL(query app.ValueQuery) (string, pgx.NamedArgs, erro
 	}
 
 	b := newSQLBuilder()
+	addValueTenantFilter(b, query.Tenants)
 	b.Where("id LIKE " + b.Bind("thingid_pattern", fmt.Sprintf("%s/%%", *query.ThingID)))
 
 	querySQL := strings.TrimSpace(strings.Join([]string{
@@ -181,6 +181,7 @@ func buildCountValuesSQL(query app.ValueQuery) (string, pgx.NamedArgs, error) {
 
 func buildValueFilterBuilder(query app.ValueQuery) (*sqlBuilder, error) {
 	b := newSQLBuilder()
+	addValueTenantFilter(b, query.Tenants)
 
 	if query.ID != nil {
 		b.Where("id = " + b.Bind("id", *query.ID))

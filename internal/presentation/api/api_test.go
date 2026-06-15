@@ -11,6 +11,7 @@ import (
 
 	app "github.com/diwise/iot-things/internal/application"
 	"github.com/diwise/iot-things/internal/application/things"
+	"github.com/diwise/iot-things/internal/presentation/api/auth"
 )
 
 type fakeThingsApp struct {
@@ -51,6 +52,18 @@ func (f fakeThingsApp) Types(ctx context.Context, tenants []string) ([]things.Th
 func (f fakeThingsApp) LoadConfig(ctx context.Context, r io.Reader) error { return nil }
 func (f fakeThingsApp) Seed(ctx context.Context, r io.Reader) error       { return nil }
 
+func requestWithAccess(req *http.Request, scopes ...auth.Scope) *http.Request {
+	tenantScopes := map[auth.Scope]struct{}{}
+	for _, scope := range scopes {
+		tenantScopes[scope] = struct{}{}
+	}
+
+	ctx := auth.WithAccess(req.Context(), map[string]map[auth.Scope]struct{}{
+		"default": tenantScopes,
+	})
+	return req.WithContext(ctx)
+}
+
 func TestQueryHandlerCSVExportReturns500WithoutPartialCSVOnError(t *testing.T) {
 	thing := things.NewWasteContainer("thing-1", things.DefaultLocation, "default")
 
@@ -70,7 +83,7 @@ func TestQueryHandlerCSVExportReturns500WithoutPartialCSVOnError(t *testing.T) {
 	req.Header.Set("Accept", "text/csv")
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", rr.Code)
@@ -102,7 +115,7 @@ func TestQueryHandlerCSVExportReturnsCSVContentType(t *testing.T) {
 	req.Header.Set("Accept", "text/csv")
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
@@ -130,7 +143,7 @@ func TestQueryHandlerRejectsInvalidThingQuery(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/things?limit=0", nil)
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rr.Code)
@@ -153,7 +166,7 @@ func TestGetValuesHandlerRejectsConflictingValueQueryModes(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/things/values?thingid=thing-1&latest=true&distinct=v", nil)
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rr.Code)
@@ -180,7 +193,7 @@ func TestGetValuesHandlerCSVExportReturns500WithoutPartialCSVOnError(t *testing.
 	req.Header.Set("Accept", "text/csv")
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", rr.Code)
@@ -204,7 +217,7 @@ func TestGetValuesHandlerCSVExportReturnsCSVContentType(t *testing.T) {
 	req.Header.Set("Accept", "text/csv")
 	rr := httptest.NewRecorder()
 
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
