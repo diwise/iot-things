@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/diwise/iot-things/assets/docs"
 	app "github.com/diwise/iot-things/internal/application"
 	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/iot-things/internal/presentation/api/auth"
@@ -28,6 +29,8 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp
 	const apiPrefix string = "/api/v0"
 
 	log := logging.GetFromContext(ctx)
+
+	docs.RegisterHandlers(ctx, mux)
 
 	authenticator, err := auth.NewAuthenticator(ctx, policies)
 	if err != nil {
