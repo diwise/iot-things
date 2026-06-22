@@ -7,7 +7,7 @@ allow = response {
     pathstart := array.slice(input.path, 0, 2)
     pathstart == ["api", "v0"]
 
-    response := {
+    response := if {
         "tenants": ["default"]
     }
 }
