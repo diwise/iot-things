@@ -55,8 +55,6 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp
 
 	docs.RegisterHandlers(ctx, mux)
 
-	docs.RegisterHandlers(ctx, mux)
-
 	registerOpts := registerOptions{}
 	for _, apply := range opts {
 		apply(&registerOpts)
