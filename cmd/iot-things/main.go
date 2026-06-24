@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/diwise/iot-things/internal/application"
@@ -42,6 +43,8 @@ func defaultFlags() flagMap {
 		policiesFile: "/opt/diwise/config/authz.rego",
 		thingsFile:   "/opt/diwise/config/things.csv",
 		configFile:   "/opt/diwise/config/config.yaml",
+
+		logLevel: "debug",
 	}
 }
 
@@ -51,6 +54,8 @@ func main() {
 	serviceVersion := buildinfo.SourceVersion()
 	ctx, logger, cleanup := o11y.Init(ctx, serviceName, serviceVersion, "json")
 	defer cleanup()
+
+	logging.SetLogLevel(parseLogLevel(flags[logLevel]))
 
 	policies, err := os.Open(flags[policiesFile])
 	exitIf(err, logger, "unable to open opa policy file")
@@ -75,7 +80,6 @@ func main() {
 }
 
 func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile, thingsFile, configFile io.ReadCloser) (servicerunner.Runner[appConfig], error) {
-
 	log := logging.GetFromContext(ctx)
 
 	probes := map[string]k8shandlers.ServiceProber{
@@ -99,29 +103,41 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		webserver("public", listen(flags[listenAddress]), port(flags[servicePort]), tracing(flags[enableTracing] == "true"),
 			muxinit(func(ctx context.Context, identifier string, port string, appCfg *appConfig, handler *http.ServeMux) error {
 				defer policiesFile.Close()
+				log.Debug("register api handlers...")
 				return api.RegisterHandlers(ctx, handler, app, policiesFile)
 			}),
 		),
 		oninit(func(ctx context.Context, ac *appConfig) error {
 			log.Debug("initializing servicerunner")
+
 			defer configFile.Close()
 			defer thingsFile.Close()
 
-			msgCtx.Start()
+			log.Debug("creating application...")
 			app, err = newApp(ctx, s, s, msgCtx, configFile)
 			if err != nil {
 				return fmt.Errorf("unable to initialize app: %s", err.Error())
 			}
 
-			seed(ctx, thingsFile, app)
+			log.Debug("seeding things...")
+			err = seed(ctx, thingsFile, app)
+			if err != nil {
+				return fmt.Errorf("unable to seed things: %s", err.Error())
+			}
 
 			return nil
 		}),
 		onstarting(func(ctx context.Context, appCfg *appConfig) (err error) {
 			log.Debug("starting servicerunner")
 
+			log.Debug("starting messaging...")
 			msgCtx.Start()
-			msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(app, msgCtx))
+
+			log.Debug("register topic handler...")
+			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
+			if err != nil {
+				return fmt.Errorf("unable to register message handler: %s", err.Error())
+			}
 
 			return nil
 		}),
@@ -156,6 +172,8 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flags[dbPassword] = envOrDef(ctx, "POSTGRES_PASSWORD", flags[dbPassword])
 	flags[dbSSLMode] = envOrDef(ctx, "POSTGRES_SSLMODE", flags[dbSSLMode])
 
+	flags[logLevel] = envOrDef(ctx, "LOG_LEVEL", flags[logLevel])
+
 	apply := func(f flagType) func(string) error {
 		return func(value string) error {
 			flags[f] = value
@@ -167,9 +185,25 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flag.Func("policies", "an authorization policy file", apply(policiesFile))
 	flag.Func("things", "list of known things", apply(thingsFile))
 	flag.Func("config", "a yaml file with configuration", apply(configFile))
+	flag.Func("loglevel", "set the log level", apply(logLevel))
 	flag.Parse()
 
 	return ctx, flags
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelDebug
+	}
 }
 
 func newApp(ctx context.Context, r application.ThingsReader, w application.ThingsWriter, m messaging.MsgContext, cfg io.Reader) (application.ThingsApp, error) {

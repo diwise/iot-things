@@ -25,7 +25,7 @@ func TestRoomTemperature(t *testing.T) {
 	s := map[string]things.Thing{}
 	v := map[string][]things.Value{}
 
-	NewMeasurementsHandler(appMock(ctx, r, s, v), msgCtxMock())(ctx, msgMock(temperatureMsg), slog.Default())
+	NewMeasurementsHandler(ctx, appMock(ctx, r, s, v))(ctx, msgMock(temperatureMsg), slog.Default())
 
 	room := s[r.ID()].(*things.Room)
 	is.Equal(*room.Temperature.Value, 21.0)
@@ -43,7 +43,7 @@ func TestRoomTemperatureWithSource(t *testing.T) {
 	s := map[string]things.Thing{}
 	v := map[string][]things.Value{}
 
-	NewMeasurementsHandler(appMock(ctx, r, s, v), msgCtxMock())(ctx, msgMock(temperatureWithSourceMsg), slog.Default())
+	NewMeasurementsHandler(ctx, appMock(ctx, r, s, v))(ctx, msgMock(temperatureWithSourceMsg), slog.Default())
 
 	room := s[r.ID()].(*things.Room)
 
@@ -62,7 +62,7 @@ func TestPointOfInterest(t *testing.T) {
 	s := map[string]things.Thing{}
 	v := map[string][]things.Value{}
 
-	NewMeasurementsHandler(appMock(ctx, poi, s, v), msgCtxMock())(ctx, msgMock(temperatureWithSourceMsg), slog.Default())
+	NewMeasurementsHandler(ctx, appMock(ctx, poi, s, v))(ctx, msgMock(temperatureWithSourceMsg), slog.Default())
 
 	p := s[poi.ID()].(*things.PointOfInterest)
 
@@ -85,7 +85,7 @@ func TestContainerDistance(t *testing.T) {
 	s := map[string]things.Thing{}
 	v := map[string][]things.Value{}
 
-	NewMeasurementsHandler(appMock(ctx, c, s, v), msgCtxMock())(ctx, msgMock(distanceMsg), slog.Default())
+	NewMeasurementsHandler(ctx, appMock(ctx, c, s, v))(ctx, msgMock(distanceMsg), slog.Default())
 
 	is.Equal(s[c.ID()].(*things.Container).CurrentLevel, 0.49) //3.0 - 2.51
 	is.Equal(s[c.ID()].(*things.Container).Percent, 17.5)
@@ -109,7 +109,6 @@ func TestPassageDigitalInput(t *testing.T) {
 	v := map[string][]things.Value{}
 	s := map[string]things.Thing{}
 	a := appMock(ctx, p, s, v)
-	m := msgCtxMock()
 
 	now := time.Now()
 	yesterday := now.AddDate(0, 0, -1)
@@ -127,7 +126,7 @@ func TestPassageDigitalInput(t *testing.T) {
 		off(tomorrow),
 	}
 
-	h := NewMeasurementsHandler(a, m)
+	h := NewMeasurementsHandler(ctx, a)
 
 	for _, msg := range messages {
 		h(ctx, msg, slog.Default())
@@ -156,7 +155,6 @@ func TestPumpingStationDigitalInput(t *testing.T) {
 	v := map[string][]things.Value{}
 	s := map[string]things.Thing{}
 	a := appMock(ctx, p, s, v)
-	m := msgCtxMock()
 
 	now := time.Now()
 	//yesterday := now.AddDate(0, 0, -1)
@@ -166,7 +164,7 @@ func TestPumpingStationDigitalInput(t *testing.T) {
 		off(now),
 	}
 
-	h := NewMeasurementsHandler(a, m)
+	h := NewMeasurementsHandler(ctx, a)
 
 	for _, msg := range messages {
 		h(ctx, msg, slog.Default())

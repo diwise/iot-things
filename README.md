@@ -138,15 +138,15 @@ to connect (include) one thing with another. POST a valid "thing" object.
 
 ### Update 
 
-5: PUT http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
+5: **PUT** http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
 
-PUT update/replace a thing 
+**PUT** update/replace a thing 
 
 ### Update attribute
 
 5: PATCH http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
 
-PATCH update/replace a things attribute
+**PATCH** update/replace a things attribute
 
 ```json
 {
