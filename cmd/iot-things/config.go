@@ -23,6 +23,7 @@ const (
 	dbSSLMode
 
 	policiesFile
+	authzAccessObject
 	thingsFile
 	configFile
 

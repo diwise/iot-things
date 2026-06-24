@@ -75,6 +75,7 @@ type ValueQuery struct {
 	Mode        ValueQueryMode
 	ID          *string
 	ThingID     *string
+	Tenants     []string
 	URNs        []string
 	Time        *TimeFilter
 	Value       *NumericValueFilter

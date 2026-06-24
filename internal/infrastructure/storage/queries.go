@@ -112,6 +112,7 @@ func buildShowLatestValuesSQL(query app.ValueQuery) (string, pgx.NamedArgs, erro
 	}
 
 	b := newSQLBuilder()
+	addValueTenantFilter(b, query.Tenants)
 	b.Where("id LIKE " + b.Bind("thingid_pattern", fmt.Sprintf("%s/%%", *query.ThingID)))
 
 	querySQL := strings.TrimSpace(strings.Join([]string{
@@ -180,6 +181,7 @@ func buildCountValuesSQL(query app.ValueQuery) (string, pgx.NamedArgs, error) {
 
 func buildValueFilterBuilder(query app.ValueQuery) (*sqlBuilder, error) {
 	b := newSQLBuilder()
+	addValueTenantFilter(b, query.Tenants)
 
 	if query.ID != nil {
 		b.Where("id = " + b.Bind("id", *query.ID))
@@ -239,4 +241,18 @@ func sqlCompareOperator(op app.CompareOperator) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported compare operator: %s", op)
 	}
+}
+
+func addValueTenantFilter(b *sqlBuilder, tenants []string) {
+	if len(tenants) == 0 {
+		return
+	}
+
+	b.Where(`EXISTS (
+		SELECT 1
+		FROM things t
+		WHERE t.deleted_on IS NULL
+		  AND t.tenant = ANY(` + b.Bind("tenants", tenants) + `)
+		  AND things_values.id LIKE t.id || '/%'
+	)`)
 }

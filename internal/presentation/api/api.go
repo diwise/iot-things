@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
@@ -25,30 +27,73 @@ import (
 
 var tracer = otel.Tracer("iot-things/api/things")
 
-func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp, policies io.Reader) error {
+var errUnauthorizedTenant = errors.New("unauthorized tenant")
+
+const (
+	CreateThings auth.Scope = "things.create"
+	ReadThings   auth.Scope = "things.read"
+	UpdateThings auth.Scope = "things.update"
+	DeleteThings auth.Scope = "things.delete"
+)
+
+type registerOptions struct {
+	authOptions []auth.Option
+}
+
+type RegisterOption func(*registerOptions)
+
+func WithAccessObjectAuthorization(enabled bool) RegisterOption {
+	return func(o *registerOptions) {
+		o.authOptions = append(o.authOptions, auth.WithAccessObjectAuthorization(enabled))
+	}
+}
+
+func RegisterHandlers(ctx context.Context, mux *http.ServeMux, app app.ThingsApp, policies io.Reader, opts ...RegisterOption) error {
 	const apiPrefix string = "/api/v0"
 
 	log := logging.GetFromContext(ctx)
 
 	docs.RegisterHandlers(ctx, mux)
 
-	authenticator, err := auth.NewAuthenticator(ctx, policies)
+	registerOpts := registerOptions{}
+	for _, apply := range opts {
+		apply(&registerOpts)
+	}
+
+	authz, err := auth.NewAuthenticator(ctx, policies, registerOpts.authOptions...)
+
 	if err != nil {
 		return fmt.Errorf("failed to create api authenticator: %w", err)
 	}
 
 	r := router.New(mux, router.WithPrefix(apiPrefix))
-	r.Use(authenticator)
 
-	r.Get("/things", queryHandler(log, app))
-	r.Get("/things/{id}", getByIDHandler(log, app))
-	r.Post("/things", addHandler(log, app))
-	r.Put("/things/{id}", updateHandler(log, app))
-	r.Patch("/things/{id}", patchHandler(log, app))
-	r.Delete("/things/{id}", deleteHandler(log, app))
-	r.Get("/things/tags", getTagsHandler(log, app))
-	r.Get("/things/types", getTypesHandler(log, app))
-	r.Get("/things/values", getValuesHandler(log, app))
+	r.Route("things", func(r router.ServeMux) {
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(ReadThings))
+			r.Get("", queryHandler(log, app))
+			r.Get("tags", getTagsHandler(log, app))
+			r.Get("types", getTypesHandler(log, app))
+			r.Get("values", getValuesHandler(log, app))
+			r.Get("{id}", getByIDHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(CreateThings))
+			r.Post("", addHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(UpdateThings))
+			r.Put("{id}", updateHandler(log, app))
+			r.Patch("{id}", patchHandler(log, app))
+		})
+
+		r.Group(func(r router.ServeMux) {
+			r.Use(authz.RequireAccess(DeleteThings))
+			r.Delete("{id}", deleteHandler(log, app))
+		})
+	})
 
 	return nil
 }
@@ -63,7 +108,13 @@ func queryHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		query, err := parseThingQuery(r.URL.Query(), auth.GetAllowedTenantsFromContext(ctx))
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		query, err := parseThingQuery(r.URL.Query(), tenants)
 		if err != nil {
 			logger.Error("invalid thing query", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
@@ -132,9 +183,15 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		result, err := a.Query(ctx, app.ThingQuery{
 			ID:      &thingId,
-			Tenants: auth.GetAllowedTenantsFromContext(ctx),
+			Tenants: tenants,
 			Page: app.Pagination{
 				Limit:  100,
 				Offset: 0,
@@ -160,6 +217,7 @@ func getByIDHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 		valueQuery.ThingID = &thingId
+		valueQuery.Tenants = tenants
 
 		values, err := a.Values(ctx, valueQuery)
 		if err != nil {
@@ -194,6 +252,12 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 			_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
+			tenants := createTenantsFromRequest(r)
+			if len(tenants) == 0 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
 			file, _, err := r.FormFile("fileupload")
 			if err != nil {
 				logger.Error("unable to get file from fileupload", "err", err.Error())
@@ -202,7 +266,28 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			}
 			defer file.Close()
 
-			err = a.Seed(ctx, file)
+			payload, err := io.ReadAll(file)
+			if err != nil {
+				logger.Error("could not read uploaded seed file", "err", err.Error())
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			err = validateSeedTenants(bytes.NewReader(payload), tenants)
+			if err != nil {
+				if errors.Is(err, errUnauthorizedTenant) {
+					logger.Error("seed contains unauthorized tenant", "err", err.Error())
+					w.WriteHeader(http.StatusForbidden)
+				} else {
+					logger.Error("invalid seed file", "err", err.Error())
+					w.WriteHeader(http.StatusBadRequest)
+				}
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			err = a.Seed(ctx, bytes.NewReader(payload))
 			if err != nil {
 				logger.Error("could not seed", "err", err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -226,6 +311,26 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
+		tenants := createTenantsFromRequest(r)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		t, err := things.ConvToThing(b)
+		if err != nil {
+			logger.Error("could not convert to thing", "err", err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		if !slices.Contains(tenants, t.Tenant()) {
+			logger.Error("you are not allowed to create this thing")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
 		err = a.Add(ctx, b)
 		if err != nil && errors.Is(err, app.ErrAlreadyExists) {
 			w.WriteHeader(http.StatusConflict)
@@ -239,6 +344,38 @@ func addHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func createTenantsFromRequest(r *http.Request) []string {
+	return auth.GetTenantsWithAllowedScopes(r.Context(), CreateThings)
+}
+
+func validateSeedTenants(r io.Reader, tenants []string) error {
+	reader := csv.NewReader(r)
+
+	row := 0
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read csv row %d: %w", row+1, err)
+		}
+
+		row++
+		if row == 1 {
+			continue
+		}
+
+		if len(record) != 10 {
+			return fmt.Errorf("invalid csv row %d: expected 10 columns, got %d", row, len(record))
+		}
+
+		if tenant := record[6]; !slices.Contains(tenants, tenant) {
+			return fmt.Errorf("%w: tenant %q on row %d is not allowed", errUnauthorizedTenant, tenant, row)
+		}
 	}
 }
 
@@ -276,7 +413,12 @@ func updateHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), UpdateThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		if !slices.Contains(tenants, t.Tenant()) {
 			logger.Error("you are not allowed to update this thing")
 			w.WriteHeader(http.StatusForbidden)
@@ -321,7 +463,11 @@ func patchHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), UpdateThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		err = a.Merge(ctx, thingId, b, tenants)
 		if err != nil {
@@ -352,7 +498,11 @@ func deleteHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			return
 		}
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), DeleteThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		err = a.Delete(ctx, thingId, tenants)
 		if err != nil {
@@ -375,7 +525,11 @@ func getTagsHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		tags, err := a.Tags(ctx, tenants)
 		if err != nil {
@@ -401,7 +555,11 @@ func getTypesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 		defer func() { tracing.RecordAnyErrorAndEndSpan(err, span) }()
 		_, ctx, logger := o11y.AddTraceIDToLoggerAndStoreInContext(span, log, ctx)
 
-		tenants := auth.GetAllowedTenantsFromContext(ctx)
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 
 		types, err := a.Types(ctx, tenants)
 		if err != nil {
@@ -429,6 +587,12 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 
+		tenants := auth.GetTenantsWithAllowedScopes(r.Context(), ReadThings)
+		if len(tenants) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
 		query, err := parseValueQuery(r.URL.Query())
 		if err != nil {
 			logger.Error("invalid value query", "err", err.Error())
@@ -436,6 +600,7 @@ func getValuesHandler(log *slog.Logger, a app.ThingsApp) http.HandlerFunc {
 			w.Write([]byte(err.Error()))
 			return
 		}
+		query.Tenants = tenants
 
 		result, err := a.Values(ctx, query)
 		if err != nil {
