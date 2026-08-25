@@ -7,7 +7,6 @@ import (
 
 	app "github.com/diwise/iot-things/internal/application"
 	"github.com/diwise/iot-things/internal/application/things"
-	"github.com/diwise/iot-things/internal/presentation/api/auth"
 
 	"github.com/google/uuid"
 )
@@ -141,7 +140,6 @@ func TestUpdateThing(t *testing.T) {
 
 func new() (Storage, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	ctx = auth.WithAllowedTenants(ctx, []string{"default"})
 
 	db, err := New(ctx, Config{
 		host:     "localhost",

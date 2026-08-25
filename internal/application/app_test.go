@@ -124,7 +124,6 @@ types:
       - "subType2B"
       - "subType2C"
 `
-
 	app := New(ctx, r, w, msgCtxMock())
 	err := app.LoadConfig(ctx, strings.NewReader(yamlConfig))
 	is.NoErr(err)

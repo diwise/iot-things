@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,9 +41,10 @@ func defaultFlags() flagMap {
 		dbName:     "diwise",
 		dbSSLMode:  "disable",
 
-		policiesFile: "/opt/diwise/config/authz.rego",
-		thingsFile:   "/opt/diwise/config/things.csv",
-		configFile:   "/opt/diwise/config/config.yaml",
+		policiesFile:      "/opt/diwise/config/authz.rego",
+		authzAccessObject: "false",
+		thingsFile:        "/opt/diwise/config/things.csv",
+		configFile:        "/opt/diwise/config/config.yaml",
 
 		logLevel: "debug",
 	}
@@ -104,7 +106,8 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			muxinit(func(ctx context.Context, identifier string, port string, appCfg *appConfig, handler *http.ServeMux) error {
 				defer policiesFile.Close()
 				log.Debug("register api handlers...")
-				return api.RegisterHandlers(ctx, handler, app, policiesFile)
+				accessObjectAuthz, _ := strconv.ParseBool(flags[authzAccessObject])
+				return api.RegisterHandlers(ctx, handler, app, policiesFile, api.WithAccessObjectAuthorization(accessObjectAuthz))
 			}),
 		),
 		oninit(func(ctx context.Context, ac *appConfig) error {
@@ -162,6 +165,7 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flags[servicePort] = envOrDef(ctx, "SERVICE_PORT", flags[servicePort])
 
 	flags[policiesFile] = envOrDef(ctx, "POLICIES_FILE", flags[policiesFile])
+	flags[authzAccessObject] = envOrDef(ctx, "AUTHZ_ACCESS_OBJECT_ENABLED", flags[authzAccessObject])
 	flags[thingsFile] = envOrDef(ctx, "THINGS_FILE", flags[thingsFile])
 	flags[configFile] = envOrDef(ctx, "CONFIG_FILE", flags[configFile])
 
@@ -183,6 +187,7 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 
 	// Allow command line arguments to override defaults and environment variables
 	flag.Func("policies", "an authorization policy file", apply(policiesFile))
+	flag.Func("authz-access-object", "enable access-object authorization policy result model", apply(authzAccessObject))
 	flag.Func("things", "list of known things", apply(thingsFile))
 	flag.Func("config", "a yaml file with configuration", apply(configFile))
 	flag.Func("loglevel", "set the log level", apply(logLevel))
