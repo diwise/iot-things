@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diwise/iot-things/internal/application"
@@ -89,14 +90,11 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		"timescale": func(context.Context) (string, error) { return "ok", nil },
 	}
 
+	var s storage.Storage
 	var msgCtx messaging.MsgContext
 	var app application.ThingsApp
 
-	s, err := storage.New(ctx, storage.NewConfig(flags[dbHost], flags[dbUser], flags[dbPassword], flags[dbPort], flags[dbName], flags[dbSSLMode]))
-	exitIf(err, log, "could not configure storage")
-
-	msgCtx, err = messaging.Initialize(ctx, messaging.LoadConfiguration(ctx, serviceName, log))
-	exitIf(err, log, "failed to init messenger")
+	owned := &ownedResources{}
 
 	_, runner := servicerunner.New(ctx, *cfg,
 		webserver("control", listen(flags[listenAddress]), port(flags[controlPort]),
@@ -115,6 +113,24 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 
 			defer configFile.Close()
 			defer thingsFile.Close()
+
+			var err error
+
+			s, err = storage.New(ctx, storage.NewConfig(flags[dbHost], flags[dbUser], flags[dbPassword], flags[dbPort], flags[dbName], flags[dbSSLMode]))
+			if err != nil {
+				return fmt.Errorf("could not configure storage: %w", err)
+			}
+
+			msgCtx, err = messaging.Initialize(ctx, messaging.LoadConfiguration(ctx, serviceName, log))
+			if err != nil {
+				s.Close()
+				s = nil
+				return fmt.Errorf("failed to init messenger: %w", err)
+			}
+
+			owned.messenger = msgCtx
+			owned.cancel = ac.cancel
+			owned.storage = s
 
 			log.Debug("creating application...")
 			app, err = newApp(ctx, s, s, msgCtx, configFile)
@@ -147,13 +163,37 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		onshutdown(func(ctx context.Context, appCfg *appConfig) error {
 			log.Debug("shutdown servicerunner")
 
-			appCfg.cancel()
+			owned.close(ctx)
 
 			return nil
 		}),
 	)
 
 	return runner, nil
+}
+
+// ownedResources tracks the resources created during OnInit so shutdown
+// is nil-safe, ordered and idempotent. The underlying messenger Close is
+// not safe to call twice, hence the sync.Once guard.
+type ownedResources struct {
+	once      sync.Once
+	messenger messaging.MsgContext
+	cancel    func()
+	storage   interface{ Close() }
+}
+
+func (o *ownedResources) close(context.Context) {
+	o.once.Do(func() {
+		if o.messenger != nil {
+			o.messenger.Close()
+		}
+		if o.cancel != nil {
+			o.cancel()
+		}
+		if o.storage != nil {
+			o.storage.Close()
+		}
+	})
 }
 
 func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, flagMap) {

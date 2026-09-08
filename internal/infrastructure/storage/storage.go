@@ -37,6 +37,7 @@ func New(ctx context.Context, cfg Config) (Storage, error) {
 
 	err = initialize(ctx, p)
 	if err != nil {
+		p.Close()
 		return database{}, err
 	}
 
