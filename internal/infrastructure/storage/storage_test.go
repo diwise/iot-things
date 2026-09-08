@@ -152,3 +152,34 @@ func new() (Storage, context.Context, context.CancelFunc, error) {
 
 	return db, ctx, cancel, err
 }
+
+// REV-012: a Ping failure must surface as an error without hanging.
+// The allocated pool is closed on this path (verified by inspection,
+// matching the device management and events implementations, whose
+// pool internals are likewise unobservable without a live database).
+func TestConnectPingFailureReturnsError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := connect(ctx, Config{
+			host:     "127.0.0.1",
+			user:     "postgres",
+			password: "password",
+			port:     "1",
+			dbname:   "postgres",
+			sslmode:  "disable",
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected Ping error for refused connection")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("connect did not return after Ping failure")
+	}
+}

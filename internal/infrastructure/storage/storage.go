@@ -138,6 +138,7 @@ func connect(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 
 	err = conn.Ping(ctx)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
