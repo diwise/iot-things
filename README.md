@@ -155,3 +155,35 @@ to connect (include) one thing with another. POST a valid "thing" object.
 ```
 
 Add or replace _attr_ attribute with _value_
+
+# Configuration
+
+## Faktisk konfiguration (kod ar facit, HARM-002)
+Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt via `messaging.LoadConfiguration`.
+
+| Variabel | Default | Notering |
+| --- | --- | --- |
+| `LISTEN_ADDRESS` | `0.0.0.0` | Galler bade publik server och kontrollserver |
+| `SERVICE_PORT` | `8080` | Publik server (`/api/v0/things/...`) |
+| `CONTROL_PORT` | `8000` | Kontrollserver: pprof, liveness, readiness-stubbar (`rabbitmq`, `timescale`) som returnerar OK |
+| `POLICIES_FILE` | `/opt/diwise/config/authz.rego` | Kravs vid startup (not: exemplet ovan refererar till `authz.develop.rego`, som inte finns i repot) |
+| `AUTHZ_ACCESS_OBJECT_ENABLED` | `false` | Switches between the `tenants` and `access` result models |
+| `THINGS_FILE` | `/opt/diwise/config/things.csv` | Kravs vid startup, seedar things |
+| `CONFIG_FILE` | `/opt/diwise/config/config.yaml` | Kravs vid startup |
+| `POSTGRES_HOST` | (tom) |  |
+| `POSTGRES_PORT` | `5432` |  |
+| `POSTGRES_DBNAME` | `diwise` |  |
+| `POSTGRES_USER` | (tom) |  |
+| `POSTGRES_PASSWORD` | (tom) |  |
+| `POSTGRES_SSLMODE` | `disable` |  |
+| `LOG_LEVEL` | `debug` |  |
+
+## CLI flags
+ - `policies` - An authorization policy file
+ - `authz-access-object` - Enable the access-object authorization policy result model
+ - `things` - List of known things (`things.csv`)
+ - `config` - A yaml file with configuration (`config.yaml`)
+ - `loglevel` - Set the log level
+
+## Configuration files
+Alla tre filer kravs vid startup med standardvagarna ovan: `authz.rego`, `things.csv`, `config.yaml`.
