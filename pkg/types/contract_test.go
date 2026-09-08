@@ -45,6 +45,47 @@ func TestThingUpdatedWireContract(t *testing.T) {
 	is.True(ok)
 }
 
+// REV-016: locks the complete thing.updated wire representation with a
+// non-default tenant, fixed measurement time and a nested thing
+// payload. Nested values, tenant and timestamp changes fail here.
+func TestThingUpdatedGoldenBody(t *testing.T) {
+	is := is.New(t)
+
+	thing := map[string]any{
+		"id":       "2bf440f4",
+		"type":     "Container",
+		"tenant":   "acme",
+		"percent":  56.0,
+		"location": map[string]any{"latitude": 62.39, "longitude": 17.31},
+	}
+
+	m := &ThingUpdated{
+		ID:        "2bf440f4",
+		Type:      "Container",
+		Thing:     thing,
+		Tenant:    "acme",
+		Timestamp: time.Date(2024, 11, 19, 10, 49, 59, 0, time.UTC),
+	}
+
+	const golden = `{"id":"2bf440f4","type":"Container","thing":{"id":"2bf440f4","location":{"latitude":62.39,"longitude":17.31},"percent":56,"tenant":"acme","type":"Container"},"tenant":"acme","timestamp":"2024-11-19T10:49:59Z"}`
+	is.Equal(string(m.Body()), golden)
+
+	var decoded map[string]any
+	is.NoErr(json.Unmarshal([]byte(golden), &decoded))
+
+	nested, ok := decoded["thing"].(map[string]any)
+	is.True(ok)
+	is.Equal(nested["percent"], 56.0)
+	is.Equal(nested["tenant"], "acme")
+
+	location, ok := nested["location"].(map[string]any)
+	is.True(ok)
+	is.Equal(location["latitude"], 62.39)
+	is.Equal(location["longitude"], 17.31)
+
+	is.Equal(decoded["timestamp"], "2024-11-19T10:49:59Z")
+}
+
 // HARM-003: locks the per-type content type pattern derived from the
 // thing type name.
 func TestThingUpdatedContentTypePattern(t *testing.T) {
