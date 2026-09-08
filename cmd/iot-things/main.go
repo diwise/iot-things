@@ -93,12 +93,11 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		webserver("control", listen(flags[listenAddress]), port(flags[controlPort]),
 			pprof(), liveness(func() error { return nil }), readiness(probes),
 		),
-		webserver("public", listen(flags[listenAddress]), port(flags[servicePort]), tracing(flags[enableTracing] == "true"),
+		webserver("public", listen(flags[listenAddress]), port(flags[servicePort]), tracing(tracingEnabled(flags)),
 			muxinit(func(ctx context.Context, identifier string, port string, appCfg *appConfig, handler *http.ServeMux) error {
 				defer policiesFile.Close()
 				log.Debug("register api handlers...")
-				accessObjectAuthz, _ := strconv.ParseBool(flags[authzAccessObject])
-				return api.RegisterHandlers(ctx, handler, app, policiesFile, api.WithAccessObjectAuthorization(accessObjectAuthz))
+				return api.RegisterHandlers(ctx, handler, app, policiesFile, api.WithAccessObjectAuthorization(accessObjectEnabled(flags)))
 			}),
 		),
 		oninit(func(ctx context.Context, ac *appConfig) error {
@@ -181,6 +180,21 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 	)
 
 	return runner, nil
+}
+
+// tracingEnabled is the minimal production seam for the tracing toggle.
+// Only the exact string "true" enables tracing; ParseBool spellings
+// such as "TRUE" or "1" intentionally do not.
+func tracingEnabled(flags flagMap) bool {
+	return flags[enableTracing] == "true"
+}
+
+// accessObjectEnabled is the minimal production seam for the
+// access-object toggle, using strconv semantics: invalid values
+// silently keep the legacy tenants model.
+func accessObjectEnabled(flags flagMap) bool {
+	v, _ := strconv.ParseBool(flags[authzAccessObject])
+	return v
 }
 
 // readinessProbes returns the named readiness stubs. Per harmonization
