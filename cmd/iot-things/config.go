@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/diwise/service-chassis/pkg/infrastructure/servicerunner"
 )
 
@@ -30,9 +28,7 @@ const (
 	logLevel
 )
 
-type appConfig struct {
-	cancel context.CancelFunc
-}
+type appConfig struct{}
 
 var oninit = servicerunner.OnInit[appConfig]
 var onstarting = servicerunner.OnStarting[appConfig]

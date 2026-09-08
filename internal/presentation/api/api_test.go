@@ -22,6 +22,10 @@ type fakeThingsApp struct {
 }
 
 func (f fakeThingsApp) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {}
+
+func (f fakeThingsApp) Start(context.Context) {}
+
+func (f fakeThingsApp) Stop() {}
 func (f fakeThingsApp) Add(ctx context.Context, b []byte) error {
 	if f.addFunc != nil {
 		return f.addFunc(ctx, b)

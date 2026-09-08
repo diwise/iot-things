@@ -69,11 +69,7 @@ func main() {
 	config, err := os.Open(flags[configFile])
 	exitIf(err, logger, "unable to open config file")
 
-	ctx, cancel := context.WithCancel(ctx)
-
-	cfg := &appConfig{
-		cancel: cancel,
-	}
+	cfg := &appConfig{}
 
 	runner, err := initialize(ctx, flags, cfg, policies, things, config)
 	exitIf(err, logger, "failed to initialize service runner")
@@ -126,18 +122,24 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			}
 
 			owned.messenger = msgCtx
-			owned.cancel = ac.cancel
+			owned.tracker = &handlerTracker{}
 			owned.storage = s
 
 			log.Debug("creating application...")
 			app, err = newApp(ctx, s, s, msgCtx, configFile)
 			if err != nil {
+				s.Close()
+				s = nil
 				return fmt.Errorf("unable to initialize app: %s", err.Error())
 			}
+
+			owned.app = app
 
 			log.Debug("seeding things...")
 			err = seed(ctx, thingsFile, app)
 			if err != nil {
+				s.Close()
+				s = nil
 				return fmt.Errorf("unable to seed things: %s", err.Error())
 			}
 
@@ -146,11 +148,23 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 		onstarting(func(ctx context.Context, appCfg *appConfig) (err error) {
 			log.Debug("starting servicerunner")
 
+			// OnStarting failures bypass OnShutdown in the runner, so
+			// clean up acquired resources on every error path below.
+			defer func() {
+				if err != nil {
+					owned.close(ctx)
+				}
+			}()
+
+			log.Debug("starting publisher...")
+			app.Start(ctx)
+
 			log.Debug("starting messaging...")
 			msgCtx.Start()
 
 			log.Debug("register topic handler...")
-			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
+			tracked := &trackingMessenger{MsgContext: msgCtx, tracker: owned.tracker}
+			err = tracked.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
 			if err != nil {
 				return fmt.Errorf("unable to register message handler: %s", err.Error())
 			}
@@ -178,13 +192,67 @@ func readinessProbes() map[string]k8shandlers.ServiceProber {
 	}
 }
 
+// Shutdown budget for admitted handler drain, within the runner's 30s
+// shutdown hook budget. The hook itself never receives the runner's
+// timeout, so shutdown derives its own bound here.
+const shutdownHandlerDrainTimeout = 10 * time.Second
+
+// handlerTracker tracks admitted topic-message deliveries so shutdown
+// can await them. The messaging library acknowledges on dispatch and its
+// Close only joins the dispatch loop, never the handler goroutines.
+type handlerTracker struct {
+	wg sync.WaitGroup
+}
+
+func (t *handlerTracker) track(next messaging.TopicMessageHandler) messaging.TopicMessageHandler {
+	return func(ctx context.Context, msg messaging.IncomingTopicMessage, log *slog.Logger) {
+		t.wg.Add(1)
+		defer t.wg.Done()
+		next(ctx, msg, log)
+	}
+}
+
+// wait blocks until tracked handlers complete or the timeout elapses,
+// reporting whether all handlers finished.
+func (t *handlerTracker) wait(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t.wg.Wait()
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// trackingMessenger decorates handler registration with delivery
+// tracking. All other MsgContext behavior is forwarded unchanged.
+type trackingMessenger struct {
+	messaging.MsgContext
+	tracker *handlerTracker
+}
+
+func (m *trackingMessenger) RegisterTopicMessageHandler(routingKey string, h messaging.TopicMessageHandler) error {
+	return m.MsgContext.RegisterTopicMessageHandler(routingKey, m.tracker.track(h))
+}
+
 // ownedResources tracks the resources created during OnInit so shutdown
 // is nil-safe, ordered and idempotent. The underlying messenger Close is
 // not safe to call twice, hence the sync.Once guard.
+//
+// Shutdown order: stop inflow (messenger), await admitted handlers
+// within budget, stop and join the publisher, then close storage. HTTP
+// servers stay live until after OnShutdown returns (runner behavior);
+// that residual window is documented, not fixed here.
 type ownedResources struct {
 	once      sync.Once
 	messenger messaging.MsgContext
-	cancel    func()
+	tracker   *handlerTracker
+	app       interface{ Stop() }
 	storage   interface{ Close() }
 }
 
@@ -193,8 +261,11 @@ func (o *ownedResources) close(context.Context) {
 		if o.messenger != nil {
 			o.messenger.Close()
 		}
-		if o.cancel != nil {
-			o.cancel()
+		if o.tracker != nil {
+			o.tracker.wait(shutdownHandlerDrainTimeout)
+		}
+		if o.app != nil {
+			o.app.Stop()
 		}
 		if o.storage != nil {
 			o.storage.Close()
@@ -258,7 +329,7 @@ func parseLogLevel(level string) slog.Level {
 }
 
 func newApp(ctx context.Context, r application.ThingsReader, w application.ThingsWriter, m messaging.MsgContext, cfg io.Reader) (application.ThingsApp, error) {
-	a := application.New(ctx, r, w, m)
+	a := application.New(r, w, m)
 	err := a.LoadConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load config: %s", err.Error())

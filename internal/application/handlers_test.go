@@ -216,7 +216,8 @@ func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing,
 
 	m := msgCtxMock()
 
-	a := New(ctx, r, w, m)
+	a := New(r, w, m)
+	a.Start(ctx)
 
 	return a
 }
