@@ -176,6 +176,18 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 | `POSTGRES_USER` | (tom) |  |
 | `POSTGRES_PASSWORD` | (tom) |  |
 | `POSTGRES_SSLMODE` | `disable` |  |
+| `POSTGRES_MAX_CONNS` | `10` |  |
+| `POSTGRES_MIN_CONNS` | `2` |  |
+| `POSTGRES_MAX_CONN_LIFETIME` | `30m` |  |
+| `POSTGRES_MAX_CONN_IDLE_TIME` | `5m` |  |
+| `POSTGRES_HEALTH_CHECK_PERIOD` | `30s` |  |
+| `RABBITMQ_HOST` | (tom, kravs om inte avstangd) | Se `messaging.LoadConfiguration` |
+| `RABBITMQ_PORT` | `5672` |  |
+| `RABBITMQ_VHOST` | `/` |  |
+| `RABBITMQ_USER` | `user` |  |
+| `RABBITMQ_PASS` | `bitnami` |  |
+| `RABBITMQ_DISABLED` | `false` |  |
+| `RABBITMQ_INIT_TIMEOUT` | `10` | Sekunder |
 | `LOG_LEVEL` | `debug` |  |
 
 ## CLI flags
@@ -188,3 +200,7 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 ## Configuration files
 Alla tre filer kravs vid startup med standardvagarna ovan: `authz.rego`, `things.csv`, `config.yaml`.
 Samtliga foljer med imagen under `/opt/diwise/config/` och kan ersattas med externa mounts vid deployment.
+
+Health paths pa kontrollservern (`CONTROL_PORT`): `/health`, `/healthz`, `/livez`, `/readyz`, `/readyz/{check}`.
+
+Externa Kubernetes- och Compose-definitioner finns inte i detta repo och ar darfor inte inventerade har.
