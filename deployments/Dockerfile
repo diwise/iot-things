@@ -21,6 +21,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal
 WORKDIR /opt/diwise
 
 COPY --from=builder --chown=1001 /app/assets/config/config.yaml /opt/diwise/config/config.yaml
+COPY --chown=1001 assets/config/authz.rego /opt/diwise/config/authz.rego
+COPY --chown=1001 assets/data/things.csv /opt/diwise/config/things.csv
 COPY --from=builder --chown=1001 /app/cmd/iot-things/iot-things /opt/diwise
 
 RUN chown 1001 /opt/diwise

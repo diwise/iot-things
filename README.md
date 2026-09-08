@@ -187,3 +187,4 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 
 ## Configuration files
 Alla tre filer kravs vid startup med standardvagarna ovan: `authz.rego`, `things.csv`, `config.yaml`.
+Samtliga foljer med imagen under `/opt/diwise/config/` och kan ersattas med externa mounts vid deployment.
