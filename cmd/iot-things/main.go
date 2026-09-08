@@ -85,10 +85,7 @@ func main() {
 func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile, thingsFile, configFile io.ReadCloser) (servicerunner.Runner[appConfig], error) {
 	log := logging.GetFromContext(ctx)
 
-	probes := map[string]k8shandlers.ServiceProber{
-		"rabbitmq":  func(context.Context) (string, error) { return "ok", nil },
-		"timescale": func(context.Context) (string, error) { return "ok", nil },
-	}
+	probes := readinessProbes()
 
 	var s storage.Storage
 	var msgCtx messaging.MsgContext
@@ -170,6 +167,15 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 	)
 
 	return runner, nil
+}
+
+// readinessProbes returns the named readiness stubs. Per harmonization
+// standard they always report OK and never call any dependency.
+func readinessProbes() map[string]k8shandlers.ServiceProber {
+	return map[string]k8shandlers.ServiceProber{
+		"rabbitmq":  func(context.Context) (string, error) { return "ok", nil },
+		"timescale": func(context.Context) (string, error) { return "ok", nil },
+	}
 }
 
 // ownedResources tracks the resources created during OnInit so shutdown
