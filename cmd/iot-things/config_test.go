@@ -7,8 +7,39 @@ import (
 	"os"
 	"testing"
 
+	"github.com/diwise/iot-things/internal/infrastructure/storage"
 	"github.com/matryer/is"
 )
+
+// THINGS-001: locks that storage configuration is built explicitly
+// from cmd-owned flags, field by field, including the connection
+// string handed to the pool.
+func TestStorageConfigFromFlags(t *testing.T) {
+	is := is.New(t)
+
+	flags := defaultFlags()
+	flags[dbHost] = "dbhost"
+	flags[dbUser] = "dbuser"
+	flags[dbPassword] = "secret"
+	flags[dbPort] = "5433"
+	flags[dbName] = "thingsdb"
+	flags[dbSSLMode] = "require"
+
+	cfg := storageConfigFromFlags(flags)
+
+	is.Equal(cfg, storage.NewConfig("dbhost", "dbuser", "secret", "5433", "thingsdb", "require"))
+	is.Equal(cfg.ConnStr(), "postgres://dbuser:secret@dbhost:5433/thingsdb?sslmode=require")
+}
+
+// THINGS-001: locks that defaults flow unchanged into the storage
+// configuration.
+func TestStorageConfigFromDefaultFlags(t *testing.T) {
+	is := is.New(t)
+
+	cfg := storageConfigFromFlags(defaultFlags())
+
+	is.Equal(cfg.ConnStr(), "postgres://:@:5432/diwise?sslmode=disable")
+}
 
 func withCleanFlags(t *testing.T, args []string) {
 	t.Helper()

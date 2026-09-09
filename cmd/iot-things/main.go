@@ -108,7 +108,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 
 			var err error
 
-			s, err = storage.New(ctx, storage.NewConfig(flags[dbHost], flags[dbUser], flags[dbPassword], flags[dbPort], flags[dbName], flags[dbSSLMode]))
+			s, err = storage.New(ctx, storageConfigFromFlags(flags))
 			if err != nil {
 				return fmt.Errorf("could not configure storage: %w", err)
 			}
@@ -285,6 +285,14 @@ func (o *ownedResources) close(context.Context) {
 			o.storage.Close()
 		}
 	})
+}
+
+// storageConfigFromFlags builds the storage configuration explicitly
+// from cmd-owned flags. This is the only path used to configure
+// storage; storage.LoadConfiguration was removed as dead code
+// (THINGS-001).
+func storageConfigFromFlags(flags flagMap) storage.Config {
+	return storage.NewConfig(flags[dbHost], flags[dbUser], flags[dbPassword], flags[dbPort], flags[dbName], flags[dbSSLMode])
 }
 
 func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, flagMap) {
