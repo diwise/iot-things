@@ -25,7 +25,7 @@ Add this to launch.json
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/iot-things/main.go",
             "args": [
-                "-policies=${workspaceFolder}/assets/config/authz.develop.rego",
+                "-policies=${workspaceFolder}/assets/config/authz.rego",
                 "-things=${workspaceFolder}/assets/data/things.csv"
             ],
             "env": {
@@ -41,22 +41,25 @@ Add this to launch.json
 }
 ```
 
-### Api ()
+### API
+
+The full route reference is `assets/docs/openapi.yaml` (served as `/openapi.yaml` with Redoc UI at `/docs`).
 
 1: GET http://localhost:8080/api/v0/things?type=WasteContainer
 
 2: GET http://localhost:8080/api/v0/things/c91149a8-256b-4d65-8ca8-fc00074485c8
 
-Accept headers
+Response content types
 
-**application/vnd.api+json** (1) + (2)
+**application/vnd.api+json** (list and get responses)
 
-**application/geo+json** (1)
+**application/json** (some responses)
 
-**application/json** (1) + (2)
+**text/csv** (query export via `Accept: text/csv`)
 
+There is no `application/geo+json` support in the code.
 
-Add Authorization header with **any** Bearer token
+Add an Authorization header with a valid Bearer token. The default policy validates the JWT against its configured issuer and derives allowed tenants from the token claims; an arbitrary token is rejected.
 
 #### Paging
 
@@ -166,7 +169,7 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 | `LISTEN_ADDRESS` | `0.0.0.0` | Galler bade publik server och kontrollserver |
 | `SERVICE_PORT` | `8080` | Publik server (`/api/v0/things/...`) |
 | `CONTROL_PORT` | `8000` | Kontrollserver: pprof, liveness, readiness-stubbar (`rabbitmq`, `timescale`) som returnerar OK |
-| `POLICIES_FILE` | `/opt/diwise/config/authz.rego` | Kravs vid startup (not: exemplet ovan refererar till `authz.develop.rego`, som inte finns i repot) |
+| `POLICIES_FILE` | `/opt/diwise/config/authz.rego` | Kravs vid startup |
 | `AUTHZ_ACCESS_OBJECT_ENABLED` | `false` | Switches between the `tenants` and `access` result models |
 | `THINGS_FILE` | `/opt/diwise/config/things.csv` | Kravs vid startup, seedar things |
 | `CONFIG_FILE` | `/opt/diwise/config/config.yaml` | Kravs vid startup |
