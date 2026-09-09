@@ -301,16 +301,15 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
 		m := things.Value{
-			Measurement: things.Measurement{
-				ID:          id,
-				Urn:         urn,
-				BoolValue:   vb,
-				StringValue: vs,
-				Value:       v,
-				Unit:        unit,
-				Source:      src,
-				Timestamp:   ts.UTC()},
-			Ref: ref,
+			ID:          id,
+			Urn:         urn,
+			BoolValue:   vb,
+			StringValue: vs,
+			Value:       v,
+			Unit:        unit,
+			Source:      src,
+			Timestamp:   ts.UTC(),
+			Ref:         ref,
 		}
 
 		b, _ := json.Marshal(m)
@@ -353,16 +352,15 @@ func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.Qu
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &v, &vs, &vb, &unit, &ref, &src}, func() error {
 		m := things.Value{
-			Measurement: things.Measurement{
-				ID:          id,
-				Urn:         urn,
-				BoolValue:   vb,
-				StringValue: vs,
-				Value:       v,
-				Unit:        unit,
-				Timestamp:   ts.UTC(),
-				Source:      src},
-			Ref: ref,
+			ID:          id,
+			Urn:         urn,
+			BoolValue:   vb,
+			StringValue: vs,
+			Value:       v,
+			Unit:        unit,
+			Timestamp:   ts.UTC(),
+			Source:      src,
+			Ref:         ref,
 		}
 
 		b, _ := json.Marshal(m)
@@ -407,16 +405,15 @@ func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (ap
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
 		m := things.Value{
-			Measurement: things.Measurement{
-				ID:          id,
-				Urn:         urn,
-				BoolValue:   vb,
-				StringValue: vs,
-				Value:       v,
-				Unit:        unit,
-				Source:      src,
-				Timestamp:   ts.UTC()},
-			Ref: ref,
+			ID:          id,
+			Urn:         urn,
+			BoolValue:   vb,
+			StringValue: vs,
+			Value:       v,
+			Unit:        unit,
+			Source:      src,
+			Timestamp:   ts.UTC(),
+			Ref:         ref,
 		}
 
 		b, _ := json.Marshal(m)

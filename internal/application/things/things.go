@@ -146,25 +146,23 @@ type ValueProvider interface {
 
 func newValue(id, urn, ref, unit string, ts time.Time, value float64) Value {
 	return Value{
-		Measurement: Measurement{
-			ID:        id,
-			Urn:       urn,
-			Value:     &value,
-			Unit:      unit,
-			Timestamp: ts.UTC()},
-		Ref: ref,
+		ID:        id,
+		Urn:       urn,
+		Value:     &value,
+		Unit:      unit,
+		Timestamp: ts.UTC(),
+		Ref:       ref,
 	}
 }
 
 func newBoolValue(id, urn, ref, unit string, ts time.Time, value bool) Value {
 	return Value{
-		Measurement: Measurement{
-			ID:        id,
-			Urn:       urn,
-			BoolValue: &value,
-			Unit:      unit,
-			Timestamp: ts.UTC()},
-		Ref: ref,
+		ID:        id,
+		Urn:       urn,
+		BoolValue: &value,
+		Unit:      unit,
+		Timestamp: ts.UTC(),
+		Ref:       ref,
 	}
 }
 

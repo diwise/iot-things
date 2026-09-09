@@ -130,11 +130,9 @@ func (a *app) Start(ctx context.Context) {
 	runCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
 
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
+	a.wg.Go(func() {
 		publisher(runCtx, a.reader, a.msgCtx, a.pub)
-	}()
+	})
 }
 
 // Stop terminates the publisher and waits for it within
