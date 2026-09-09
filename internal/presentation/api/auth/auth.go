@@ -142,7 +142,7 @@ func (a *impl) RequireAccess(scopes ...Scope) func(http.Handler) http.Handler {
 func NewAuthenticator(ctx context.Context, policies io.Reader, opts ...Option) (Enticator, error) {
 	module, err := io.ReadAll(policies)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read authz policies: %s", err.Error())
+		return nil, fmt.Errorf("unable to read authz policies: %w", err)
 	}
 
 	authOptions := options{}

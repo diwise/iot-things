@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/diwise/iot-things/internal/infrastructure/storage"
@@ -177,3 +179,19 @@ func TestBoolToggleInterpretations(t *testing.T) {
 		})
 	}
 }
+
+// THINGS-002: errors wrapped with %w must preserve the chain, so
+// errors.Is/As keep working across the cmd layer. A %s-formatted
+// error would make Unwrap return nil.
+func TestNewAppLoadConfigErrorWrapsCause(t *testing.T) {
+	is := is.New(t)
+
+	_, err := newApp(context.Background(), nil, nil, nil, errReader{})
+	is.True(err != nil)
+	is.True(strings.HasPrefix(err.Error(), "unable to load config: "))
+	is.True(errors.Unwrap(err) != nil)
+}
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }

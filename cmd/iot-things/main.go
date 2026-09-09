@@ -129,7 +129,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			if err != nil {
 				s.Close()
 				s = nil
-				return fmt.Errorf("unable to initialize app: %s", err.Error())
+				return fmt.Errorf("unable to initialize app: %w", err)
 			}
 
 			owned.app = app
@@ -139,7 +139,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			if err != nil {
 				s.Close()
 				s = nil
-				return fmt.Errorf("unable to seed things: %s", err.Error())
+				return fmt.Errorf("unable to seed things: %w", err)
 			}
 
 			return nil
@@ -165,7 +165,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			tracked := &trackingMessenger{MsgContext: msgCtx, tracker: owned.tracker}
 			err = tracked.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
 			if err != nil {
-				return fmt.Errorf("unable to register message handler: %s", err.Error())
+				return fmt.Errorf("unable to register message handler: %w", err)
 			}
 
 			return nil
@@ -354,7 +354,7 @@ func newApp(ctx context.Context, r application.ThingsReader, w application.Thing
 	a := application.New(r, w, m)
 	err := a.LoadConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("unable to load config: %s", err.Error())
+		return nil, fmt.Errorf("unable to load config: %w", err)
 	}
 
 	return a, nil
