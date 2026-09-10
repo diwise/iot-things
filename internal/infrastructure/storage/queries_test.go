@@ -59,6 +59,24 @@ func TestBuildValueQuerySQLParameterizesThingIDAndValueName(t *testing.T) {
 	}
 }
 
+// Fynd: tenantägarskapet för värden måste matchas bokstavligt. LIKE tolkar
+// "%" och "_" i sakens id som jokertecken och kan då matcha en annan sak.
+func TestAddValueTenantFilterUsesLiteralPrefixMatch(t *testing.T) {
+	b := newSQLBuilder()
+	addValueTenantFilter(b, []string{"default"})
+
+	where := b.WhereClause()
+	if !strings.Contains(where, "starts_with(things_values.id, t.id || '/')") {
+		t.Fatalf("expected literal prefix match, got %q", where)
+	}
+	if strings.Contains(where, "LIKE") {
+		t.Fatalf("expected no LIKE in tenant ownership filter, got %q", where)
+	}
+	if got := b.args["tenants"]; got == nil {
+		t.Fatalf("expected tenants argument to be bound")
+	}
+}
+
 func TestBuildThingQuerySQLUsesNamedParameterForDynamicJSONField(t *testing.T) {
 	query, args, err := buildThingQuerySQL(app.ThingQuery{
 		NumericFilters: []app.NumericFieldFilter{{

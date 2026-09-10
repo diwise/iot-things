@@ -248,11 +248,14 @@ func addValueTenantFilter(b *sqlBuilder, tenants []string) {
 		return
 	}
 
+	// starts_with ger en bokstavlig prefixmatchning. LIKE skulle tolka "%"
+	// och "_" i sakens id som jokertecken och kunde då matcha värden som
+	// tillhör en annan sak/tenant.
 	b.Where(`EXISTS (
 		SELECT 1
 		FROM things t
 		WHERE t.deleted_on IS NULL
 		  AND t.tenant = ANY(` + b.Bind("tenants", tenants) + `)
-		  AND things_values.id LIKE t.id || '/%'
+		  AND starts_with(things_values.id, t.id || '/')
 	)`)
 }
