@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/diwise/messaging-golang v0.0.0-20250628135946-f23f34d06003
-	github.com/diwise/senml v0.0.0-20251022134045-d0045d1dd610
+	github.com/diwise/senml v0.0.0-20260909175035-ac3958b9698e
 	github.com/diwise/service-chassis v0.0.0-20260602135046-9f4adf349775
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
