@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -68,6 +69,42 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no thing.updated published for the connected thing")
 	}
+}
+
+// Fynd 4: ett behandlingsfel ska propageras så att rapporten kan
+// återlevereras, i stället för att tyst ackas.
+func TestHandleMeasurementsPropagatesError(t *testing.T) {
+	is := is.New(t)
+
+	room := things.NewRoom("room-001", things.DefaultLocation, "default")
+	room.AddDevice("device-1")
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			return QueryResult{Data: [][]byte{marshalThing(room)}}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+			return errors.New("storage unavailable")
+		},
+		UpdateThingFunc: func(ctx context.Context, t things.Thing) error { return nil },
+	}
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error { return nil },
+	}
+
+	a := New(r, w, m)
+
+	temp := 21.0
+	err := a.HandleMeasurements(context.Background(), "default", []things.Measurement{{
+		ID:        "device-1/3303/5700",
+		Urn:       things.TemperatureURN,
+		Value:     &temp,
+		Timestamp: time.Now().UTC(),
+	}})
+
+	is.True(err != nil)
 }
 
 // En sak i en annan tenant än rapportens får aldrig uppdateras, även om

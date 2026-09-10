@@ -25,7 +25,7 @@ import (
 )
 
 type ThingsApp interface {
-	HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement)
+	HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) error
 
 	Add(ctx context.Context, b []byte) error
 	Delete(ctx context.Context, thingID string, tenants []string) error
@@ -132,15 +132,21 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 // applicerar hela rapportens mätningar på samma objekt, sparas och publiceras
 // med sitt ackumulerade tillstånd. Ingen väntan mellan rapporter och ingen
 // omläsning från lagring före publicering.
-func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) {
+// HandleMeasurements behandlar hela rapporten per enhet. En enskild saks fel
+// hindrar inte övriga saker, men felet propageras så att meddelandet kan
+// återlevereras. Behandlingen är idempotent: historikvärden skrivs med
+// ON CONFLICT DO NOTHING och sakens tillstånd är en upsert, så en retry
+// konvergerar.
+func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if len(measurements) == 0 {
-		return
+		return nil
 	}
 
 	baseLog := logging.GetFromContext(ctx)
+	var errs []error
 
 	// Gruppera per enhet. Ett pack är en enhet, men grupperingen gör
 	// blandade batcher korrekta och håller sak-objektet återanvänt.
@@ -163,6 +169,7 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurement
 		connectedThings, err := a.getConnectedThings(ctx, deviceID, []string{tenant})
 		if err != nil {
 			baseLog.Error("could not get connected things", "device_id", deviceID, "tenant", tenant, "err", err.Error())
+			errs = append(errs, err)
 			continue
 		}
 
@@ -189,6 +196,7 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurement
 			})
 			if err != nil {
 				log.Error("could not handle measurement", "err", err.Error())
+				errs = append(errs, err)
 				continue
 			}
 
@@ -198,15 +206,20 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurement
 			err = a.saveThing(thingCtx, thing)
 			if err != nil {
 				log.Error("could not save thing", "err", err.Error())
+				errs = append(errs, err)
 				continue
 			}
 
-			a.publishThingUpdated(thingCtx, thing)
+			if err := a.publishThingUpdated(thingCtx, thing); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
+
+	return errors.Join(errs...)
 }
 
-func (a *app) publishThingUpdated(ctx context.Context, thing things.Thing) {
+func (a *app) publishThingUpdated(ctx context.Context, thing things.Thing) error {
 	log := logging.GetFromContext(ctx).With("thing_id", thing.ID())
 
 	msg := &types.ThingUpdated{
@@ -220,14 +233,15 @@ func (a *app) publishThingUpdated(ctx context.Context, thing things.Thing) {
 	log.Debug("publish message", "content_type", msg.ContentType(), "tenant", thing.Tenant(), "type", thing.Type())
 
 	if err := a.msgCtx.PublishOnTopic(ctx, msg); err != nil {
-		// Bevarad semantik: publiceringsfel loggas och påverkar inte ack.
 		log.Error("could not publish message", "err", err.Error())
-		return
+		return err
 	}
 
 	if c := updatedCounter(); c != nil {
 		c.Add(ctx, 1)
 	}
+
+	return nil
 }
 
 func (a *app) Add(ctx context.Context, b []byte) error {
