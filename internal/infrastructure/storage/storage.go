@@ -278,6 +278,24 @@ func (db database) QueryThings(ctx context.Context, query app.ThingQuery) (app.Q
 	}, nil
 }
 
+// marshalValue bygger en things.Value av scannade kolumner och serialiserar
+// den. En implementation för alla värde-query-lägen.
+func marshalValue(ts time.Time, id, urn, unit, ref string, v *float64, vb *bool, vs, src *string) []byte {
+	m := things.Value{
+		ID:          id,
+		Urn:         urn,
+		BoolValue:   vb,
+		StringValue: vs,
+		Value:       v,
+		Unit:        unit,
+		Source:      src,
+		Timestamp:   ts.UTC(),
+		Ref:         ref,
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
 func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.QueryResult, error) {
 	switch query.Mode {
 	case app.ValueQueryModeCountByTime:
@@ -310,20 +328,7 @@ func (db database) QueryValues(ctx context.Context, query app.ValueQuery) (app.Q
 	var vs, src *string
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
-		m := things.Value{
-			ID:          id,
-			Urn:         urn,
-			BoolValue:   vb,
-			StringValue: vs,
-			Value:       v,
-			Unit:        unit,
-			Source:      src,
-			Timestamp:   ts.UTC(),
-			Ref:         ref,
-		}
-
-		b, _ := json.Marshal(m)
-		t = append(t, b)
+		t = append(t, marshalValue(ts, id, urn, unit, ref, v, vb, vs, src))
 
 		return nil
 	})
@@ -361,20 +366,7 @@ func (db database) showLatest(ctx context.Context, query app.ValueQuery) (app.Qu
 	var t [][]byte
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &v, &vs, &vb, &unit, &ref, &src}, func() error {
-		m := things.Value{
-			ID:          id,
-			Urn:         urn,
-			BoolValue:   vb,
-			StringValue: vs,
-			Value:       v,
-			Unit:        unit,
-			Timestamp:   ts.UTC(),
-			Source:      src,
-			Ref:         ref,
-		}
-
-		b, _ := json.Marshal(m)
-		t = append(t, b)
+		t = append(t, marshalValue(ts, id, urn, unit, ref, v, vb, vs, src))
 
 		return nil
 	})
@@ -414,20 +406,7 @@ func (db database) distinctValues(ctx context.Context, query app.ValueQuery) (ap
 	var vs, src *string
 
 	_, err = pgx.ForEachRow(rows, []any{&ts, &id, &urn, &location, &v, &vs, &vb, &unit, &ref, &src, &total}, func() error {
-		m := things.Value{
-			ID:          id,
-			Urn:         urn,
-			BoolValue:   vb,
-			StringValue: vs,
-			Value:       v,
-			Unit:        unit,
-			Source:      src,
-			Timestamp:   ts.UTC(),
-			Ref:         ref,
-		}
-
-		b, _ := json.Marshal(m)
-		t = append(t, b)
+		t = append(t, marshalValue(ts, id, urn, unit, ref, v, vb, vs, src))
 
 		return nil
 	})

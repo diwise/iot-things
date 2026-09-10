@@ -94,17 +94,26 @@ func removeInternalState(t things.Thing) map[string]any {
 		return m
 	}
 
+	return StripInternalState(m)
+}
+
+// StripInternalState tar bort interna fält ur en serialiserad sak: cachade
+// mätningar under refDevices samt fält som börjar med "_". Enda
+// implementationen; används både för thing.updated och i API-presentationen.
+func StripInternalState(m map[string]any) map[string]any {
 	if refDevices, ok := m["refDevices"]; ok {
 		if ref, ok := refDevices.([]any); ok {
 			for _, device := range ref {
-				x := device.(map[string]any)
+				x, ok := device.(map[string]any)
+				if !ok {
+					continue
+				}
 				delete(x, "measurements")
 			}
 			m["refDevices"] = ref
 		}
 	}
 
-	// remove internal fields (i.e. fields starting with "_")
 	for k := range m {
 		if strings.HasPrefix(k, "_") {
 			delete(m, k)

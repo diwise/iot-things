@@ -650,22 +650,3 @@ func isMultipartFormData(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
 	return strings.Contains(contentType, "multipart/form-data")
 }
-
-func mapToOutModel(m map[string]any) {
-	if refDevices, ok := m["refDevices"]; ok {
-		if ref, ok := refDevices.([]any); ok {
-			for _, device := range ref {
-				x := device.(map[string]any)
-				delete(x, "measurements")
-			}
-			m["refDevices"] = ref
-		}
-	}
-
-	// remove internal fields (i.e. fields starting with "_")
-	for k := range m {
-		if strings.HasPrefix(k, "_") {
-			delete(m, k)
-		}
-	}
-}

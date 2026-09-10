@@ -219,7 +219,7 @@ func mapThing(data []byte) (map[string]any, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
-	mapToOutModel(m)
+	app.StripInternalState(m)
 	return m, nil
 }
 
