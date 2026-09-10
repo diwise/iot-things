@@ -204,6 +204,20 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 Alla tre filer kravs vid startup med standardvagarna ovan: `authz.rego`, `things.csv`, `config.yaml`.
 Samtliga foljer med imagen under `/opt/diwise/config/` och kan ersattas med externa mounts vid deployment.
 
+### Bindningar (`things.csv`, kolumn 8)
+Kolumn 8 kopplar sensorer till sakens ingångar. Format:
+`device|channel|object|resource|input`, flera separerade med komma. `channel`
+far vara tom (`device||object|resource|input`) och matchar da alla kanaler.
+En post utan `|` tolkas som ett enhets-id och binds till alla ingangar for
+saktypen (bakåtkompatibelt med aldre filer).
+
+Exempel: `milesight:214||urn:oma:lwm2m:ext:3303|5700|temperature`.
+
+Vid uppstart migreras aldre poster (med `refDevices`) automatiskt till
+bindningar. Migreringen ar idempotent och kan stangas av med
+`THINGS_MIGRATE_BINDINGS=false`; om omigrerade poster da kvarstar avbryts
+starten.
+
 Health paths pa kontrollservern (`CONTROL_PORT`): `/health`, `/healthz`, `/livez`, `/readyz`, `/readyz/{check}`.
 
 Externa Kubernetes- och Compose-definitioner finns inte i detta repo och ar darfor inte inventerade har.

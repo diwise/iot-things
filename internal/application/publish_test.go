@@ -71,6 +71,54 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	}
 }
 
+// T7: temperatur från en enhet och fukt från en annan kan binda till samma
+// rum, och en obunden signal påverkar inte saken.
+func TestBindingsAcrossDevices(t *testing.T) {
+	is := is.New(t)
+
+	room := things.NewRoom("room-1", things.DefaultLocation, "default").(*things.Room)
+	room.AddBinding(things.Binding{DeviceID: "device-a", Object: things.TemperatureURN, Resource: "5700", Input: "temperature"})
+	room.AddBinding(things.Binding{DeviceID: "device-b", Object: things.HumidityURN, Resource: "5700", Input: "humidity"})
+
+	current := things.Thing(room)
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			return QueryResult{Data: [][]byte{marshalThing(current)}}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error { return nil },
+		UpdateThingFunc: func(ctx context.Context, u things.Thing) error {
+			current = u
+			return nil
+		},
+	}
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error { return nil },
+	}
+
+	a := New(r, w, m)
+
+	temp := 21.0
+	is.NoErr(a.HandleMeasurements(context.Background(), "default", "m1", []things.Measurement{
+		{ID: "device-a/3303/5700", Urn: things.TemperatureURN, Value: &temp, Timestamp: time.Now().UTC()},
+	}))
+	is.Equal(*current.(*things.Room).Temperature.Value, 21.0)
+
+	hum := 55.0
+	is.NoErr(a.HandleMeasurements(context.Background(), "default", "m2", []things.Measurement{
+		{ID: "device-b/3304/5700", Urn: things.HumidityURN, Value: &hum, Timestamp: time.Now().UTC()},
+	}))
+	is.Equal(current.(*things.Room).Humidity, 55.0)
+
+	// Obunden enhet: ingen påverkan.
+	unbound := 99.0
+	is.NoErr(a.HandleMeasurements(context.Background(), "default", "m3", []things.Measurement{
+		{ID: "device-c/3303/5700", Urn: things.TemperatureURN, Value: &unbound, Timestamp: time.Now().UTC()},
+	}))
+	is.Equal(*current.(*things.Room).Temperature.Value, 21.0)
+}
+
 // Fynd 1: en återlevererad rapport får inte köra tillståndsmaskinen igen.
 // Passage-räknaren ska vara 1 även efter en retry med samma meddelande-id.
 func TestRetryDoesNotDoubleCountState(t *testing.T) {
