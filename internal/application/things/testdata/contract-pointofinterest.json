@@ -1,0 +1,1 @@
+{"id":"poi-1","type":"PointOfInterest","subType":"Beach","name":"","location":{"latitude":0,"longitude":0},"tenant":"default","observedAt":"0001-01-01T00:00:00Z","validURN":["urn:oma:lwm2m:ext:3303"],"temperature":{"v":21,"timestamp":"2024-01-01T00:00:00Z"},"current":{"v":1,"timestamp":"2024-01-01T00:00:00Z"}}

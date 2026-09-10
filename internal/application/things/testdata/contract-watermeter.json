@@ -1,0 +1,1 @@
+{"id":"watermeter-1","type":"Watermeter","name":"","location":{"latitude":0,"longitude":0},"tenant":"default","observedAt":"0001-01-01T00:00:00Z","validURN":["urn:oma:lwm2m:ext:3424"],"cumulativeVolume":10.5,"leakage":false,"burst":false,"backflow":false,"fraud":false}

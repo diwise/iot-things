@@ -1,0 +1,1 @@
+{"id":"room-1","type":"Room","name":"","location":{"latitude":0,"longitude":0},"tenant":"default","observedAt":"0001-01-01T00:00:00Z","validURN":["urn:oma:lwm2m:ext:3303","urn:oma:lwm2m:ext:3304","urn:oma:lwm2m:ext:3301","urn:oma:lwm2m:ext:3428","urn:oma:lwm2m:ext:3302"],"temperature":{"v":21,"timestamp":"2024-01-01T00:00:00Z"},"humidity":55,"illuminance":300,"co2":700}

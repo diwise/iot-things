@@ -1,0 +1,1 @@
+{"id":"pump-1","type":"PumpingStation","name":"","location":{"latitude":0,"longitude":0},"tenant":"default","observedAt":"0001-01-01T00:00:00Z","validURN":["urn:oma:lwm2m:ext:3200"],"pumpingObserved":true,"pumpingObservedAt":null,"pumpingDuration":null,"pumpingCumulativeTime":0,"_stopwatch":null}

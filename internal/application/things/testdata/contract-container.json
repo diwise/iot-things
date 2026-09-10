@@ -1,0 +1,1 @@
+{"id":"container-1","type":"Container","subType":"WasteContainer","name":"","location":{"latitude":62,"longitude":17},"tenant":"default","observedAt":"0001-01-01T00:00:00Z","validURN":["urn:oma:lwm2m:ext:3330"],"currentLevel":0.49,"percent":17.5}
