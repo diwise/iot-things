@@ -11,6 +11,7 @@ import (
 
 	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/messaging-golang/pkg/messaging"
+	"github.com/google/uuid"
 	"github.com/matryer/is"
 )
 
@@ -272,6 +273,11 @@ func msgMock(body string) *messaging.IncomingTopicMessageMock {
 		},
 		ContentTypeFunc: func() string {
 			return "application/json"
+		},
+		// Unikt id per meddelande så att dedupliceringen inte slår ihop
+		// separata rapporter i testerna.
+		MessageIDFunc: func() string {
+			return uuid.NewString()
 		},
 	}
 }

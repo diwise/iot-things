@@ -168,7 +168,7 @@ func TestHandleMeasurementsPublishesWithIngressTraceContext(t *testing.T) {
 	a := New(r, w, m)
 
 	value := 21.0
-	a.HandleMeasurements(ingressCtx, "default", []things.Measurement{{
+	a.HandleMeasurements(ingressCtx, "default", "", []things.Measurement{{
 		ID:        "device-1/3303/5700",
 		Urn:       things.TemperatureURN,
 		Value:     &value,

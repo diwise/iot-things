@@ -87,10 +87,10 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 
 		ctx = logging.NewContextWithLogger(ctx, logger)
 
-		// Fel propageras så att rapporten kan återlevereras. Behandlingen är
-		// idempotent (historik: ON CONFLICT DO NOTHING, tillstånd: upsert),
-		// så en retry konvergerar.
-		if err := app.HandleMeasurements(ctx, tenant, measurements); err != nil {
+		// Fel propageras så att rapporten kan återlevereras. Rapporten
+		// dedupliceras per sak på meddelandets id, så en retry kör inte
+		// tillståndsmaskinen igen. Historik är idempotent per (tid, id).
+		if err := app.HandleMeasurements(ctx, tenant, topicMessage.MessageID(), measurements); err != nil {
 			log.Error("could not handle measurements", "err", err.Error())
 			return err
 		}

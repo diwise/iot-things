@@ -59,8 +59,9 @@ func (r *Room) handleAirQuality(m Measurement, onchange func(m ValueProvider) er
 	}
 
 	// Jämför det nya aggregerade värdet mot det sparade, inte mot en enskild
-	// sensors värde.
-	newCO2 := avg(r, m, *m.Value, hasAirQuality)
+	// sensors värde. Endast CO2-resursen (17) deltar, inte andra resurser i
+	// samma AirQuality-objekt.
+	newCO2 := avg(r, m, *m.Value, hasCO2)
 	if !hasChanged(r.CO2, newCO2) {
 		return nil
 	}

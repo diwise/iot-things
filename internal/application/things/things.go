@@ -20,6 +20,11 @@ type Thing interface {
 	SetLastObserved(measurements []Measurement)
 	AddDevice(deviceID string)
 	AddTag(tag string)
+
+	// LastMessageID/SetLastMessageID används för deduplicering: en rapport
+	// som redan behandlats ska inte köra tillståndsmaskinen igen vid retry.
+	LastMessageID() string
+	SetLastMessageID(id string)
 }
 
 type ThingType struct {
@@ -51,6 +56,10 @@ type Base struct {
 	Tenant_         string        `json:"tenant"`
 	ObservedAt      time.Time     `json:"observedAt"`
 	ValidURN        []string      `json:"validURN,omitempty"`
+
+	// LastMessageID_ spårar senast behandlade rapport. Internt fält (strippas
+	// före publicering) och används för idempotens vid återleverans.
+	LastMessageID_ string `json:"_lastMessageId,omitempty"`
 }
 
 type Point []float64     // [x, y]
@@ -91,6 +100,14 @@ func (t *Base) AddDevice(deviceID string) {
 }
 func (t *Base) Refs() []Device {
 	return t.RefDevices
+}
+
+func (t *Base) LastMessageID() string {
+	return t.LastMessageID_
+}
+
+func (t *Base) SetLastMessageID(id string) {
+	t.LastMessageID_ = id
 }
 
 func (t *Base) AddTag(tag string) {
@@ -207,6 +224,12 @@ func hasIlluminance(m *Measurement) bool {
 func hasAirQuality(m *Measurement) bool {
 	return m.Urn == AirQualityURN && m.Value != nil
 }
+
+// hasCO2 matchar AirQuality-objektets CO2-resurs (17) så att aggregeringen
+// inte blandar in andra resurser i samma objekt, t.ex. partiklar.
+func hasCO2(m *Measurement) bool {
+	return m.Urn == AirQualityURN && m.Value != nil && strings.HasSuffix(m.ID, "/17")
+}
 func hasPower(m *Measurement) bool {
 	return m.Urn == PowerURN && m.Value != nil
 }
@@ -237,6 +260,18 @@ func avg(r Thing, current Measurement, v float64, has func(m *Measurement) bool)
 	}
 
 	return v / float64(n)
+}
+
+// ShouldApply rapporterar om mätningen är nyare än, eller lika gammal som,
+// det cachade värdet för samma signal. Äldre mätningar får inte ändra
+// aktuellt tillstånd, även om de sparas som historik.
+func ShouldApply(t Thing, m Measurement) bool {
+	for _, d := range t.Refs() {
+		if cached, ok := d.Measurements[m.ID]; ok && cached.Timestamp.After(m.Timestamp) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m Measurement) DeviceID() string {

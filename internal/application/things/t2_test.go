@@ -76,6 +76,28 @@ func TestAggregateChangeDetection(t *testing.T) {
 	is.Equal(*room.Temperature.Value, 27.5)
 }
 
+// Fynd 4: CO2-aggregeringen får inte blanda in andra resurser i samma
+// AirQuality-objekt (t.ex. partiklar). (800 + 700) / 2 = 750.
+func TestCO2AggregationIgnoresOtherResources(t *testing.T) {
+	is := is.New(t)
+
+	room := NewRoom("room-001", DefaultLocation, "default").(*Room)
+	room.AddDevice("device-a")
+	room.AddDevice("device-b")
+	room.RefDevices[1].Measurements = map[string]Measurement{
+		"device-b/3428/17": {ID: "device-b/3428/17", Urn: AirQualityURN, Value: floatPtr(700)},
+		"device-b/3428/1":  {ID: "device-b/3428/1", Urn: AirQualityURN, Value: floatPtr(5)},
+	}
+
+	co2 := 800.0
+	current := Measurement{ID: "device-a/3428/17", Urn: AirQualityURN, Value: &co2, Timestamp: time.Now()}
+
+	var emitted []Value
+	is.NoErr(room.handleAirQuality(current, collectValues(&emitted)))
+
+	is.Equal(room.CO2, 750.0)
+}
+
 // Fynd 6: avg ska bara undanta den aktuella signalen, inte hela enheten.
 // Två temperaturkanaler på samma enhet ska räknas tillsammans.
 func TestAvgIncludesOtherSignalsFromSameDevice(t *testing.T) {

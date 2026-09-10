@@ -25,7 +25,7 @@ import (
 )
 
 type ThingsApp interface {
-	HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) error
+	HandleMeasurements(ctx context.Context, tenant string, messageID string, measurements []things.Measurement) error
 
 	Add(ctx context.Context, b []byte) error
 	Delete(ctx context.Context, thingID string, tenants []string) error
@@ -64,6 +64,9 @@ var (
 	ErrMissingThingID     = errors.New("thing ID must be provided")
 	ErrMissingThingTenant = errors.New("tenant must be provided")
 	ErrMissingThingType   = errors.New("thing type must be provided")
+	// ErrInvalidThingID skyddar värdeägarskapet: historik matchas på
+	// thingID + "/", så ett thing-ID med "/" skulle kunna överlappa ett annat.
+	ErrInvalidThingID = errors.New("thing ID must not contain '/'")
 )
 
 type app struct {
@@ -137,7 +140,7 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 // återlevereras. Behandlingen är idempotent: historikvärden skrivs med
 // ON CONFLICT DO NOTHING och sakens tillstånd är en upsert, så en retry
 // konvergerar.
-func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) error {
+func (a *app) HandleMeasurements(ctx context.Context, tenant string, messageID string, measurements []things.Measurement) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -182,7 +185,34 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurement
 			thingCtx := logging.NewContextWithLogger(ctx, baseLog, "thing_id", thing.ID())
 			log := logging.GetFromContext(thingCtx)
 
-			err := thing.Handle(thingCtx, ms, func(valueProvider things.ValueProvider) error {
+			// Deduplicering: en redan behandlad rapport får inte köra
+			// tillståndsmaskinen igen (t.ex. Passage-räknare). Publicera bara
+			// om eventet behöver säkerställas. Behandlingen är at-least-once.
+			if messageID != "" && thing.LastMessageID() == messageID {
+				if err := a.publishThingUpdated(thingCtx, thing); err != nil {
+					errs = append(errs, err)
+				}
+				continue
+			}
+
+			// Äldre mätningar än det cachade värdet får inte ändra aktuellt
+			// tillstånd (cachen behåller det nyare).
+			fresh := make([]things.Measurement, 0, len(ms))
+			for _, m := range ms {
+				if things.ShouldApply(thing, m) {
+					fresh = append(fresh, m)
+				}
+			}
+			if len(fresh) == 0 {
+				continue
+			}
+
+			// Uppdatera cachen med rapportens värden före Handle så att
+			// aggregeringen ser en sammanhängande bild av rapportens aktuella
+			// signalvärden (flera kanaler i samma pack).
+			thing.SetLastObserved(fresh)
+
+			err := thing.Handle(thingCtx, fresh, func(valueProvider things.ValueProvider) error {
 				var errs []error
 
 				values := valueProvider.Values()
@@ -200,8 +230,7 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurement
 				continue
 			}
 
-			// adds the current measurements to its (ref)devices and ObservedAt if the timestamp is newer
-			thing.SetLastObserved(ms)
+			thing.SetLastMessageID(messageID)
 
 			err = a.saveThing(thingCtx, thing)
 			if err != nil {
@@ -253,6 +282,9 @@ func (a *app) Add(ctx context.Context, b []byte) error {
 	if t.ID() == "" {
 		return ErrMissingThingID
 	}
+	if strings.Contains(t.ID(), "/") {
+		return ErrInvalidThingID
+	}
 	if t.Tenant() == "" {
 		return ErrMissingThingTenant
 	}
@@ -280,6 +312,9 @@ func (a *app) Update(ctx context.Context, b []byte, tenants []string) error {
 
 	if t.ID() == "" {
 		return ErrMissingThingID
+	}
+	if strings.Contains(t.ID(), "/") {
+		return ErrInvalidThingID
 	}
 	if t.Tenant() == "" {
 		return ErrMissingThingTenant
