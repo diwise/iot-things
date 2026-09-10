@@ -76,6 +76,50 @@ func TestAggregateChangeDetection(t *testing.T) {
 	is.Equal(*room.Temperature.Value, 27.5)
 }
 
+// Fynd 6: avg ska bara undanta den aktuella signalen, inte hela enheten.
+// Två temperaturkanaler på samma enhet ska räknas tillsammans.
+func TestAvgIncludesOtherSignalsFromSameDevice(t *testing.T) {
+	is := is.New(t)
+
+	room := NewRoom("room", DefaultLocation, "default").(*Room)
+	room.AddDevice("device-a")
+	room.RefDevices[0].Measurements = map[string]Measurement{
+		"device-a/0/3303/5700": {ID: "device-a/0/3303/5700", Urn: TemperatureURN, Value: floatPtr(20)},
+		"device-a/1/3303/5700": {ID: "device-a/1/3303/5700", Urn: TemperatureURN, Value: floatPtr(30)},
+	}
+
+	current := Measurement{ID: "device-a/0/3303/5700", Urn: TemperatureURN, Value: floatPtr(20)}
+
+	// Aktuell signal (kanal 0) undantas och används som v; kanal 1 räknas in.
+	// (20 + 30) / 2 = 25.
+	is.Equal(avg(room, current, 20, hasTemperature), 25.0)
+}
+
+// Fynd 5: en sen anländande (äldre) mätning får inte skriva över en nyare i
+// senaste-värde-cachen.
+func TestSetLastObservedKeepsNewestValue(t *testing.T) {
+	is := is.New(t)
+
+	room := NewRoom("room", DefaultLocation, "default").(*Room)
+	room.ValidURN = RoomURNs
+	room.AddDevice("device-a")
+
+	newer := time.Now()
+	older := newer.Add(-time.Hour)
+
+	newVal := 30.0
+	room.SetLastObserved([]Measurement{
+		{ID: "device-a/3303/5700", Urn: TemperatureURN, Value: &newVal, Timestamp: newer},
+	})
+
+	oldVal := 10.0
+	room.SetLastObserved([]Measurement{
+		{ID: "device-a/3303/5700", Urn: TemperatureURN, Value: &oldVal, Timestamp: older},
+	})
+
+	is.Equal(*room.RefDevices[0].Measurements["device-a/3303/5700"].Value, 30.0)
+}
+
 // Samma sak för skalära fält (fuktighet är float64).
 func TestAggregateChangeDetectionScalar(t *testing.T) {
 	is := is.New(t)

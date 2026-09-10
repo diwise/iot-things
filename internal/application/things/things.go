@@ -115,7 +115,12 @@ func (c *Base) SetLastObserved(measurements []Measurement) {
 						c.RefDevices[i].Measurements = make(map[string]Measurement)
 					}
 
-					c.RefDevices[i].Measurements[m.ID] = m
+					// En sen anländande (äldre) mätning får inte skriva
+					// över en nyare i cachen. Lika tidsstämpel får uppdatera.
+					existing, ok := c.RefDevices[i].Measurements[m.ID]
+					if !ok || !m.Timestamp.Before(existing.Timestamp) {
+						c.RefDevices[i].Measurements[m.ID] = m
+					}
 				}
 			}
 		}
@@ -213,20 +218,20 @@ func hasWaterMeter(m *Measurement) bool {
 }
 
 // avg beräknar medelvärdet av aktuell mätning och de senast cachade
-// mätningarna från sakens övriga enheter. Jämförelsen sker mot mätningens
-// enhets-id (inte hela recordnamnet), så den egna enhetens cachade värde
-// aldrig dubbelräknas.
+// mätningarna som hör till samma signal (namngivna ingång). Den aktuella
+// signalen undantas via sitt fulla recordnamn, så den inte dubbelräknas,
+// medan andra signaler på samma enhet (t.ex. en annan kanal) räknas med.
 func avg(r Thing, current Measurement, v float64, has func(m *Measurement) bool) float64 {
 	n := 1
-	currentDeviceID := current.DeviceID()
 
 	for _, refDevice := range r.Refs() {
-		if refDevice.DeviceID != currentDeviceID {
-			for _, m := range refDevice.Measurements {
-				if has(&m) {
-					v += *m.Value
-					n++
-				}
+		for _, m := range refDevice.Measurements {
+			if m.ID == current.ID {
+				continue
+			}
+			if has(&m) {
+				v += *m.Value
+				n++
 			}
 		}
 	}
