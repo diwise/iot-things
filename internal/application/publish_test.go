@@ -70,6 +70,58 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	}
 }
 
+// Flera enheter kopplade till samma sak: värdena aggregeras på saken och
+// thing.updated publiceras. Detta är det vanliga fallet.
+func TestMultipleDevicesOneThingAggregates(t *testing.T) {
+	is := is.New(t)
+
+	current := things.NewRoom("room-001", things.DefaultLocation, "default")
+	current.AddDevice("device-1")
+	current.AddDevice("device-2")
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			return QueryResult{Data: [][]byte{marshalThing(current)}}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error {
+			return nil
+		},
+		UpdateThingFunc: func(ctx context.Context, u things.Thing) error {
+			current = u
+			return nil
+		},
+	}
+
+	var publishes int
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
+			if _, ok := message.(*types.ThingUpdated); ok {
+				publishes++
+			}
+			return nil
+		},
+	}
+
+	a := New(r, w, m)
+
+	t20 := 20.0
+	a.HandleMeasurements(context.Background(), []things.Measurement{
+		{ID: "device-1/3303/5700", Urn: things.TemperatureURN, Value: &t20, Timestamp: time.Now().UTC()},
+	})
+	is.Equal(*current.(*things.Room).Temperature.Value, 20.0)
+
+	t30 := 30.0
+	a.HandleMeasurements(context.Background(), []things.Measurement{
+		{ID: "device-2/3303/5700", Urn: things.TemperatureURN, Value: &t30, Timestamp: time.Now().UTC()},
+	})
+
+	// (30 + 20) / 2 = 25, ackumulerat över båda enheterna.
+	is.Equal(*current.(*things.Room).Temperature.Value, 25.0)
+	is.Equal(publishes, 2)
+}
+
 // En enhet som är kopplad till flera saker ska uppdatera alla, med en
 // publicering per sak.
 func TestMultipleThingsForSameDevice(t *testing.T) {
