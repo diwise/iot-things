@@ -131,10 +131,15 @@ func (l *level) Percent() float64 {
 	return 0.0
 }
 
+// levelEpsilon är tröskeln för nivåberäkning. Den är avsiktligt finare än
+// saktypernas changeEpsilon (0.001): nivåer kan ändras i små steg och är en
+// egen domän, skild från förändringsdetektering för mätvärden.
+const levelEpsilon = 0.0001
+
 func hasChanged(prev, new float64) bool {
 	return isNotZero(new - prev)
 }
 
 func isNotZero(value float64) bool {
-	return (math.Abs(value) >= 0.0001)
+	return (math.Abs(value) >= levelEpsilon)
 }

@@ -98,7 +98,7 @@ func (r *Room) handleAirQuality(m Measurement, onchange func(m ValueProvider) er
 		return err
 	}
 
-	r.CO2 = avg(r, m.ID, *m.Value, hasAirQuality)
+	r.CO2 = avg(r, m, *m.Value, hasAirQuality)
 
 	return nil
 }
@@ -121,7 +121,7 @@ func (r *Room) handleIlluminance(m Measurement, onchange func(m ValueProvider) e
 		return err
 	}
 
-	r.Illuminance = avg(r, m.ID, *m.Value, hasIlluminance)
+	r.Illuminance = avg(r, m, *m.Value, hasIlluminance)
 
 	return nil
 }
@@ -144,7 +144,7 @@ func (r *Room) handleHumidity(m Measurement, onchange func(m ValueProvider) erro
 		return err
 	}
 
-	r.Humidity = avg(r, m.ID, *m.Value, hasHumidity)
+	r.Humidity = avg(r, m, *m.Value, hasHumidity)
 
 	return nil
 }
@@ -167,7 +167,7 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 		return err
 	}
 
-	avgTemp := avg(r, m.ID, *m.Value, hasTemperature)
+	avgTemp := avg(r, m, *m.Value, hasTemperature)
 
 	r.Temperature = Measurement{
 		Value:     &avgTemp,

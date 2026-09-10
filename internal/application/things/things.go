@@ -146,29 +146,34 @@ type ValueProvider interface {
 
 func newValue(id, urn, ref, unit string, ts time.Time, value float64) Value {
 	return Value{
-		ID:        id,
-		Urn:       urn,
-		Value:     &value,
-		Unit:      unit,
-		Timestamp: ts.UTC(),
-		Ref:       ref,
+		Measurement: Measurement{
+			ID:        id,
+			Urn:       urn,
+			Value:     &value,
+			Unit:      unit,
+			Timestamp: ts.UTC(),
+			Ref:       ref,
+		},
 	}
 }
 
 func newBoolValue(id, urn, ref, unit string, ts time.Time, value bool) Value {
 	return Value{
-		ID:        id,
-		Urn:       urn,
-		BoolValue: &value,
-		Unit:      unit,
-		Timestamp: ts.UTC(),
-		Ref:       ref,
+		Measurement: Measurement{
+			ID:        id,
+			Urn:       urn,
+			BoolValue: &value,
+			Unit:      unit,
+			Timestamp: ts.UTC(),
+			Ref:       ref,
+		},
 	}
 }
 
+// Value är en mätning som kan skickas till lagring. Ref finns på
+// Measurement; Value har inget eget skuggande fält.
 type Value struct {
 	Measurement
-	Ref string `json:"ref,omitempty"`
 }
 
 type Measurement struct {
@@ -214,8 +219,13 @@ func hasWaterMeter(m *Measurement) bool {
 	return m.Urn == WaterMeterURN && (m.Value != nil || m.BoolValue != nil)
 }
 
-func avg[T *Thing](r Thing, currentDeviceID string, v float64, has func(m *Measurement) bool) float64 {
+// avg beräknar medelvärdet av aktuell mätning och de senast cachade
+// mätningarna från sakens övriga enheter. Jämförelsen sker mot mätningens
+// enhets-id (inte hela recordnamnet), så den egna enhetens cachade värde
+// aldrig dubbelräknas.
+func avg(r Thing, current Measurement, v float64, has func(m *Measurement) bool) float64 {
 	n := 1
+	currentDeviceID := current.DeviceID()
 
 	for _, refDevice := range r.Refs() {
 		if refDevice.DeviceID != currentDeviceID {

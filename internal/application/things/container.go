@@ -61,23 +61,9 @@ func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) 
 
 	fillingLevel := NewFillingLevel(c.ID(), m.ID, level.Percent(), level.Current(), m.Timestamp)
 
-	d := *m.Value
-	n := 1
-
-	for _, ref := range c.RefDevices {
-		if ref.DeviceID != m.ID {
-			for _, h := range ref.Measurements {
-				if hasDistance(&h) {
-					d += *h.Value
-					n++
-				}
-			}
-		}
-	}
-
-	avg_distance := d / float64(n)
+	avgDistance := avg(c, m, *m.Value, hasDistance)
 	avg_level, _ := functions.NewLevel(c.Angle, c.MaxDistance, c.MaxLevel, c.MeanLevel, c.Offset, c.CurrentLevel)
-	avg_level.Calc(avg_distance, m.Timestamp)
+	avg_level.Calc(avgDistance, m.Timestamp)
 
 	c.CurrentLevel = avg_level.Current()
 	c.Percent = avg_level.Percent()

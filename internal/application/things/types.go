@@ -43,21 +43,51 @@ var (
 	SinkURNs            = []string{AirQualityURN, ConductivityURN, DigitalInputURN, DistanceURN, DoorURN, EnergyURN, FillingLevelURN, HumidityURN, IlluminanceURN, PeopleCounterURN, PowerURN, PresenceURN, PressureURN, StopwatchURN, TemperatureURN, WaterMeterURN}
 )
 
+// changeEpsilon är tröskeln för att bedöma ett värde som ändrat. Samma
+// storhet används av alla saktyper.
+const changeEpsilon = 0.001
+
 func hasChanged(a, b any) bool {
-	switch a.(type) {
+	switch v := a.(type) {
 	case float64:
-		return isNotZero(a.(float64) - b.(float64))
+		return isNotZero(v - b.(float64))
 	case bool:
-		return a.(bool) != b.(bool)
+		return v != b.(bool)
 	case string:
-		return a.(string) != b.(string)
+		return v != b.(string)
+	case Measurement:
+		return hasChangedMeasurement(v, b)
+	default:
+		return true
+	}
+}
+
+// hasChangedMeasurement jämför en sparad Measurement mot ett nytt värde.
+// Tidigare föll Measurement i default och rapporterade alltid "ändrat".
+func hasChangedMeasurement(m Measurement, b any) bool {
+	switch v := b.(type) {
+	case float64:
+		if m.Value == nil {
+			return true
+		}
+		return isNotZero(*m.Value - v)
+	case bool:
+		if m.BoolValue == nil {
+			return true
+		}
+		return *m.BoolValue != v
+	case string:
+		if m.StringValue == nil {
+			return true
+		}
+		return *m.StringValue != v
 	default:
 		return true
 	}
 }
 
 func isNotZero(v float64) bool {
-	return (math.Abs(v) >= 0.001)
+	return (math.Abs(v) >= changeEpsilon)
 }
 
 /* --------------------- Filling Level --------------------- */

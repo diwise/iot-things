@@ -64,21 +64,7 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 			return err
 		}
 
-		t := *m.Value
-		n := 1
-
-		for _, ref := range building.RefDevices {
-			if ref.DeviceID != m.ID {
-				for _, v := range ref.Measurements {
-					if hasTemperature(&v) {
-						t += *v.Value
-						n++
-					}
-				}
-			}
-		}
-
-		avgTemp := t / float64(n)
+		avgTemp := avg(building, m, *m.Value, hasTemperature)
 
 		building.Temperature = Measurement{
 			Value:     &avgTemp,
