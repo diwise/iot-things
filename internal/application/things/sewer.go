@@ -2,7 +2,6 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -12,7 +11,7 @@ import (
 )
 
 type Sewer struct {
-	thingImpl
+	Base
 	functions.LevelConfig
 
 	CurrentLevel float64   `json:"currentLevel"`
@@ -38,8 +37,8 @@ type Measured struct {
 
 func NewSewer(id string, l Location, tenant string) Thing {
 	return &Sewer{
-		thingImpl: newThingImpl(id, "Sewer", l, tenant),
-		Sw:        functions.NewStopwatch(),
+		Base: newBase(id, "Sewer", l, tenant),
+		Sw:   functions.NewStopwatch(),
 	}
 }
 
@@ -191,9 +190,4 @@ func (s *Sewer) handleDigitalInput(ctx context.Context, v Measurement, onchange 
 	}
 
 	return nil
-}
-
-func (s *Sewer) Byte() []byte {
-	b, _ := json.Marshal(s)
-	return b
 }

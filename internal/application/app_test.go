@@ -48,7 +48,7 @@ func TestSeedUpdate(t *testing.T) {
 
 				return QueryResult{
 					Data: [][]byte{
-						wc.Byte(),
+						marshalThing(wc),
 					},
 				}, nil
 
@@ -142,7 +142,7 @@ func TestHandleMeasurementsPublishesWithIngressTraceContext(t *testing.T) {
 
 	r := &ThingsReaderMock{
 		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
-			return QueryResult{Data: [][]byte{room.Byte()}}, nil
+			return QueryResult{Data: [][]byte{marshalThing(room)}}, nil
 		},
 	}
 	w := &ThingsWriterMock{

@@ -24,7 +24,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-//go:generate moq -rm -out app_mock.go . ThingsApp
 type ThingsApp interface {
 	HandleMeasurements(ctx context.Context, measurements []things.Measurement)
 
@@ -547,7 +546,11 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 
 		current := a.getThingByID(ctx, id_)
 		if current != nil {
-			err := json.Unmarshal(current.Byte(), &m)
+			b, err := json.Marshal(current)
+			if err != nil {
+				return err
+			}
+			err = json.Unmarshal(b, &m)
 			if err != nil {
 				return err
 			}

@@ -2,23 +2,21 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 )
 
 type Room struct {
-	thingImpl
+	Base
 	Temperature Measurement `json:"temperature"`
 	Humidity    float64     `json:"humidity"`
 	Illuminance float64     `json:"illuminance"`
 	CO2         float64     `json:"co2"`
-	//Presence    bool    `json:"presence"`
 }
 
 func NewRoom(id string, l Location, tenant string) Thing {
 	return &Room{
-		thingImpl: newThingImpl(id, "Room", l, tenant),
+		Base: newBase(id, "Room", l, tenant),
 	}
 }
 
@@ -49,37 +47,9 @@ func (r *Room) handle(m Measurement, onchange func(m ValueProvider) error) error
 		return r.handleAirQuality(m, onchange)
 	}
 
-	//if hasPresence(&m) {
-	//	return r.handlePresence(m, onchange)
-	//}
-
 	return nil
 }
 
-/*
-func (r *Room) handlePresence(m Measurement, onchange func(m ValueProvider) error) error {
-
-		const Presence = "/5500"
-
-		if !(strings.HasSuffix(m.ID, Presence)) {
-			return nil
-		}
-
-		if !hasChanged(r.Presence, *m.BoolValue) {
-			return nil
-		}
-
-		pres := NewPresence(r.ID(), m.ID, *m.BoolValue, m.Timestamp)
-		err := onchange(pres)
-		if err != nil {
-			return err
-		}
-
-		r.Presence = *m.BoolValue
-
-		return nil
-	}
-*/
 func (r *Room) handleAirQuality(m Measurement, onchange func(m ValueProvider) error) error {
 
 	const CO2 = "/17"
@@ -176,9 +146,4 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 	}
 
 	return nil
-}
-
-func (r *Room) Byte() []byte {
-	b, _ := json.Marshal(r)
-	return b
 }

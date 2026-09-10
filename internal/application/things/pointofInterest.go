@@ -2,29 +2,28 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 )
 
 type PointOfInterest struct {
-	thingImpl
+	Base
 	Temperature Measurement `json:"temperature"`
 	Current     Measurement `json:"current"`
 }
 
 func NewBeach(id string, l Location, tenant string) Thing {
-	poi := newThingImpl(id, "PointOfInterest", l, tenant)
+	poi := newBase(id, "PointOfInterest", l, tenant)
 	beach := "Beach"
 	poi.SubType = &beach
 
 	return &PointOfInterest{
-		thingImpl: poi,
+		Base: poi,
 	}
 }
 
 func NewPointOfInterest(id string, l Location, tenant string) Thing {
 	return &PointOfInterest{
-		thingImpl: newThingImpl(id, "PointOfInterest", l, tenant),
+		Base: newBase(id, "PointOfInterest", l, tenant),
 	}
 }
 func (poi *PointOfInterest) Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error {
@@ -69,9 +68,4 @@ func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider)
 	}
 
 	return nil
-}
-
-func (poi *PointOfInterest) Byte() []byte {
-	b, _ := json.Marshal(poi)
-	return b
 }

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -12,6 +13,15 @@ import (
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/matryer/is"
 )
+
+// marshalThing serialiserar ett thing som storage och thing.updated gör.
+func marshalThing(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 func TestRoomTemperature(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -209,7 +219,7 @@ func appMock(ctx context.Context, t things.Thing, store map[string]things.Thing,
 
 			mu.Lock()
 			defer mu.Unlock()
-			data := [][]byte{store[t.ID()].Byte()}
+			data := [][]byte{marshalThing(store[t.ID()])}
 
 			return QueryResult{
 				Data: data,

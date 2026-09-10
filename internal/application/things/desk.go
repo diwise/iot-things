@@ -2,19 +2,18 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 )
 
 type Desk struct {
-	thingImpl
+	Base
 	Presence bool `json:"presence"`
 }
 
 func NewDesk(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Desk", l, tenant)
+	thing := newBase(id, "Desk", l, tenant)
 	return &Desk{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 
@@ -41,9 +40,4 @@ func (d *Desk) handle(m Measurement, onchange func(m ValueProvider) error) error
 	presence := NewPresence(d.ID(), m.ID, d.Presence, m.Timestamp)
 
 	return onchange(presence)
-}
-
-func (l *Desk) Byte() []byte {
-	b, _ := json.Marshal(l)
-	return b
 }

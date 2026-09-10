@@ -2,13 +2,12 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 )
 
 type Passage struct {
-	thingImpl
+	Base
 	CumulatedNumberOfPassages int64 `json:"cumulatedNumberOfPassages"`
 	PassagesToday             int   `json:"passagesToday"`
 	CurrentState              bool  `json:"currentState"`
@@ -17,9 +16,9 @@ type Passage struct {
 }
 
 func NewPassage(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Passage", l, tenant)
+	thing := newBase(id, "Passage", l, tenant)
 	return &Passage{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 func (p *Passage) increasePassages(ts time.Time) {
@@ -78,9 +77,4 @@ func (p *Passage) handle(m Measurement, onchange func(m ValueProvider) error) er
 	door := NewDoor(p.ID(), m.ID, p.CurrentState, m.Timestamp)
 
 	return onchange(door)
-}
-
-func (p *Passage) Byte() []byte {
-	b, _ := json.Marshal(p)
-	return b
 }

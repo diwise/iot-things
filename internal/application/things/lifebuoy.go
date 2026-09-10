@@ -2,19 +2,18 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 )
 
 type Lifebuoy struct {
-	thingImpl
+	Base
 	Presence bool `json:"presence"`
 }
 
 func NewLifebuoy(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Lifebuoy", l, tenant)
+	thing := newBase(id, "Lifebuoy", l, tenant)
 	return &Lifebuoy{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 
@@ -41,9 +40,4 @@ func (l *Lifebuoy) handle(m Measurement, onchange func(m ValueProvider) error) e
 	presence := NewPresence(l.ID(), m.ID, l.Presence, m.Timestamp)
 
 	return onchange(presence)
-}
-
-func (l *Lifebuoy) Byte() []byte {
-	b, _ := json.Marshal(l)
-	return b
 }

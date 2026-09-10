@@ -2,7 +2,6 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 )
@@ -15,7 +14,7 @@ const (
 )
 
 type Watermeter struct {
-	thingImpl
+	Base
 	CumulativeVolume float64 `json:"cumulativeVolume"`
 	Leakage          bool    `json:"leakage"`
 	Burst            bool    `json:"burst"`
@@ -25,7 +24,7 @@ type Watermeter struct {
 
 func NewWatermeter(id string, l Location, tenant string) Thing {
 	return &Watermeter{
-		thingImpl: newThingImpl(id, "Room", l, tenant),
+		Base: newBase(id, "Watermeter", l, tenant),
 	}
 }
 
@@ -70,9 +69,4 @@ func (wm *Watermeter) handle(m Measurement, onchange func(m ValueProvider) error
 	}
 
 	return nil
-}
-
-func (wm *Watermeter) Byte() []byte {
-	b, _ := json.Marshal(wm)
-	return b
 }

@@ -15,7 +15,6 @@ type Thing interface {
 	Tenant() string
 	LatLon() (float64, float64)
 	Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error
-	Byte() []byte
 	Refs() []Device
 
 	SetLastObserved(measurements []Measurement)
@@ -29,8 +28,8 @@ type ThingType struct {
 	Name    string `json:"name"`
 }
 
-func newThingImpl(id, t string, l Location, tenant string) thingImpl {
-	return thingImpl{
+func newBase(id, t string, l Location, tenant string) Base {
+	return Base{
 		ID_:      id,
 		Type_:    t,
 		Location: l,
@@ -38,7 +37,7 @@ func newThingImpl(id, t string, l Location, tenant string) thingImpl {
 	}
 }
 
-type thingImpl struct {
+type Base struct {
 	ID_             string        `json:"id"`
 	Type_           string        `json:"type"`
 	SubType         *string       `json:"subType,omitempty"`
@@ -70,19 +69,19 @@ type Device struct {
 	Measurements map[string]Measurement `json:"measurements,omitempty"`
 }
 
-func (t *thingImpl) ID() string {
+func (t *Base) ID() string {
 	return t.ID_
 }
-func (t *thingImpl) Type() string {
+func (t *Base) Type() string {
 	return t.Type_
 }
-func (t *thingImpl) Tenant() string {
+func (t *Base) Tenant() string {
 	return t.Tenant_
 }
-func (t *thingImpl) LatLon() (float64, float64) {
+func (t *Base) LatLon() (float64, float64) {
 	return t.Location.Latitude, t.Location.Longitude
 }
-func (t *thingImpl) AddDevice(deviceID string) {
+func (t *Base) AddDevice(deviceID string) {
 	exists := slices.ContainsFunc(t.RefDevices, func(device Device) bool {
 		return device.DeviceID == deviceID
 	})
@@ -90,18 +89,18 @@ func (t *thingImpl) AddDevice(deviceID string) {
 		t.RefDevices = append(t.RefDevices, Device{DeviceID: deviceID})
 	}
 }
-func (t *thingImpl) Refs() []Device {
+func (t *Base) Refs() []Device {
 	return t.RefDevices
 }
 
-func (t *thingImpl) AddTag(tag string) {
+func (t *Base) AddTag(tag string) {
 	exists := slices.Contains(t.Tags, tag)
 	if !exists {
 		t.Tags = append(t.Tags, tag)
 	}
 }
 
-func (c *thingImpl) SetLastObserved(measurements []Measurement) {
+func (c *Base) SetLastObserved(measurements []Measurement) {
 	lastObserved := c.ObservedAt
 
 	for _, m := range measurements {
@@ -127,15 +126,6 @@ func (c *thingImpl) SetLastObserved(measurements []Measurement) {
 	}
 
 	c.ObservedAt = lastObserved
-}
-
-func (c *thingImpl) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
-}
-
-func (c *thingImpl) Handle(v []Measurement, onchange func(m ValueProvider) error) error {
-	return nil
 }
 
 /* --------------------- Measurements --------------------- */
@@ -188,6 +178,9 @@ type Measurement struct {
 	Ref         string    `json:"ref,omitempty"`
 }
 
+// hasX avgör om en mätning hör till en viss signaltyp. Regeln är: matcha på
+// observationens URN. Objekt med flera resurser (t.ex. Watermeter 3424 och
+// Room 3428) särskiljs dessutom med resurs-suffix i respektive hanterare.
 func hasDistance(m *Measurement) bool {
 	return m.Urn == DistanceURN && m.Value != nil
 }

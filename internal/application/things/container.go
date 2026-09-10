@@ -2,14 +2,13 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"github.com/diwise/iot-things/internal/application/functions"
 )
 
 type Container struct {
-	thingImpl
+	Base
 	functions.LevelConfig
 
 	CurrentLevel float64 `json:"currentLevel"`
@@ -17,20 +16,20 @@ type Container struct {
 }
 
 func NewContainer(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Container", l, tenant)
+	thing := newBase(id, "Container", l, tenant)
 	return &Container{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 
 func NewWasteContainer(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Container", l, tenant)
+	thing := newBase(id, "Container", l, tenant)
 
 	subType := "WasteContainer"
 	thing.SubType = &subType
 
 	return &Container{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 
@@ -69,9 +68,4 @@ func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) 
 	c.Percent = avg_level.Percent()
 
 	return onchange(fillingLevel)
-}
-
-func (c *Container) Byte() []byte {
-	b, _ := json.Marshal(c)
-	return b
 }

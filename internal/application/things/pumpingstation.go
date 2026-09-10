@@ -2,7 +2,6 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 )
 
 type PumpingStation struct {
-	thingImpl
+	Base
 
 	PumpingObserved       bool           `json:"pumpingObserved"`
 	PumpingObservedAt     *time.Time     `json:"pumpingObservedAt"`
@@ -21,10 +20,10 @@ type PumpingStation struct {
 }
 
 func NewPumpingStation(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "PumpingStation", l, tenant)
+	thing := newBase(id, "PumpingStation", l, tenant)
 	return &PumpingStation{
-		thingImpl: thing,
-		Sw:        functions.NewStopwatch(),
+		Base: thing,
+		Sw:   functions.NewStopwatch(),
 	}
 }
 
@@ -89,9 +88,4 @@ func (ps *PumpingStation) handle(m Measurement, onchange func(m ValueProvider) e
 	}
 
 	return nil
-}
-
-func (ps *PumpingStation) Byte() []byte {
-	b, _ := json.Marshal(ps)
-	return b
 }

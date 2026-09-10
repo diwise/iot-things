@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,14 @@ import (
 	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/iot-things/internal/presentation/api/auth"
 )
+
+func marshalThing(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 type fakeThingsApp struct {
 	queryThingsFunc func(context.Context, app.ThingQuery) (app.QueryResult, error)
@@ -91,7 +100,7 @@ func TestAddHandlerRejectsCreateForUnauthorizedTenant(t *testing.T) {
 	})
 
 	thing := things.NewWasteContainer("thing-1", things.DefaultLocation, "other")
-	req := httptest.NewRequest(http.MethodPost, "/things", strings.NewReader(string(thing.Byte())))
+	req := httptest.NewRequest(http.MethodPost, "/things", strings.NewReader(string(marshalThing(thing))))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, requestWithAccess(req, CreateThings))
@@ -115,7 +124,7 @@ func TestAddHandlerAllowsCreateForAuthorizedTenant(t *testing.T) {
 	})
 
 	thing := things.NewWasteContainer("thing-1", things.DefaultLocation, "default")
-	req := httptest.NewRequest(http.MethodPost, "/things", strings.NewReader(string(thing.Byte())))
+	req := httptest.NewRequest(http.MethodPost, "/things", strings.NewReader(string(marshalThing(thing))))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, requestWithAccess(req, CreateThings))
@@ -154,7 +163,7 @@ func TestQueryHandlerCSVExportReturns500WithoutPartialCSVOnError(t *testing.T) {
 			return app.QueryResult{
 				Count: 2,
 				Data: [][]byte{
-					thing.Byte(),
+					marshalThing(thing),
 					[]byte("not-json"),
 				},
 			}, nil
@@ -188,7 +197,7 @@ func TestQueryHandlerCSVExportReturnsCSVContentType(t *testing.T) {
 		queryThingsFunc: func(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
 			return app.QueryResult{
 				Count: 1,
-				Data:  [][]byte{thing.Byte()},
+				Data:  [][]byte{marshalThing(thing)},
 			}, nil
 		},
 	})

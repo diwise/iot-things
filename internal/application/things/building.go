@@ -2,21 +2,20 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 )
 
 type Building struct {
-	thingImpl
+	Base
 	Energy      float64     `json:"energy"`
 	Power       float64     `json:"power"`
 	Temperature Measurement `json:"temperature"`
 }
 
 func NewBuilding(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Building", l, tenant)
+	thing := newBase(id, "Building", l, tenant)
 	return &Building{
-		thingImpl: thing,
+		Base: thing,
 	}
 }
 
@@ -77,9 +76,4 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 
 	return nil
 
-}
-
-func (building *Building) Byte() []byte {
-	b, _ := json.Marshal(building)
-	return b
 }

@@ -20,11 +20,10 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 
 	room := things.NewRoom("room-001", things.DefaultLocation, "default")
 	room.AddDevice("device-1")
-	room.Byte() // säkerställ att den serialiseras som publisher gjorde
 
 	r := &ThingsReaderMock{
 		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
-			return QueryResult{Data: [][]byte{room.Byte()}}, nil
+			return QueryResult{Data: [][]byte{marshalThing(room)}}, nil
 		},
 	}
 	stores := map[string]things.Thing{}

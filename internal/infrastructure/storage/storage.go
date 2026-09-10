@@ -152,13 +152,18 @@ func (db database) AddThing(ctx context.Context, t things.Thing) error {
 	}
 	defer conn.Release()
 
+	data, err := json.Marshal(t)
+	if err != nil {
+		return fmt.Errorf("could not marshal thing: %w", err)
+	}
+
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
 		"id":         t.ID(),
 		"thing_type": t.Type(),
 		"lon":        lon,
 		"lat":        lat,
-		"data":       string(t.Byte()),
+		"data":       string(data),
 		"tenant":     t.Tenant(),
 	}
 
@@ -187,13 +192,18 @@ func (db database) UpdateThing(ctx context.Context, t things.Thing) error {
 	}
 	defer conn.Release()
 
+	data, err := json.Marshal(t)
+	if err != nil {
+		return fmt.Errorf("could not marshal thing: %w", err)
+	}
+
 	lat, lon := t.LatLon()
 	args := pgx.NamedArgs{
 		"id":     t.ID(),
 		"lon":    lon,
 		"lat":    lat,
 		"tenant": t.Tenant(),
-		"data":   string(t.Byte()),
+		"data":   string(data),
 	}
 
 	update := `UPDATE things SET location=point(@lon,@lat), data=@data, tenant=@tenant, modified_on=CURRENT_TIMESTAMP WHERE id=@id;`

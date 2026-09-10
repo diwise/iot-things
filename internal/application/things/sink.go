@@ -2,7 +2,6 @@ package things
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 )
 
 type Sink struct {
-	thingImpl
+	Base
 	functions.LevelConfig
 
 	AutoCfg *bool `json:"_autocfg"`
@@ -24,10 +23,10 @@ type Sink struct {
 }
 
 func NewSink(id string, l Location, tenant string) Thing {
-	thing := newThingImpl(id, "Sink", l, tenant)
+	thing := newBase(id, "Sink", l, tenant)
 	return &Sink{
-		thingImpl: thing,
-		Sw:        functions.NewStopwatch(),
+		Base: thing,
+		Sw:   functions.NewStopwatch(),
 	}
 }
 
@@ -84,11 +83,6 @@ func (s *Sink) handle(m Measurement, onchange func(m ValueProvider) error) error
 	}
 
 	return errors.Join(errs...)
-}
-
-func (l *Sink) Byte() []byte {
-	b, _ := json.Marshal(l)
-	return b
 }
 
 func handleHumidity(s *Sink, m Measurement, onchange func(m ValueProvider) error) (*float64, error) {
