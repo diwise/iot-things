@@ -41,48 +41,42 @@ func (d *Sink) Handle(ctx context.Context, m []Measurement, onchange func(m Valu
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, d.handle(v, onchange))
+		errs = append(errs, d.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (s *Sink) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	var errs []error
+func (s *Sink) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("sink", m); ok {
+		return s.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
 
-	if _, err := handleTemperature(s, m, onchange); err != nil {
-		errs = append(errs, err)
+func (s *Sink) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	var err error
+
+	switch input {
+	case "temperature":
+		_, err = handleTemperature(s, m, onchange)
+	case "presence":
+		_, err = handlePresence(s, m, onchange)
+	case "power":
+		_, err = handlePower(s, m, onchange)
+	case "energy":
+		_, err = handleEnergy(s, m, onchange)
+	case "distance":
+		_, err = handleDistance(s, m, onchange)
+	case "digitalInput":
+		_, err = handleDigitalInput(s, m, onchange)
+	case "illuminance":
+		_, err = handleIlluminance(s, m, onchange)
+	case "humidity":
+		_, err = handleHumidity(s, m, onchange)
 	}
 
-	if _, err := handlePresence(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handlePower(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handleEnergy(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handleDistance(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handleDigitalInput(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handleIlluminance(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	if _, err := handleHumidity(s, m, onchange); err != nil {
-		errs = append(errs, err)
-	}
-
-	return errors.Join(errs...)
+	return err
 }
 
 func handleHumidity(s *Sink, m Measurement, onchange func(m ValueProvider) error) (*float64, error) {

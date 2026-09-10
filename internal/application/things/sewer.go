@@ -53,14 +53,19 @@ func (s *Sewer) Handle(ctx context.Context, m []Measurement, onchange func(m Val
 }
 
 func (s *Sewer) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
-	if hasDistance(&m) {
-		return s.handleDistance(ctx, m, onchange)
+	if input, ok := resolveInput("sewer", m); ok {
+		return s.Apply(ctx, input, m, onchange)
 	}
+	return nil
+}
 
-	if hasDigitalInput(&m) {
+func (s *Sewer) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	switch input {
+	case "distance":
+		return s.handleDistance(ctx, m, onchange)
+	case "digitalInput":
 		return s.handleDigitalInput(ctx, m, onchange)
 	}
-
 	return nil
 }
 

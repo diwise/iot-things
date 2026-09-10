@@ -38,13 +38,24 @@ func (ps *PumpingStation) Handle(ctx context.Context, m []Measurement, onchange 
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, ps.handle(v, onchange))
+		errs = append(errs, ps.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (ps *PumpingStation) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (ps *PumpingStation) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("pumpingstation", m); ok {
+		return ps.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (ps *PumpingStation) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	if input != "digitalInput" {
+		return nil
+	}
+
 	if !hasDigitalInput(&m) {
 		return nil
 	}

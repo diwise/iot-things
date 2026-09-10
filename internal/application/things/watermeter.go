@@ -32,13 +32,21 @@ func (wm *Watermeter) Handle(ctx context.Context, m []Measurement, onchange func
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, wm.handle(v, onchange))
+		errs = append(errs, wm.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (wm *Watermeter) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (wm *Watermeter) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	switch input {
+	case "volume", "leakage", "backflow", "fraud":
+		return wm.handle(ctx, m, onchange)
+	}
+	return nil
+}
+
+func (wm *Watermeter) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
 	if !hasWaterMeter(&m) {
 		return nil
 	}
@@ -64,8 +72,8 @@ func (wm *Watermeter) handle(m Measurement, onchange func(m ValueProvider) error
 	}
 
 	if changed {
-		wm := NewWaterMeter(wm.ID(), m.ID, wm.CumulativeVolume, wm.Leakage, wm.Backflow, wm.Fraud, m.Timestamp)
-		return onchange(wm)
+		wmValue := NewWaterMeter(wm.ID(), m.ID, wm.CumulativeVolume, wm.Leakage, wm.Backflow, wm.Fraud, m.Timestamp)
+		return onchange(wmValue)
 	}
 
 	return nil

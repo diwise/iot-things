@@ -21,13 +21,24 @@ func (l *Lifebuoy) Handle(ctx context.Context, m []Measurement, onchange func(m 
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, l.handle(v, onchange))
+		errs = append(errs, l.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (l *Lifebuoy) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (l *Lifebuoy) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("lifebuoy", m); ok {
+		return l.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (l *Lifebuoy) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	if input != "presence" {
+		return nil
+	}
+
 	if !(hasDigitalInput(&m) || hasPresence(&m)) {
 		return nil
 	}

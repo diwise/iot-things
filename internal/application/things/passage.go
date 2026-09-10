@@ -44,13 +44,24 @@ func (p *Passage) Handle(ctx context.Context, m []Measurement, onchange func(m V
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, p.handle(v, onchange))
+		errs = append(errs, p.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (p *Passage) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (p *Passage) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("passage", m); ok {
+		return p.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (p *Passage) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	if input != "digitalInput" {
+		return nil
+	}
+
 	if !hasDigitalInput(&m) {
 		return nil
 	}

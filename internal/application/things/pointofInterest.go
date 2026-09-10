@@ -30,13 +30,24 @@ func (poi *PointOfInterest) Handle(ctx context.Context, m []Measurement, onchang
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, poi.handle(v, onchange))
+		errs = append(errs, poi.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (poi *PointOfInterest) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (poi *PointOfInterest) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("pointofinterest", m); ok {
+		return poi.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (poi *PointOfInterest) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	if input != "temperature" {
+		return nil
+	}
+
 	if !hasTemperature(&m) {
 		return nil
 	}

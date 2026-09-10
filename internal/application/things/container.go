@@ -37,17 +37,30 @@ func (c *Container) Handle(ctx context.Context, m []Measurement, onchange func(m
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, c.handle(v, onchange))
+		errs = append(errs, c.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (c *Container) handle(m Measurement, onchange func(m ValueProvider) error) error {
+func (c *Container) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("container", m); ok {
+		return c.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (c *Container) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	if input != "distance" {
+		return nil
+	}
 	if !hasDistance(&m) {
 		return nil
 	}
+	return c.applyDistance(m, onchange)
+}
 
+func (c *Container) applyDistance(m Measurement, onchange func(m ValueProvider) error) error {
 	level, err := functions.NewLevel(c.Angle, c.MaxDistance, c.MaxLevel, c.MeanLevel, c.Offset, c.CurrentLevel)
 	if err != nil {
 		return err

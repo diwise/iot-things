@@ -15,6 +15,9 @@ type Thing interface {
 	Tenant() string
 	LatLon() (float64, float64)
 	Handle(ctx context.Context, m []Measurement, onchange func(m ValueProvider) error) error
+	// Apply kör typens logik för en namngiven ingång. Ingången kommer från en
+	// bindning (eller, i bryggläget, från typens ingångstabell).
+	Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error
 	Refs() []Device
 
 	SetLastObserved(measurements []Measurement)

@@ -24,29 +24,30 @@ func (r *Room) Handle(ctx context.Context, m []Measurement, onchange func(m Valu
 	errs := []error{}
 
 	for _, v := range m {
-		errs = append(errs, r.handle(v, onchange))
+		errs = append(errs, r.handle(ctx, v, onchange))
 	}
 
 	return errors.Join(errs...)
 }
 
-func (r *Room) handle(m Measurement, onchange func(m ValueProvider) error) error {
-	if hasTemperature(&m) {
+func (r *Room) handle(ctx context.Context, m Measurement, onchange func(m ValueProvider) error) error {
+	if input, ok := resolveInput("room", m); ok {
+		return r.Apply(ctx, input, m, onchange)
+	}
+	return nil
+}
+
+func (r *Room) Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error {
+	switch input {
+	case "temperature":
 		return r.handleTemperature(m, onchange)
-	}
-
-	if hasHumidity(&m) {
+	case "humidity":
 		return r.handleHumidity(m, onchange)
-	}
-
-	if hasIlluminance(&m) {
+	case "illuminance":
 		return r.handleIlluminance(m, onchange)
-	}
-
-	if hasAirQuality(&m) {
+	case "co2":
 		return r.handleAirQuality(m, onchange)
 	}
-
 	return nil
 }
 
