@@ -2,6 +2,7 @@ package things
 
 import (
 	"testing"
+	"time"
 
 	"github.com/matryer/is"
 )
@@ -48,3 +49,52 @@ func TestHasChangedMeasurement(t *testing.T) {
 }
 
 func boolPtrT2(v bool) *bool { return &v }
+
+// Fynd 1: ändringskontrollen måste jämföra aggregerat värde mot aggregerat
+// värde. Här rapporterar sensor A exakt det sparade medelvärdet (25); det nya
+// medelvärdet blir ändå 27.5 och måste publiceras.
+func TestAggregateChangeDetection(t *testing.T) {
+	is := is.New(t)
+
+	room := NewRoom("room", DefaultLocation, "default").(*Room)
+	room.AddDevice("device-a")
+	room.AddDevice("device-b")
+
+	// device-b har redan ett cachat värde.
+	room.RefDevices[1].Measurements = map[string]Measurement{
+		"device-b/3303/5700": {ID: "device-b/3303/5700", Urn: TemperatureURN, Value: floatPtr(30)},
+	}
+	room.Temperature = Measurement{Value: floatPtr(25)} // sparat medelvärde
+
+	reported := 25.0
+	current := Measurement{ID: "device-a/3303/5700", Urn: TemperatureURN, Value: &reported, Timestamp: time.Now()}
+
+	var emitted []Value
+	is.NoErr(room.handleTemperature(current, collectValues(&emitted)))
+
+	is.Equal(len(emitted), 1)
+	is.Equal(*room.Temperature.Value, 27.5)
+}
+
+// Samma sak för skalära fält (fuktighet är float64).
+func TestAggregateChangeDetectionScalar(t *testing.T) {
+	is := is.New(t)
+
+	room := NewRoom("room", DefaultLocation, "default").(*Room)
+	room.AddDevice("device-a")
+	room.AddDevice("device-b")
+
+	room.RefDevices[1].Measurements = map[string]Measurement{
+		"device-b/3304/5700": {ID: "device-b/3304/5700", Urn: HumidityURN, Value: floatPtr(30)},
+	}
+	room.Humidity = 25 // sparat medelvärde
+
+	reported := 25.0
+	current := Measurement{ID: "device-a/3304/5700", Urn: HumidityURN, Value: &reported, Timestamp: time.Now()}
+
+	var emitted []Value
+	is.NoErr(room.handleHumidity(current, collectValues(&emitted)))
+
+	is.Equal(len(emitted), 1)
+	is.Equal(room.Humidity, 27.5)
+}

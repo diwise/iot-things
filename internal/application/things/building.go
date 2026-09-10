@@ -53,17 +53,16 @@ func (building *Building) handle(m Measurement, onchange func(m ValueProvider) e
 	}
 
 	if hasTemperature(&m) {
-		if !hasChanged(building.Temperature, *m.Value) {
+		// Jämför det nya aggregerade värdet mot det sparade medelvärdet.
+		avgTemp := avg(building, m, *m.Value, hasTemperature)
+		if !hasChanged(building.Temperature, avgTemp) {
 			return nil
 		}
 
 		temp := newTemperature(building.ID(), m.ID, *m.Value, m.Timestamp)
-		err := onchange(temp)
-		if err != nil {
+		if err := onchange(temp); err != nil {
 			return err
 		}
-
-		avgTemp := avg(building, m, *m.Value, hasTemperature)
 
 		building.Temperature = Measurement{
 			Value:     &avgTemp,

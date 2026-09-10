@@ -58,17 +58,19 @@ func (r *Room) handleAirQuality(m Measurement, onchange func(m ValueProvider) er
 		return nil
 	}
 
-	if !hasChanged(r.CO2, *m.Value) {
+	// Jämför det nya aggregerade värdet mot det sparade, inte mot en enskild
+	// sensors värde.
+	newCO2 := avg(r, m, *m.Value, hasAirQuality)
+	if !hasChanged(r.CO2, newCO2) {
 		return nil
 	}
 
 	air := NewAirQuality(r.ID(), m.ID, *m.Value, m.Timestamp)
-	err := onchange(air)
-	if err != nil {
+	if err := onchange(air); err != nil {
 		return err
 	}
 
-	r.CO2 = avg(r, m, *m.Value, hasAirQuality)
+	r.CO2 = newCO2
 
 	return nil
 }
@@ -81,17 +83,17 @@ func (r *Room) handleIlluminance(m Measurement, onchange func(m ValueProvider) e
 		return nil
 	}
 
-	if !hasChanged(r.Illuminance, *m.Value) {
+	newIlluminance := avg(r, m, *m.Value, hasIlluminance)
+	if !hasChanged(r.Illuminance, newIlluminance) {
 		return nil
 	}
 
 	ill := NewIlluminance(r.ID(), m.ID, *m.Value, m.Timestamp)
-	err := onchange(ill)
-	if err != nil {
+	if err := onchange(ill); err != nil {
 		return err
 	}
 
-	r.Illuminance = avg(r, m, *m.Value, hasIlluminance)
+	r.Illuminance = newIlluminance
 
 	return nil
 }
@@ -104,17 +106,17 @@ func (r *Room) handleHumidity(m Measurement, onchange func(m ValueProvider) erro
 		return nil
 	}
 
-	if !hasChanged(r.Humidity, *m.Value) {
+	newHumidity := avg(r, m, *m.Value, hasHumidity)
+	if !hasChanged(r.Humidity, newHumidity) {
 		return nil
 	}
 
 	hum := NewHumidity(r.ID(), m.ID, *m.Value, m.Timestamp)
-	err := onchange(hum)
-	if err != nil {
+	if err := onchange(hum); err != nil {
 		return err
 	}
 
-	r.Humidity = avg(r, m, *m.Value, hasHumidity)
+	r.Humidity = newHumidity
 
 	return nil
 }
@@ -127,17 +129,18 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 		return nil
 	}
 
-	if !hasChanged(r.Temperature, *m.Value) {
+	// Beräkna det nya aggregerade värdet först och jämför med det sparade
+	// medelvärdet. Att jämföra med en enskild sensors värde gav falskt
+	// "oförändrat" när sensorns värde råkade sammanfalla med medelvärdet.
+	avgTemp := avg(r, m, *m.Value, hasTemperature)
+	if !hasChanged(r.Temperature, avgTemp) {
 		return nil
 	}
 
 	temp := newTemperatureFromMeasurement(r.ID(), m)
-	err := onchange(temp)
-	if err != nil {
+	if err := onchange(temp); err != nil {
 		return err
 	}
-
-	avgTemp := avg(r, m, *m.Value, hasTemperature)
 
 	r.Temperature = Measurement{
 		Value:     &avgTemp,
