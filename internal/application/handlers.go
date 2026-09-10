@@ -22,6 +22,8 @@ import (
 
 var tracer = otel.Tracer("iot-things")
 
+var errMissingDeviceID = errors.New("no deviceID found in senml package")
+
 func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMessageHandler {
 	log := logging.GetFromContext(c)
 
@@ -35,7 +37,7 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 		log.Error("failed to create otel total measurements counter", "err", err.Error())
 	}
 
-	return func(ctx context.Context, topicMessage messaging.IncomingTopicMessage, logger *slog.Logger) {
+	return func(ctx context.Context, topicMessage messaging.IncomingTopicMessage, logger *slog.Logger) error {
 		var err error
 
 		logger = logger.With("topic_name", topicMessage.TopicName())
@@ -52,18 +54,18 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 		err = json.Unmarshal(topicMessage.Body(), &msg)
 		if err != nil {
 			log.Error("could not unmarshal message", "err", err.Error())
-			return
+			return messaging.Permanent(err)
 		}
 
-		if msg.Pack.Validate() != nil {
-			log.Error("message contains an invalid package")
-			return
+		if err = msg.Pack.Validate(); err != nil {
+			log.Error("message contains an invalid package", "err", err.Error())
+			return messaging.Permanent(err)
 		}
 
 		deviceID, ok := extractDeviceID(msg.Pack)
 		if !ok {
 			log.Warn("no deviceID found in package")
-			return
+			return messaging.Permanent(errMissingDeviceID)
 		}
 
 		logger = logger.With("device_id", deviceID)
@@ -71,19 +73,22 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 		measurements, err := convPack(ctx, msg.Pack)
 		if err != nil {
 			log.Error("could not convert pack to measurements", "err", err.Error())
-			return
+			return messaging.Permanent(err)
 		}
 
 		if len(measurements) == 0 {
 			log.Warn("no measurements found in pack")
-			return
+			return nil
 		}
 
 		totalCounter.Add(ctx, 1)
 
 		ctx = logging.NewContextWithLogger(ctx, logger)
 
+		// Bevarad semantik: intern hantering är fire-and-forget och ackas.
+		// Klassificering till Temporary/Permanent kräver verifierad idempotens.
 		app.HandleMeasurements(ctx, measurements)
+		return nil
 	}
 }
 

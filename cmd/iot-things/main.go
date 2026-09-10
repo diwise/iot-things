@@ -113,7 +113,12 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 				return fmt.Errorf("could not configure storage: %w", err)
 			}
 
-			msgCtx, err = messaging.Initialize(ctx, messaging.LoadConfiguration(ctx, serviceName, log))
+			messengerConfig, err := messaging.LoadConfiguration(ctx, serviceName, log)
+			if err != nil {
+				return fmt.Errorf("messaging configuration error: %w", err)
+			}
+
+			msgCtx, err = messaging.Initialize(ctx, messengerConfig)
 			if err != nil {
 				s.Close()
 				s = nil
@@ -159,7 +164,10 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			app.Start(ctx)
 
 			log.Debug("starting messaging...")
-			msgCtx.Start()
+			err = msgCtx.Start(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to start messenger: %w", err)
+			}
 
 			log.Debug("register topic handler...")
 			tracked := &trackingMessenger{MsgContext: msgCtx, tracker: owned.tracker}
@@ -212,17 +220,18 @@ func readinessProbes() map[string]k8shandlers.ServiceProber {
 const shutdownHandlerDrainTimeout = 10 * time.Second
 
 // handlerTracker tracks admitted topic-message deliveries so shutdown
-// can await them. The messaging library acknowledges on dispatch and its
-// Close only joins the dispatch loop, never the handler goroutines.
+// can await them. The messaging library acknowledges after the handler
+// completes; the tracker additionally lets shutdown await admitted
+// handlers within budget before stopping the publisher and storage.
 type handlerTracker struct {
 	wg sync.WaitGroup
 }
 
 func (t *handlerTracker) track(next messaging.TopicMessageHandler) messaging.TopicMessageHandler {
-	return func(ctx context.Context, msg messaging.IncomingTopicMessage, log *slog.Logger) {
+	return func(ctx context.Context, msg messaging.IncomingTopicMessage, log *slog.Logger) error {
 		t.wg.Add(1)
 		defer t.wg.Done()
-		next(ctx, msg, log)
+		return next(ctx, msg, log)
 	}
 }
 
@@ -255,8 +264,8 @@ func (m *trackingMessenger) RegisterTopicMessageHandler(routingKey string, h mes
 }
 
 // ownedResources tracks the resources created during OnInit so shutdown
-// is nil-safe, ordered and idempotent. The underlying messenger Close is
-// not safe to call twice, hence the sync.Once guard.
+// is nil-safe, ordered and idempotent via the sync.Once guard, so the
+// messenger is shut down at most once.
 //
 // Shutdown order: stop inflow (messenger), await admitted handlers
 // within budget, stop and join the publisher, then close storage. HTTP
@@ -270,10 +279,12 @@ type ownedResources struct {
 	storage   interface{ Close() }
 }
 
-func (o *ownedResources) close(context.Context) {
+func (o *ownedResources) close(ctx context.Context) {
 	o.once.Do(func() {
 		if o.messenger != nil {
-			o.messenger.Close()
+			if err := o.messenger.Shutdown(ctx); err != nil {
+				logging.GetFromContext(ctx).Debug("failed to shut down messenger", "err", err.Error())
+			}
 		}
 		if o.tracker != nil {
 			o.tracker.wait(shutdownHandlerDrainTimeout)
