@@ -3,8 +3,6 @@ package application
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -13,6 +11,7 @@ import (
 	"github.com/diwise/iot-things/internal/application/things"
 	"github.com/diwise/messaging-golang/pkg/messaging"
 	"github.com/diwise/senml"
+	diwisepkg "github.com/diwise/senml/diwise"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/tracing"
@@ -21,8 +20,6 @@ import (
 )
 
 var tracer = otel.Tracer("iot-things")
-
-var errMissingDeviceID = errors.New("no deviceID found in senml package")
 
 func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMessageHandler {
 	log := logging.GetFromContext(c)
@@ -57,24 +54,18 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 			return messaging.Permanent(err)
 		}
 
-		if err = msg.Pack.Validate(); err != nil {
+		// Referenstid för relativa SenML-tider: mottagningstid.
+		parsed, err := diwisepkg.Parse(msg.Pack, time.Now().UTC())
+		if err != nil {
 			log.Error("message contains an invalid package", "err", err.Error())
 			return messaging.Permanent(err)
 		}
 
-		deviceID, ok := extractDeviceID(msg.Pack)
-		if !ok {
-			log.Warn("no deviceID found in package")
-			return messaging.Permanent(errMissingDeviceID)
-		}
+		deviceID := parsed.DeviceID()
 
 		logger = logger.With("device_id", deviceID)
 
-		measurements, err := convPack(ctx, msg.Pack)
-		if err != nil {
-			log.Error("could not convert pack to measurements", "err", err.Error())
-			return messaging.Permanent(err)
-		}
+		measurements := convPack(parsed)
 
 		if len(measurements) == 0 {
 			log.Warn("no measurements found in pack")
@@ -137,71 +128,60 @@ func removeInternalState(t things.Thing) map[string]any {
 	return m
 }
 
-func convPack(ctx context.Context, pack senml.Pack) ([]things.Measurement, error) {
-	log := logging.GetFromContext(ctx)
-
-	header, ok := pack.GetRecord(senml.FindByName("0"))
-	if !ok {
-		return nil, fmt.Errorf("could not find header record (0)")
-	}
-
-	var source *string
-	if src, ok := pack.GetRecord(senml.FindByName("source")); ok {
-		if src.StringValue != "" {
-			vs := src.StringValue
-			source = &vs
-		}
-	}
-
-	urn := header.StringValue
+// convPack konverterar varje objektobservation till mätningar med
+// observationens egen URN och effektiva metadata. ID är det fullständiga
+// recordnamnet (unikt per enhet/objekt/kanal/resurs); resursuppslag sker
+// alltid inom rätt observation så likadana resursnummer från olika objekt
+// aldrig sammanblandas.
+func convPack(parsed *diwisepkg.Pack) []things.Measurement {
 	measurements := make([]things.Measurement, 0)
 
-	var errs []error
+	for _, o := range parsed.Objects() {
+		urn := o.URN()
+		meta := o.Metadata()
 
-	for _, r := range pack {
-		n, err := strconv.Atoi(r.Name)
-		if err != nil || n == 0 {
-			continue
+		var source *string
+		if meta.Source != "" {
+			vs := meta.Source
+			source = &vs
 		}
 
-		rec, ok := pack.GetRecord(senml.FindByName(r.Name))
-		if !ok {
-			log.Error("could not find record", "name", r.Name)
-			continue
+		for _, r := range o.Resources() {
+			name := r.Name[strings.LastIndex(r.Name, "/")+1:]
+			n, err := strconv.Atoi(name)
+			if err != nil || n == 0 {
+				continue
+			}
+
+			if r.Value == nil && r.BoolValue == nil {
+				continue
+			}
+
+			ts, _ := r.GetTime()
+
+			var vs *string
+			if r.StringValue != "" {
+				v := r.StringValue
+				vs = &v
+			}
+
+			m := things.Measurement{
+				ID:          r.Name,
+				Timestamp:   ts.UTC(),
+				Urn:         urn,
+				BoolValue:   r.BoolValue,
+				Value:       r.Value,
+				StringValue: vs,
+				Unit:        r.Unit,
+				Source:      source,
+				Ref:         deviceID(r.Name),
+			}
+
+			measurements = append(measurements, m)
 		}
-
-		if rec.Value == nil && rec.BoolValue == nil {
-			continue
-		}
-
-		id := rec.Name
-		ts, _ := rec.GetTime()
-
-		var vs *string
-		if rec.StringValue != "" {
-			vs = &rec.StringValue
-		}
-
-		if id == "" || urn == "" {
-			continue
-		}
-
-		m := things.Measurement{
-			ID:          id,
-			Timestamp:   ts.UTC(),
-			Urn:         urn,
-			BoolValue:   rec.BoolValue,
-			Value:       rec.Value,
-			StringValue: vs,
-			Unit:        rec.Unit,
-			Source:      source,
-			Ref:         deviceID(id),
-		}
-
-		measurements = append(measurements, m)
 	}
 
-	return measurements, errors.Join(errs...)
+	return measurements
 }
 
 func deviceID(id string) string {
@@ -210,12 +190,4 @@ func deviceID(id string) string {
 		return parts[0]
 	}
 	return id
-}
-
-func extractDeviceID(pack senml.Pack) (string, bool) {
-	r, ok := pack.GetRecord(senml.FindByName("0"))
-	if !ok {
-		return "", false
-	}
-	return strings.Split(r.Name, "/")[0], true
 }

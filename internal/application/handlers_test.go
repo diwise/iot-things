@@ -50,6 +50,29 @@ func TestRoomTemperatureWithSource(t *testing.T) {
 	is.Equal(*room.Temperature.Value, 21.0)
 }
 
+// Fas D: ett pack med temperatur + fukt från samma enhet ger båda
+// mätningarna med varsin URN – ingen sammanblandning, inget bortfall.
+func TestRoomMultiObservation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	is := is.New(t)
+
+	r := things.NewRoom("room-001", things.DefaultLocation, "default")
+	r.AddDevice("c5a2ae17c239")
+
+	s := map[string]things.Thing{}
+	v := map[string][]things.Value{}
+
+	body := `{"pack":[{"bn":"c5a2ae17c239/3303/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3303"},{"n":"5700","u":"Cel","v":21},{"bn":"c5a2ae17c239/3304/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3304"},{"n":"5700","u":"%RH","v":55},{"bn":"c5a2ae17c239/","n":"tenant","vs":"default"}],"timestamp":"2024-10-28T14:13:54.532480028Z"}`
+
+	NewMeasurementsHandler(ctx, appMock(ctx, r, s, v))(ctx, msgMock(body), slog.Default())
+
+	room := s[r.ID()].(*things.Room)
+	is.Equal(*room.Temperature.Value, 21.0)
+	is.Equal(room.Humidity, 55.0)
+}
+
 func TestPointOfInterest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -245,8 +268,8 @@ func msgMock(body string) *messaging.IncomingTopicMessageMock {
 }
 
 var (
-	temperatureWithSourceMsg = `{"pack":[{"bn":"c5a2ae17c239/3303/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3303"},{"n":"5700","u":"Cel","v":21},{"u":"lat","v":0},{"u":"lon","v":0},{"n":"tenant","vs":"default"},{"n":"source","vs":"www.example.com"}],"timestamp":"2024-10-28T14:13:54.532480028Z"}`
-	temperatureMsg           = `{"pack":[{"bn":"c5a2ae17c239/3303/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3303"},{"n":"5700","u":"Cel","v":21},{"u":"lat","v":0},{"u":"lon","v":0},{"n":"tenant","vs":"default"}],"timestamp":"2024-10-28T14:13:54.532480028Z"}`
-	distanceMsg              = `{"pack":[{"bn":"9fb5801ebafc/3330/","bt":1730124849,"n":"0","vs":"urn:oma:lwm2m:ext:3330"},{"n":"5700","u":"m","v":2.51},{"n":"5701","vs":"metre"},{"u":"lat","v":62},{"u":"lon","v":17},{"n":"tenant","vs":"default"}],"timestamp":"2024-10-28T14:14:09.424249918Z"}`
-	digitalInputMsg          = `{"pack":[{"bn":"ce3acc09ab62/3200/","bt":%d,"n":"0","vs":"urn:oma:lwm2m:ext:3200"},{"n":"5500","vb":%s},{"n":"5501","v":5},{"u":"lat","v":0},{"u":"lon","v":0},{"n":"tenant","vs":"default"}],"timestamp":"2024-10-29T01:40:34.003076718Z"}`
+	temperatureWithSourceMsg = `{"pack":[{"bn":"c5a2ae17c239/3303/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3303"},{"n":"5700","u":"Cel","v":21},{"bn":"c5a2ae17c239/","n":"lat","u":"lat","v":0},{"bn":"c5a2ae17c239/","n":"lon","u":"lon","v":0},{"bn":"c5a2ae17c239/","n":"tenant","vs":"default"},{"bn":"c5a2ae17c239/","n":"source","vs":"www.example.com"}],"timestamp":"2024-10-28T14:13:54.532480028Z"}`
+	temperatureMsg           = `{"pack":[{"bn":"c5a2ae17c239/3303/","bt":1730124834,"n":"0","vs":"urn:oma:lwm2m:ext:3303"},{"n":"5700","u":"Cel","v":21},{"bn":"c5a2ae17c239/","n":"lat","u":"lat","v":0},{"bn":"c5a2ae17c239/","n":"lon","u":"lon","v":0},{"bn":"c5a2ae17c239/","n":"tenant","vs":"default"}],"timestamp":"2024-10-28T14:13:54.532480028Z"}`
+	distanceMsg              = `{"pack":[{"bn":"9fb5801ebafc/3330/","bt":1730124849,"n":"0","vs":"urn:oma:lwm2m:ext:3330"},{"n":"5700","u":"m","v":2.51},{"n":"5701","vs":"metre"},{"bn":"9fb5801ebafc/","n":"lat","u":"lat","v":62},{"bn":"9fb5801ebafc/","n":"lon","u":"lon","v":17},{"bn":"9fb5801ebafc/","n":"tenant","vs":"default"}],"timestamp":"2024-10-28T14:14:09.424249918Z"}`
+	digitalInputMsg          = `{"pack":[{"bn":"ce3acc09ab62/3200/","bt":%d,"n":"0","vs":"urn:oma:lwm2m:ext:3200"},{"n":"5500","vb":%s},{"n":"5501","v":5},{"bn":"ce3acc09ab62/","n":"lat","u":"lat","v":0},{"bn":"ce3acc09ab62/","n":"lon","u":"lon","v":0},{"bn":"ce3acc09ab62/","n":"tenant","vs":"default"}],"timestamp":"2024-10-29T01:40:34.003076718Z"}`
 )
