@@ -19,8 +19,13 @@ type Thing interface {
 	// bindning (eller, i bryggläget, från typens ingångstabell).
 	Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error
 	Refs() []Device
+	Bindings() []Binding
+	SignalCache() map[string]Measurement
 
 	SetLastObserved(measurements []Measurement)
+	AddBinding(b Binding)
+	// AddDevice är en bekvämlighet: binder enheten till alla ingångar för
+	// saktypen (samma beteende som det tidigare refDevices).
 	AddDevice(deviceID string)
 	AddTag(tag string)
 
@@ -54,15 +59,64 @@ type Base struct {
 	Description     string        `json:"description,omitempty"`
 	Location        Location      `json:"location"`
 	Area            *LineSegments `json:"area,omitempty"`
-	RefDevices      []Device      `json:"refDevices,omitempty"`
 	Tags            []string      `json:"tags,omitempty"`
 	Tenant_         string        `json:"tenant"`
 	ObservedAt      time.Time     `json:"observedAt"`
 	ValidURN        []string      `json:"validURN,omitempty"`
 
+	// Bindings_ är den enda kopplingen signal → ingång. refDevices härleds ur
+	// bindningarna för utdata och lagras inte.
+	Bindings_ []Binding `json:"bindings,omitempty"`
+
+	// Signals_ cachar senaste mätning per signal (fullt recordnamn) för
+	// aggregering. Internt fält (strippas före publicering).
+	Signals_ map[string]Measurement `json:"_signals,omitempty"`
+
 	// LastMessageID_ spårar senast behandlade rapport. Internt fält (strippas
 	// före publicering) och används för idempotens vid återleverans.
 	LastMessageID_ string `json:"_lastMessageId,omitempty"`
+}
+
+// Signal är den fullständiga signalidentiteten: enhet, kanal, objekt och
+// resurs. Kanal skiljer flera sensorer av samma typ på samma enhet.
+type Signal struct {
+	DeviceID string
+	Channel  string
+	Object   string
+	Resource string
+}
+
+// Binding kopplar en specifik signal till en namngiven ingång.
+type Binding struct {
+	DeviceID string `json:"deviceID"`
+	Channel  string `json:"channel,omitempty"` // tom = alla kanaler
+	Object   string `json:"object"`
+	Resource string `json:"resource"`
+	Input    string `json:"input"`
+}
+
+// SignalOf härleder signalidentiteten ur en mätning. Formatet är
+// <device>[/<kanal>...]/<objekt>/<resurs>.
+func SignalOf(m Measurement) Signal {
+	parts := strings.Split(m.ID, "/")
+	s := Signal{DeviceID: parts[0], Object: m.Urn}
+	if len(parts) >= 2 {
+		s.Resource = parts[len(parts)-1]
+	}
+	if len(parts) >= 3 {
+		s.Channel = strings.Join(parts[1:len(parts)-2], "/")
+	}
+	return s
+}
+
+// Matches rapporterar om en mätning hör till bindningens signal. En tom kanal
+// matchar alla kanaler.
+func (b Binding) Matches(m Measurement) bool {
+	s := SignalOf(m)
+	if b.DeviceID != s.DeviceID || b.Object != m.Urn || b.Resource != s.Resource {
+		return false
+	}
+	return b.Channel == "" || b.Channel == s.Channel
 }
 
 type Point []float64     // [x, y]
@@ -93,16 +147,39 @@ func (t *Base) Tenant() string {
 func (t *Base) LatLon() (float64, float64) {
 	return t.Location.Latitude, t.Location.Longitude
 }
-func (t *Base) AddDevice(deviceID string) {
-	exists := slices.ContainsFunc(t.RefDevices, func(device Device) bool {
-		return device.DeviceID == deviceID
-	})
-	if !exists {
-		t.RefDevices = append(t.RefDevices, Device{DeviceID: deviceID})
+func (t *Base) AddBinding(b Binding) {
+	if !slices.Contains(t.Bindings_, b) {
+		t.Bindings_ = append(t.Bindings_, b)
 	}
 }
+
+func (t *Base) AddDevice(deviceID string) {
+	for _, in := range InputsFor(t.Type_) {
+		t.AddBinding(Binding{DeviceID: deviceID, Object: in.Object, Resource: in.Resource, Input: in.Name})
+	}
+}
+
+func (t *Base) Bindings() []Binding {
+	return t.Bindings_
+}
+
+func (t *Base) SignalCache() map[string]Measurement {
+	return t.Signals_
+}
+
+// Refs härleder de enheter som saken är bunden till. Används endast för
+// utdata (refDevices-fältet) eftersom refDevices inte längre lagras.
 func (t *Base) Refs() []Device {
-	return t.RefDevices
+	seen := make(map[string]struct{})
+	devices := make([]Device, 0, len(t.Bindings_))
+	for _, b := range t.Bindings_ {
+		if _, ok := seen[b.DeviceID]; ok {
+			continue
+		}
+		seen[b.DeviceID] = struct{}{}
+		devices = append(devices, Device{DeviceID: b.DeviceID})
+	}
+	return devices
 }
 
 func (t *Base) LastMessageID() string {
@@ -124,25 +201,23 @@ func (c *Base) SetLastObserved(measurements []Measurement) {
 	lastObserved := c.ObservedAt
 
 	for _, m := range measurements {
-		if slices.Contains(c.ValidURN, m.Urn) {
-			if m.Timestamp.After(lastObserved) {
-				lastObserved = m.Timestamp
-			}
+		if !c.hasBindingFor(m) {
+			continue
+		}
 
-			for i := range c.RefDevices {
-				if c.RefDevices[i].DeviceID == m.DeviceID() {
-					if c.RefDevices[i].Measurements == nil {
-						c.RefDevices[i].Measurements = make(map[string]Measurement)
-					}
+		if m.Timestamp.After(lastObserved) {
+			lastObserved = m.Timestamp
+		}
 
-					// En sen anländande (äldre) mätning får inte skriva
-					// över en nyare i cachen. Lika tidsstämpel får uppdatera.
-					existing, ok := c.RefDevices[i].Measurements[m.ID]
-					if !ok || !m.Timestamp.Before(existing.Timestamp) {
-						c.RefDevices[i].Measurements[m.ID] = m
-					}
-				}
-			}
+		if c.Signals_ == nil {
+			c.Signals_ = make(map[string]Measurement)
+		}
+
+		// En sen anländande (äldre) mätning får inte skriva över en nyare i
+		// cachen. Lika tidsstämpel får uppdatera.
+		existing, ok := c.Signals_[m.ID]
+		if !ok || !m.Timestamp.Before(existing.Timestamp) {
+			c.Signals_[m.ID] = m
 		}
 	}
 
@@ -151,6 +226,15 @@ func (c *Base) SetLastObserved(measurements []Measurement) {
 	}
 
 	c.ObservedAt = lastObserved
+}
+
+func (c *Base) hasBindingFor(m Measurement) bool {
+	for _, b := range c.Bindings_ {
+		if b.Matches(m) {
+			return true
+		}
+	}
+	return false
 }
 
 /* --------------------- Measurements --------------------- */
@@ -243,38 +327,53 @@ func hasWaterMeter(m *Measurement) bool {
 	return m.Urn == WaterMeterURN && (m.Value != nil || m.BoolValue != nil)
 }
 
-// avg beräknar medelvärdet av aktuell mätning och de senast cachade
-// mätningarna som hör till samma signal (namngivna ingång). Den aktuella
-// signalen undantas via sitt fulla recordnamn, så den inte dubbelräknas,
-// medan andra signaler på samma enhet (t.ex. en annan kanal) räknas med.
-func avg(r Thing, current Measurement, v float64, has func(m *Measurement) bool) float64 {
+// avg beräknar medelvärdet av aktuell mätning och de cachade mätningar som
+// är bundna till samma ingång. Den aktuella signalen undantas via sitt fulla
+// recordnamn, så den inte dubbelräknas, medan andra signaler på samma enhet
+// (t.ex. en annan kanal) räknas med.
+func avg(t Thing, input string, current Measurement, v float64) float64 {
 	n := 1
 
-	for _, refDevice := range r.Refs() {
-		for _, m := range refDevice.Measurements {
-			if m.ID == current.ID {
-				continue
-			}
-			if has(&m) {
-				v += *m.Value
-				n++
-			}
+	for id, cached := range t.SignalCache() {
+		if id == current.ID || cached.Value == nil {
+			continue
+		}
+		if bindsToInput(t, input, cached) {
+			v += *cached.Value
+			n++
 		}
 	}
 
 	return v / float64(n)
 }
 
-// ShouldApply rapporterar om mätningen är nyare än, eller lika gammal som,
-// det cachade värdet för samma signal. Äldre mätningar får inte ändra
-// aktuellt tillstånd, även om de sparas som historik.
-func ShouldApply(t Thing, m Measurement) bool {
-	for _, d := range t.Refs() {
-		if cached, ok := d.Measurements[m.ID]; ok && cached.Timestamp.After(m.Timestamp) {
-			return false
+func bindsToInput(t Thing, input string, m Measurement) bool {
+	for _, b := range t.Bindings() {
+		if b.Input == input && b.Matches(m) {
+			return true
 		}
 	}
+	return false
+}
+
+// ShouldApply rapporterar om mätningen är nyare än, eller lika gammal som,
+// det cachade värdet för samma signal. Äldre mätningar får inte ändra
+// aktuellt tillstånd.
+func ShouldApply(t Thing, m Measurement) bool {
+	if cached, ok := t.SignalCache()[m.ID]; ok && cached.Timestamp.After(m.Timestamp) {
+		return false
+	}
 	return true
+}
+
+// MatchInput returnerar den ingång som en mätning är bunden till, om någon.
+func MatchInput(t Thing, m Measurement) (string, bool) {
+	for _, b := range t.Bindings() {
+		if b.Matches(m) {
+			return b.Input, true
+		}
+	}
+	return "", false
 }
 
 func (m Measurement) DeviceID() string {

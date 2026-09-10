@@ -62,7 +62,7 @@ func (r *Room) handleAirQuality(m Measurement, onchange func(m ValueProvider) er
 	// Jämför det nya aggregerade värdet mot det sparade, inte mot en enskild
 	// sensors värde. Endast CO2-resursen (17) deltar, inte andra resurser i
 	// samma AirQuality-objekt.
-	newCO2 := avg(r, m, *m.Value, hasCO2)
+	newCO2 := avg(r, "co2", m, *m.Value)
 	if !hasChanged(r.CO2, newCO2) {
 		return nil
 	}
@@ -85,7 +85,7 @@ func (r *Room) handleIlluminance(m Measurement, onchange func(m ValueProvider) e
 		return nil
 	}
 
-	newIlluminance := avg(r, m, *m.Value, hasIlluminance)
+	newIlluminance := avg(r, "illuminance", m, *m.Value)
 	if !hasChanged(r.Illuminance, newIlluminance) {
 		return nil
 	}
@@ -108,7 +108,7 @@ func (r *Room) handleHumidity(m Measurement, onchange func(m ValueProvider) erro
 		return nil
 	}
 
-	newHumidity := avg(r, m, *m.Value, hasHumidity)
+	newHumidity := avg(r, "humidity", m, *m.Value)
 	if !hasChanged(r.Humidity, newHumidity) {
 		return nil
 	}
@@ -134,7 +134,7 @@ func (r *Room) handleTemperature(m Measurement, onchange func(m ValueProvider) e
 	// Beräkna det nya aggregerade värdet först och jämför med det sparade
 	// medelvärdet. Att jämföra med en enskild sensors värde gav falskt
 	// "oförändrat" när sensorns värde råkade sammanfalla med medelvärdet.
-	avgTemp := avg(r, m, *m.Value, hasTemperature)
+	avgTemp := avg(r, "temperature", m, *m.Value)
 	if !hasChanged(r.Temperature, avgTemp) {
 		return nil
 	}

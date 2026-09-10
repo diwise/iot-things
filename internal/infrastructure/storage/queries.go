@@ -46,11 +46,12 @@ func buildThingQuerySQL(query app.ThingQuery) (string, pgx.NamedArgs, error) {
 		b.Where("data ? 'tags' AND data->'tags' @> CAST(" + b.Bind("tags", string(tagsJSON)) + " AS jsonb)")
 	}
 	if query.RefDeviceID != nil {
-		refDevicesJSON, err := json.Marshal([]map[string]string{{"deviceID": *query.RefDeviceID}})
+		// refDevices lagras inte längre; enheter härleds ur bindningarna.
+		bindingsJSON, err := json.Marshal([]map[string]string{{"deviceID": *query.RefDeviceID}})
 		if err != nil {
 			return "", nil, err
 		}
-		b.Where("data ? 'refDevices' AND data->'refDevices' @> CAST(" + b.Bind("refdevice_filter", string(refDevicesJSON)) + " AS jsonb)")
+		b.Where("data ? 'bindings' AND data->'bindings' @> CAST(" + b.Bind("refdevice_filter", string(bindingsJSON)) + " AS jsonb)")
 	}
 
 	for index, filter := range query.NumericFilters {

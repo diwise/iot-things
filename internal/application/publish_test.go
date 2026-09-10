@@ -165,7 +165,7 @@ func TestMultipleChannelsInOneReportAggregate(t *testing.T) {
 	room.ValidURN = things.RoomURNs
 	room.AddDevice("device-1")
 	// Gammal cache: A=20, B=30.
-	room.RefDevices[0].Measurements = map[string]things.Measurement{
+	room.Signals_ = map[string]things.Measurement{
 		"device-1/0/3303/5700": {ID: "device-1/0/3303/5700", Urn: things.TemperatureURN, Value: floatPtrApp(20)},
 		"device-1/1/3303/5700": {ID: "device-1/1/3303/5700", Urn: things.TemperatureURN, Value: floatPtrApp(30)},
 	}

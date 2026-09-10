@@ -73,7 +73,7 @@ func (c *Container) applyDistance(m Measurement, onchange func(m ValueProvider) 
 
 	fillingLevel := NewFillingLevel(c.ID(), m.ID, level.Percent(), level.Current(), m.Timestamp)
 
-	avgDistance := avg(c, m, *m.Value, hasDistance)
+	avgDistance := avg(c, "distance", m, *m.Value)
 	avg_level, _ := functions.NewLevel(c.Angle, c.MaxDistance, c.MaxLevel, c.MeanLevel, c.Offset, c.CurrentLevel)
 	avg_level.Calc(avgDistance, m.Timestamp)
 

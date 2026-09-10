@@ -84,7 +84,7 @@ func (building *Building) applyTemperature(m Measurement, onchange func(m ValueP
 	}
 
 	// Jämför det nya aggregerade värdet mot det sparade medelvärdet.
-	avgTemp := avg(building, m, *m.Value, hasTemperature)
+	avgTemp := avg(building, "temperature", m, *m.Value)
 	if !hasChanged(building.Temperature, avgTemp) {
 		return nil
 	}

@@ -117,16 +117,28 @@ func removeInternalState(t things.Thing) map[string]any {
 // mätningar under refDevices samt fält som börjar med "_". Enda
 // implementationen; används både för thing.updated och i API-presentationen.
 func StripInternalState(m map[string]any) map[string]any {
-	if refDevices, ok := m["refDevices"]; ok {
-		if ref, ok := refDevices.([]any); ok {
-			for _, device := range ref {
-				x, ok := device.(map[string]any)
-				if !ok {
-					continue
-				}
-				delete(x, "measurements")
+	// refDevices lagras inte längre utan härleds ur bindningarna så att
+	// utdata (thing.updated, API, CSV) är oförändrat.
+	if bindings, ok := m["bindings"].([]any); ok {
+		seen := make(map[string]struct{})
+		refDevices := make([]any, 0, len(bindings))
+		for _, b := range bindings {
+			bm, ok := b.(map[string]any)
+			if !ok {
+				continue
 			}
-			m["refDevices"] = ref
+			deviceID, _ := bm["deviceID"].(string)
+			if deviceID == "" {
+				continue
+			}
+			if _, ok := seen[deviceID]; ok {
+				continue
+			}
+			seen[deviceID] = struct{}{}
+			refDevices = append(refDevices, map[string]any{"deviceID": deviceID})
+		}
+		if len(refDevices) > 0 {
+			m["refDevices"] = refDevices
 		}
 	}
 

@@ -67,7 +67,22 @@ var (
 	// ErrInvalidThingID skyddar värdeägarskapet: historik matchas på
 	// thingID + "/", så ett thing-ID med "/" skulle kunna överlappa ett annat.
 	ErrInvalidThingID = errors.New("thing ID must not contain '/'")
+	// ErrInvalidBinding: bindningen måste ha en enhet och en ingång som
+	// saktypen känner igen.
+	ErrInvalidBinding = errors.New("invalid binding")
 )
+
+func validateBindings(t things.Thing) error {
+	for _, b := range t.Bindings() {
+		if b.DeviceID == "" {
+			return fmt.Errorf("%w: missing deviceID", ErrInvalidBinding)
+		}
+		if !things.InputExists(t.Type(), b.Input) {
+			return fmt.Errorf("%w: unknown input %q for type %q", ErrInvalidBinding, b.Input, t.Type())
+		}
+	}
+	return nil
+}
 
 type app struct {
 	reader ThingsReader
@@ -195,38 +210,58 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, messageID s
 				continue
 			}
 
-			// Äldre mätningar än det cachade värdet får inte ändra aktuellt
-			// tillstånd (cachen behåller det nyare).
-			fresh := make([]things.Measurement, 0, len(ms))
-			for _, m := range ms {
-				if things.ShouldApply(thing, m) {
-					fresh = append(fresh, m)
-				}
+			type pending struct {
+				input string
+				m     things.Measurement
 			}
-			if len(fresh) == 0 {
+
+			// Endast mätningar som är bundna till en ingång på saken, och som
+			// är nyare än cachat värde, får ändra aktuellt tillstånd.
+			var work []pending
+			for _, m := range ms {
+				input, ok := things.MatchInput(thing, m)
+				if !ok {
+					continue
+				}
+				if !things.ShouldApply(thing, m) {
+					continue
+				}
+				work = append(work, pending{input: input, m: m})
+			}
+			if len(work) == 0 {
 				continue
 			}
 
-			// Uppdatera cachen med rapportens värden före Handle så att
+			// Uppdatera cachen med rapportens värden före Apply så att
 			// aggregeringen ser en sammanhängande bild av rapportens aktuella
 			// signalvärden (flera kanaler i samma pack).
+			fresh := make([]things.Measurement, 0, len(work))
+			for _, w := range work {
+				fresh = append(fresh, w.m)
+			}
 			thing.SetLastObserved(fresh)
 
-			err := thing.Handle(thingCtx, fresh, func(valueProvider things.ValueProvider) error {
-				var errs []error
+			var applyErrs []error
+			for _, w := range work {
+				err := thing.Apply(thingCtx, w.input, w.m, func(valueProvider things.ValueProvider) error {
+					var errs []error
 
-				values := valueProvider.Values()
+					values := valueProvider.Values()
 
-				for _, v := range values {
-					// add value to storage. A value is a measurement with the thingID instead of the deviceID
-					errs = append(errs, a.AddValue(thingCtx, thing, v))
+					for _, v := range values {
+						// add value to storage. A value is a measurement with the thingID instead of the deviceID
+						errs = append(errs, a.AddValue(thingCtx, thing, v))
+					}
+
+					return errors.Join(errs...)
+				})
+				if err != nil {
+					log.Error("could not handle measurement", "input", w.input, "err", err.Error())
+					applyErrs = append(applyErrs, err)
 				}
-
-				return errors.Join(errs...)
-			})
-			if err != nil {
-				log.Error("could not handle measurement", "err", err.Error())
-				errs = append(errs, err)
+			}
+			if len(applyErrs) > 0 {
+				errs = append(errs, errors.Join(applyErrs...))
 				continue
 			}
 
@@ -291,6 +326,9 @@ func (a *app) Add(ctx context.Context, b []byte) error {
 	if t.Type() == "" {
 		return ErrMissingThingType
 	}
+	if err := validateBindings(t); err != nil {
+		return err
+	}
 
 	err = a.writer.AddThing(ctx, t)
 	if err != nil {
@@ -321,6 +359,9 @@ func (a *app) Update(ctx context.Context, b []byte, tenants []string) error {
 	}
 	if t.Type() == "" {
 		return ErrMissingThingType
+	}
+	if err := validateBindings(t); err != nil {
+		return err
 	}
 
 	thingID := t.ID()
@@ -551,18 +592,44 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		return tags
 	}
 
-	refDevices := func(t string) []things.Device {
+	// bindings parsar kolumnen som tidigare innehöll refDevices.
+	// Format: device|channel|object|resource|input separerade med komma.
+	// En post utan "|" tolkas som ett enhets-id och expanderas till alla
+	// ingångar för saktypen (bakåtkompatibelt med äldre things.csv).
+	bindings := func(t string, thingType string) []things.Binding {
 		if t == "" {
 			return nil
 		}
-		if !strings.Contains(t, ",") {
-			return []things.Device{{DeviceID: t}}
+		result := []things.Binding{}
+		for _, seg := range strings.Split(t, ",") {
+			seg = strings.TrimSpace(seg)
+			if seg == "" {
+				continue
+			}
+			if !strings.Contains(seg, "|") {
+				for _, in := range things.InputsFor(thingType) {
+					result = append(result, things.Binding{
+						DeviceID: seg,
+						Object:   in.Object,
+						Resource: in.Resource,
+						Input:    in.Name,
+					})
+				}
+				continue
+			}
+			parts := strings.Split(seg, "|")
+			if len(parts) != 5 {
+				continue
+			}
+			result = append(result, things.Binding{
+				DeviceID: parts[0],
+				Channel:  parts[1],
+				Object:   parts[2],
+				Resource: parts[3],
+				Input:    parts[4],
+			})
 		}
-		devices := []things.Device{}
-		for s := range strings.SplitSeq(t, ",") {
-			devices = append(devices, things.Device{DeviceID: s})
-		}
-		return devices
+		return result
 	}
 
 	args := func(t string) map[string]any {
@@ -602,7 +669,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		}
 
 		//  0	 1      2      3         4           5       6      7       8         9
-		// id, type, subType, name, decsription, location, tenant, tags, refDevices, args
+		// id, type, subType, name, decsription, location, tenant, tags, bindings, args
 
 		id_ := record[0]
 		type_ := record[1]
@@ -612,7 +679,7 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 		location_ := location(record[5])
 		tenant_ := record[6]
 		tags_ := tags(record[7])
-		refDevices_ := refDevices(record[8])
+		bindings_ := bindings(record[8], type_)
 
 		m := make(map[string]any)
 
@@ -648,10 +715,10 @@ func (a *app) Seed(ctx context.Context, r io.Reader) error {
 			delete(m, "tags")
 		}
 
-		if len(refDevices_) > 0 {
-			m["refDevices"] = refDevices_
+		if len(bindings_) > 0 {
+			m["bindings"] = bindings_
 		} else {
-			delete(m, "refDevices")
+			delete(m, "bindings")
 		}
 
 		maps.Copy(m, args(record[9]))

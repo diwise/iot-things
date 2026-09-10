@@ -18,17 +18,15 @@ func TestAvgDoesNotDoubleCountCurrentDevice(t *testing.T) {
 	r.AddDevice("device-2")
 
 	room := r.(*Room)
-	room.RefDevices[0].Measurements = map[string]Measurement{
+	room.Signals_ = map[string]Measurement{
 		"device-1/3303/5700": {ID: "device-1/3303/5700", Urn: TemperatureURN, Value: floatPtr(20.0)},
-	}
-	room.RefDevices[1].Measurements = map[string]Measurement{
 		"device-2/3303/5700": {ID: "device-2/3303/5700", Urn: TemperatureURN, Value: floatPtr(30.0)},
 	}
 
 	current := Measurement{ID: "device-1/3303/5700", Urn: TemperatureURN, Value: floatPtr(20.0)}
 
 	// (20 + 30) / 2 = 25, inte (20 + 20 + 30) / 3.
-	is.Equal(avg(room, current, 20.0, hasTemperature), 25.0)
+	is.Equal(avg(room, "temperature", current, 20.0), 25.0)
 }
 
 // T2: hasChanged ska fungera även när det sparade värdet är en Measurement.
@@ -61,7 +59,7 @@ func TestAggregateChangeDetection(t *testing.T) {
 	room.AddDevice("device-b")
 
 	// device-b har redan ett cachat värde.
-	room.RefDevices[1].Measurements = map[string]Measurement{
+	room.Signals_ = map[string]Measurement{
 		"device-b/3303/5700": {ID: "device-b/3303/5700", Urn: TemperatureURN, Value: floatPtr(30)},
 	}
 	room.Temperature = Measurement{Value: floatPtr(25)} // sparat medelvärde
@@ -84,7 +82,7 @@ func TestCO2AggregationIgnoresOtherResources(t *testing.T) {
 	room := NewRoom("room-001", DefaultLocation, "default").(*Room)
 	room.AddDevice("device-a")
 	room.AddDevice("device-b")
-	room.RefDevices[1].Measurements = map[string]Measurement{
+	room.Signals_ = map[string]Measurement{
 		"device-b/3428/17": {ID: "device-b/3428/17", Urn: AirQualityURN, Value: floatPtr(700)},
 		"device-b/3428/1":  {ID: "device-b/3428/1", Urn: AirQualityURN, Value: floatPtr(5)},
 	}
@@ -105,7 +103,7 @@ func TestAvgIncludesOtherSignalsFromSameDevice(t *testing.T) {
 
 	room := NewRoom("room", DefaultLocation, "default").(*Room)
 	room.AddDevice("device-a")
-	room.RefDevices[0].Measurements = map[string]Measurement{
+	room.Signals_ = map[string]Measurement{
 		"device-a/0/3303/5700": {ID: "device-a/0/3303/5700", Urn: TemperatureURN, Value: floatPtr(20)},
 		"device-a/1/3303/5700": {ID: "device-a/1/3303/5700", Urn: TemperatureURN, Value: floatPtr(30)},
 	}
@@ -114,7 +112,7 @@ func TestAvgIncludesOtherSignalsFromSameDevice(t *testing.T) {
 
 	// Aktuell signal (kanal 0) undantas och används som v; kanal 1 räknas in.
 	// (20 + 30) / 2 = 25.
-	is.Equal(avg(room, current, 20, hasTemperature), 25.0)
+	is.Equal(avg(room, "temperature", current, 20), 25.0)
 }
 
 // Fynd 5: en sen anländande (äldre) mätning får inte skriva över en nyare i
@@ -139,7 +137,7 @@ func TestSetLastObservedKeepsNewestValue(t *testing.T) {
 		{ID: "device-a/3303/5700", Urn: TemperatureURN, Value: &oldVal, Timestamp: older},
 	})
 
-	is.Equal(*room.RefDevices[0].Measurements["device-a/3303/5700"].Value, 30.0)
+	is.Equal(*room.Signals_["device-a/3303/5700"].Value, 30.0)
 }
 
 // Samma sak för skalära fält (fuktighet är float64).
@@ -150,7 +148,7 @@ func TestAggregateChangeDetectionScalar(t *testing.T) {
 	room.AddDevice("device-a")
 	room.AddDevice("device-b")
 
-	room.RefDevices[1].Measurements = map[string]Measurement{
+	room.Signals_ = map[string]Measurement{
 		"device-b/3304/5700": {ID: "device-b/3304/5700", Urn: HumidityURN, Value: floatPtr(30)},
 	}
 	room.Humidity = 25 // sparat medelvärde

@@ -18,8 +18,8 @@ func TestBuildThingQuerySQLParameterizesRefDeviceJSONBFilter(t *testing.T) {
 		t.Fatalf("buildThingQuerySQL returned error: %v", err)
 	}
 
-	if !strings.Contains(query, "data->'refDevices' @> CAST(@refdevice_filter AS jsonb)") {
-		t.Fatalf("expected parameterized refdevice filter, got query %q", query)
+	if !strings.Contains(query, "data->'bindings' @> CAST(@refdevice_filter AS jsonb)") {
+		t.Fatalf("expected parameterized refdevice filter over bindings, got query %q", query)
 	}
 	if strings.Contains(query, refDeviceID) {
 		t.Fatalf("expected raw refdevice value to stay out of query, got query %q", query)
