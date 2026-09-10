@@ -25,7 +25,7 @@ import (
 )
 
 type ThingsApp interface {
-	HandleMeasurements(ctx context.Context, measurements []things.Measurement)
+	HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement)
 
 	Add(ctx context.Context, b []byte) error
 	Delete(ctx context.Context, thingID string, tenants []string) error
@@ -132,7 +132,7 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 // applicerar hela rapportens mätningar på samma objekt, sparas och publiceras
 // med sitt ackumulerade tillstånd. Ingen väntan mellan rapporter och ingen
 // omläsning från lagring före publicering.
-func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {
+func (a *app) HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -157,13 +157,21 @@ func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Meas
 	for _, deviceID := range order {
 		ms := groups[deviceID]
 
-		connectedThings, err := a.getConnectedThings(ctx, deviceID)
+		// Tenant-isolering: saker hämtas och matchas bara inom rapportens
+		// tenant. En koppling till en enhet i en annan tenant får aldrig
+		// uppdatera saken.
+		connectedThings, err := a.getConnectedThings(ctx, deviceID, []string{tenant})
 		if err != nil {
-			baseLog.Error("could not get connected things", "device_id", deviceID, "err", err.Error())
+			baseLog.Error("could not get connected things", "device_id", deviceID, "tenant", tenant, "err", err.Error())
 			continue
 		}
 
 		for _, thing := range connectedThings {
+			if thing.Tenant() != tenant {
+				baseLog.Warn("skipping thing with mismatching tenant", "device_id", deviceID, "thing_id", thing.ID(), "thing_tenant", thing.Tenant(), "report_tenant", tenant)
+				continue
+			}
+
 			thingCtx := logging.NewContextWithLogger(ctx, baseLog, "thing_id", thing.ID())
 			log := logging.GetFromContext(thingCtx)
 
@@ -417,8 +425,8 @@ func (a *app) getThingByID(ctx context.Context, thingID string) things.Thing {
 	return t
 }
 
-func (a *app) getConnectedThings(ctx context.Context, deviceID string) ([]things.Thing, error) {
-	result, err := a.reader.QueryThings(ctx, ThingsByRefDeviceQuery(deviceID))
+func (a *app) getConnectedThings(ctx context.Context, deviceID string, tenants []string) ([]things.Thing, error) {
+	result, err := a.reader.QueryThings(ctx, ThingsByRefDeviceQuery(deviceID, tenants))
 	if err != nil {
 		return nil, err
 	}

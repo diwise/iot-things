@@ -50,7 +50,7 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	a := New(r, w, m)
 
 	value := 21.0
-	a.HandleMeasurements(context.Background(), []things.Measurement{{
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{{
 		ID:        "device-1/3303/5700",
 		Urn:       things.TemperatureURN,
 		Value:     &value,
@@ -68,6 +68,49 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no thing.updated published for the connected thing")
 	}
+}
+
+// En sak i en annan tenant än rapportens får aldrig uppdateras, även om
+// enheten är kopplad till den.
+func TestThingWithMismatchingTenantIsSkipped(t *testing.T) {
+	is := is.New(t)
+
+	room := things.NewRoom("room-other", things.DefaultLocation, "other")
+	room.AddDevice("device-1")
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			return QueryResult{Data: [][]byte{marshalThing(room)}}, nil
+		},
+	}
+	updated := false
+	w := &ThingsWriterMock{
+		AddValueFunc: func(ctx context.Context, t things.Thing, m things.Value) error { return nil },
+		UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
+			updated = true
+			return nil
+		},
+	}
+	published := false
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
+			published = true
+			return nil
+		},
+	}
+
+	a := New(r, w, m)
+
+	temp := 21.0
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{{
+		ID:        "device-1/3303/5700",
+		Urn:       things.TemperatureURN,
+		Value:     &temp,
+		Timestamp: time.Now().UTC(),
+	}})
+
+	is.True(!updated)
+	is.True(!published)
 }
 
 // Flera enheter kopplade till samma sak: värdena aggregeras på saken och
@@ -107,13 +150,13 @@ func TestMultipleDevicesOneThingAggregates(t *testing.T) {
 	a := New(r, w, m)
 
 	t20 := 20.0
-	a.HandleMeasurements(context.Background(), []things.Measurement{
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{
 		{ID: "device-1/3303/5700", Urn: things.TemperatureURN, Value: &t20, Timestamp: time.Now().UTC()},
 	})
 	is.Equal(*current.(*things.Room).Temperature.Value, 20.0)
 
 	t30 := 30.0
-	a.HandleMeasurements(context.Background(), []things.Measurement{
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{
 		{ID: "device-2/3303/5700", Urn: things.TemperatureURN, Value: &t30, Timestamp: time.Now().UTC()},
 	})
 
@@ -158,7 +201,7 @@ func TestMultipleThingsForSameDevice(t *testing.T) {
 	a := New(r, w, m)
 
 	temp := 21.0
-	a.HandleMeasurements(context.Background(), []things.Measurement{{
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{{
 		ID:        "device-1/3303/5700",
 		Urn:       things.TemperatureURN,
 		Value:     &temp,
@@ -216,7 +259,7 @@ func TestHandleMeasurementsPublishesOncePerThingAndReport(t *testing.T) {
 
 	now := time.Now().UTC()
 	temp, hum, lux := 21.0, 55.0, 300.0
-	a.HandleMeasurements(context.Background(), []things.Measurement{
+	a.HandleMeasurements(context.Background(), "default", []things.Measurement{
 		{ID: "device-1/3303/5700", Urn: things.TemperatureURN, Value: &temp, Timestamp: now},
 		{ID: "device-1/3304/5700", Urn: things.HumidityURN, Value: &hum, Timestamp: now},
 		{ID: "device-1/3301/5700", Urn: things.IlluminanceURN, Value: &lux, Timestamp: now},

@@ -106,9 +106,10 @@ func ThingByIDQuery(id string, tenants []string) ThingQuery {
 	return query
 }
 
-func ThingsByRefDeviceQuery(deviceID string) ThingQuery {
+func ThingsByRefDeviceQuery(deviceID string, tenants []string) ThingQuery {
 	query := NewThingQuery()
 	query.RefDeviceID = &deviceID
+	query.Tenants = append([]string{}, tenants...)
 	return query
 }
 

@@ -35,7 +35,8 @@ type fakeThingsApp struct {
 	typesFunc       func(context.Context, []string) ([]things.ThingType, error)
 }
 
-func (f fakeThingsApp) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {}
+func (f fakeThingsApp) HandleMeasurements(ctx context.Context, tenant string, measurements []things.Measurement) {
+}
 
 func (f fakeThingsApp) Add(ctx context.Context, b []byte) error {
 	if f.addFunc != nil {

@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -20,6 +21,8 @@ import (
 )
 
 var tracer = otel.Tracer("iot-things")
+
+var errMissingTenant = errors.New("message contains no tenant")
 
 func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMessageHandler {
 	log := logging.GetFromContext(c)
@@ -62,8 +65,16 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 		}
 
 		deviceID := parsed.DeviceID()
+		tenant := parsed.Tenant()
 
-		logger = logger.With("device_id", deviceID)
+		if tenant == "" {
+			// Core berikar och validerar tenant; ett tomt värde är ett
+			// kontraktsbrott som aldrig läker vid retry.
+			log.Error("message contains no tenant")
+			return messaging.Permanent(errMissingTenant)
+		}
+
+		logger = logger.With("device_id", deviceID, "tenant", tenant)
 
 		measurements := convPack(parsed)
 
@@ -76,9 +87,7 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 
 		ctx = logging.NewContextWithLogger(ctx, logger)
 
-		// Bevarad semantik: intern hantering är fire-and-forget och ackas.
-		// Klassificering till Temporary/Permanent kräver verifierad idempotens.
-		app.HandleMeasurements(ctx, measurements)
+		app.HandleMeasurements(ctx, tenant, measurements)
 		return nil
 	}
 }
