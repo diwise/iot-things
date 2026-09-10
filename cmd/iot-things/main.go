@@ -207,15 +207,21 @@ func readinessProbes() map[string]k8shandlers.ServiceProber {
 	}
 }
 
+// shutdownTimeout är en egen övre gräns för att stoppa inflöde och dränera
+// pågående arbete. Runnerns shutdown-hook får ingen egen timeout, så tjänsten
+// sätter sin egen så att en blockerad leverans inte håller nedstängningen
+// obegränsat.
+const shutdownTimeout = 10 * time.Second
+
 // ownedResources tracks the resources created during OnInit so shutdown
 // is nil-safe, ordered and idempotent via the sync.Once guard, so the
 // messenger is shut down at most once.
 //
 // Shutdown order: stop inflow (messenger) and let it drain in-flight
-// deliveries, then close storage. The messaging library acknowledges only
-// after the handler returns and drains on Shutdown, so no separate handler
-// tracker is needed. HTTP servers stay live until after OnShutdown returns
-// (runner behavior).
+// deliveries within budget, then close storage. The messaging library
+// acknowledges only after the handler returns and drains on Shutdown, so no
+// separate handler tracker is needed. HTTP servers stay live until after
+// OnShutdown returns (runner behavior).
 type ownedResources struct {
 	once      sync.Once
 	messenger messaging.MsgContext
@@ -225,7 +231,11 @@ type ownedResources struct {
 func (o *ownedResources) close(ctx context.Context) {
 	o.once.Do(func() {
 		if o.messenger != nil {
-			if err := o.messenger.Shutdown(ctx); err != nil {
+			// Egen budget, oberoende av en redan avbruten stoppsignal.
+			stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+			defer cancel()
+
+			if err := o.messenger.Shutdown(stopCtx); err != nil {
 				logging.GetFromContext(ctx).Debug("failed to shut down messenger", "err", err.Error())
 			}
 		}

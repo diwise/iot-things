@@ -19,6 +19,25 @@ func (f *recordingCloser) Close() {
 	*f.calls = append(*f.calls, f.name)
 }
 
+// Shutdown ska ge messenger en egen deadline så att en blockerad leverans
+// inte håller nedstängningen obegränsat.
+func TestShutdownSuppliesMessengerDeadline(t *testing.T) {
+	is := is.New(t)
+
+	var hasDeadline bool
+	messenger := &messaging.MsgContextMock{
+		ShutdownFunc: func(ctx context.Context) error {
+			_, hasDeadline = ctx.Deadline()
+			return nil
+		},
+	}
+
+	owned := &ownedResources{messenger: messenger}
+	owned.close(context.Background())
+
+	is.True(hasDeadline)
+}
+
 // Shutdown must stop inflow (messenger) and then close storage exactly
 // once, in that order, even when invoked twice. The messaging library
 // drains in-flight deliveries on Shutdown, so no separate handler tracker
