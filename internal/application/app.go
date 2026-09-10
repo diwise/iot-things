@@ -127,83 +127,98 @@ func (a *app) LoadConfig(ctx context.Context, r io.Reader) error {
 	return nil
 }
 
+// HandleMeasurements behandlar alla mätningar i en rapport och publicerar
+// thing.updated en gång per berörd sak. Saken hämtas en gång per enhet,
+// applicerar hela rapportens mätningar på samma objekt, sparas och publiceras
+// med sitt ackumulerade tillstånd. Ingen väntan mellan rapporter och ingen
+// omläsning från lagring före publicering.
 func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for _, measurement := range measurements {
-		a.handle(ctx, measurement)
+	if len(measurements) == 0 {
+		return
+	}
+
+	baseLog := logging.GetFromContext(ctx)
+
+	// Gruppera per enhet. Ett pack är en enhet, men grupperingen gör
+	// blandade batcher korrekta och håller sak-objektet återanvänt.
+	groups := make(map[string][]things.Measurement)
+	order := make([]string, 0)
+	for _, m := range measurements {
+		d := m.DeviceID()
+		if _, ok := groups[d]; !ok {
+			order = append(order, d)
+		}
+		groups[d] = append(groups[d], m)
+	}
+
+	for _, deviceID := range order {
+		ms := groups[deviceID]
+
+		connectedThings, err := a.getConnectedThings(ctx, deviceID)
+		if err != nil {
+			baseLog.Error("could not get connected things", "device_id", deviceID, "err", err.Error())
+			continue
+		}
+
+		for _, thing := range connectedThings {
+			thingCtx := logging.NewContextWithLogger(ctx, baseLog, "thing_id", thing.ID())
+			log := logging.GetFromContext(thingCtx)
+
+			err := thing.Handle(thingCtx, ms, func(valueProvider things.ValueProvider) error {
+				var errs []error
+
+				values := valueProvider.Values()
+
+				for _, v := range values {
+					// add value to storage. A value is a measurement with the thingID instead of the deviceID
+					errs = append(errs, a.AddValue(thingCtx, thing, v))
+				}
+
+				return errors.Join(errs...)
+			})
+			if err != nil {
+				log.Error("could not handle measurement", "err", err.Error())
+				continue
+			}
+
+			// adds the current measurements to its (ref)devices and ObservedAt if the timestamp is newer
+			thing.SetLastObserved(ms)
+
+			err = a.saveThing(thingCtx, thing)
+			if err != nil {
+				log.Error("could not save thing", "err", err.Error())
+				continue
+			}
+
+			a.publishThingUpdated(thingCtx, thing)
+		}
 	}
 }
 
-// handle applicerar en mätning på alla saker som enheten är kopplad till,
-// sparar saken och publicerar thing.updated direkt. Ingen väntan, ingen
-// omläsning från lagring: det objekt som just behandlats och sparats är det
-// som publiceras.
-func (a *app) handle(ctx context.Context, m things.Measurement) {
-	baseLog := logging.GetFromContext(ctx)
+func (a *app) publishThingUpdated(ctx context.Context, thing things.Thing) {
+	log := logging.GetFromContext(ctx).With("thing_id", thing.ID())
 
-	connectedThings, err := a.getConnectedThings(ctx, m.DeviceID())
-	if err != nil {
-		baseLog.Error("could not get connected things", "err", err.Error())
+	msg := &types.ThingUpdated{
+		ID:        thing.ID(),
+		Type:      thing.Type(),
+		Thing:     removeInternalState(thing),
+		Tenant:    thing.Tenant(),
+		Timestamp: time.Now().UTC(),
+	}
+
+	log.Debug("publish message", "content_type", msg.ContentType(), "tenant", thing.Tenant(), "type", thing.Type())
+
+	if err := a.msgCtx.PublishOnTopic(ctx, msg); err != nil {
+		// Bevarad semantik: publiceringsfel loggas och påverkar inte ack.
+		log.Error("could not publish message", "err", err.Error())
 		return
 	}
 
-	if len(connectedThings) == 0 {
-		return
-	}
-
-	for _, thing := range connectedThings {
-		thingCtx := logging.NewContextWithLogger(ctx, baseLog, "thing_id", thing.ID())
-		log := logging.GetFromContext(thingCtx)
-
-		measurements := []things.Measurement{m}
-
-		err := thing.Handle(thingCtx, measurements, func(valueProvider things.ValueProvider) error {
-			var errs []error
-
-			values := valueProvider.Values()
-
-			for _, v := range values {
-				// add value to storage. A value is a measurement with the thingID instead of the deviceID
-				errs = append(errs, a.AddValue(thingCtx, thing, v))
-			}
-
-			return errors.Join(errs...)
-		})
-		if err != nil {
-			log.Error("could not handle measurement", "err", err.Error())
-			continue
-		}
-
-		// adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
-		thing.SetLastObserved(measurements)
-
-		err = a.saveThing(thingCtx, thing)
-		if err != nil {
-			log.Error("could not save thing", "err", err.Error())
-			continue
-		}
-
-		msg := &types.ThingUpdated{
-			ID:        thing.ID(),
-			Type:      thing.Type(),
-			Thing:     removeInternalState(thing),
-			Tenant:    thing.Tenant(),
-			Timestamp: time.Now().UTC(),
-		}
-
-		log.Debug("publish message", "content_type", msg.ContentType(), "tenant", thing.Tenant(), "type", thing.Type())
-
-		if err := a.msgCtx.PublishOnTopic(thingCtx, msg); err != nil {
-			// Bevarad semantik: publiceringsfel loggas och påverkar inte ack.
-			log.Error("could not publish message", "err", err.Error())
-			continue
-		}
-
-		if c := updatedCounter(); c != nil {
-			c.Add(thingCtx, 1)
-		}
+	if c := updatedCounter(); c != nil {
+		c.Add(ctx, 1)
 	}
 }
 
