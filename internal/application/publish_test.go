@@ -70,6 +70,62 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	}
 }
 
+// En enhet som är kopplad till flera saker ska uppdatera alla, med en
+// publicering per sak.
+func TestMultipleThingsForSameDevice(t *testing.T) {
+	is := is.New(t)
+
+	roomA := things.NewRoom("room-a", things.DefaultLocation, "default")
+	roomB := things.NewRoom("room-b", things.DefaultLocation, "default")
+	roomA.AddDevice("device-1")
+	roomB.AddDevice("device-1")
+
+	r := &ThingsReaderMock{
+		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
+			if query.RefDeviceID != nil && *query.RefDeviceID == "device-1" {
+				return QueryResult{Data: [][]byte{marshalThing(roomA), marshalThing(roomB)}}, nil
+			}
+			return QueryResult{Data: [][]byte{}}, nil
+		},
+	}
+	w := &ThingsWriterMock{
+		AddValueFunc:    func(ctx context.Context, t things.Thing, m things.Value) error { return nil },
+		UpdateThingFunc: func(ctx context.Context, t things.Thing) error { return nil },
+	}
+
+	published := make(chan *types.ThingUpdated, 4)
+	m := &messaging.MsgContextMock{
+		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
+			if tm, ok := message.(*types.ThingUpdated); ok {
+				published <- tm
+			}
+			return nil
+		},
+	}
+
+	a := New(r, w, m)
+
+	temp := 21.0
+	a.HandleMeasurements(context.Background(), []things.Measurement{{
+		ID:        "device-1/3303/5700",
+		Urn:       things.TemperatureURN,
+		Value:     &temp,
+		Timestamp: time.Now().UTC(),
+	}})
+
+	ids := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case msg := <-published:
+			ids[msg.ID] = true
+		case <-time.After(5 * time.Second):
+			t.Fatal("expected one thing.updated per connected thing")
+		}
+	}
+	is.True(ids["room-a"])
+	is.True(ids["room-b"])
+}
+
 // En rapport med flera mätningar för samma sak ska ge exakt en publicering,
 // med sakens ackumulerade tillstånd. Ingen väntan mellan rapporter.
 func TestHandleMeasurementsPublishesOncePerThingAndReport(t *testing.T) {

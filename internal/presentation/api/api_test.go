@@ -28,13 +28,15 @@ type fakeThingsApp struct {
 	queryValuesFunc func(context.Context, app.ValueQuery) (app.QueryResult, error)
 	addFunc         func(context.Context, []byte) error
 	seedFunc        func(context.Context, io.Reader) error
+	deleteFunc      func(context.Context, string, []string) error
+	updateFunc      func(context.Context, []byte, []string) error
+	mergeFunc       func(context.Context, string, []byte, []string) error
+	tagsFunc        func(context.Context, []string) ([]string, error)
+	typesFunc       func(context.Context, []string) ([]things.ThingType, error)
 }
 
 func (f fakeThingsApp) HandleMeasurements(ctx context.Context, measurements []things.Measurement) {}
 
-func (f fakeThingsApp) Start(context.Context) {}
-
-func (f fakeThingsApp) Stop() {}
 func (f fakeThingsApp) Add(ctx context.Context, b []byte) error {
 	if f.addFunc != nil {
 		return f.addFunc(ctx, b)
@@ -42,9 +44,15 @@ func (f fakeThingsApp) Add(ctx context.Context, b []byte) error {
 	return nil
 }
 func (f fakeThingsApp) Delete(ctx context.Context, thingID string, tenants []string) error {
+	if f.deleteFunc != nil {
+		return f.deleteFunc(ctx, thingID, tenants)
+	}
 	return nil
 }
 func (f fakeThingsApp) Merge(ctx context.Context, thingID string, b []byte, tenants []string) error {
+	if f.mergeFunc != nil {
+		return f.mergeFunc(ctx, thingID, b, tenants)
+	}
 	return nil
 }
 func (f fakeThingsApp) Query(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
@@ -53,7 +61,12 @@ func (f fakeThingsApp) Query(ctx context.Context, query app.ThingQuery) (app.Que
 	}
 	return app.QueryResult{}, nil
 }
-func (f fakeThingsApp) Update(ctx context.Context, b []byte, tenants []string) error { return nil }
+func (f fakeThingsApp) Update(ctx context.Context, b []byte, tenants []string) error {
+	if f.updateFunc != nil {
+		return f.updateFunc(ctx, b, tenants)
+	}
+	return nil
+}
 func (f fakeThingsApp) AddValue(ctx context.Context, t things.Thing, m things.Value) error {
 	return nil
 }
@@ -64,9 +77,15 @@ func (f fakeThingsApp) Values(ctx context.Context, query app.ValueQuery) (app.Qu
 	return app.QueryResult{}, nil
 }
 func (f fakeThingsApp) Tags(ctx context.Context, tenants []string) ([]string, error) {
+	if f.tagsFunc != nil {
+		return f.tagsFunc(ctx, tenants)
+	}
 	return nil, nil
 }
 func (f fakeThingsApp) Types(ctx context.Context, tenants []string) ([]things.ThingType, error) {
+	if f.typesFunc != nil {
+		return f.typesFunc(ctx, tenants)
+	}
 	return nil, nil
 }
 func (f fakeThingsApp) LoadConfig(ctx context.Context, r io.Reader) error { return nil }
@@ -318,6 +337,124 @@ func TestGetValuesHandlerCSVExportReturnsCSVContentType(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "time;id;urn") {
 		t.Fatalf("expected CSV header in response body, got %q", rr.Body.String())
+	}
+}
+
+func TestGetByIDHandlerReturnsThing(t *testing.T) {
+	thing := things.NewWasteContainer("thing-1", things.DefaultLocation, "default")
+
+	h := getByIDHandler(slog.Default(), fakeThingsApp{
+		queryThingsFunc: func(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
+			return app.QueryResult{Count: 1, Data: [][]byte{marshalThing(thing)}}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/things/thing-1", nil)
+	req.SetPathValue("id", "thing-1")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "thing-1") {
+		t.Fatalf("expected thing id in response body, got %q", rr.Body.String())
+	}
+}
+
+func TestGetByIDHandlerNotFound(t *testing.T) {
+	h := getByIDHandler(slog.Default(), fakeThingsApp{
+		queryThingsFunc: func(ctx context.Context, query app.ThingQuery) (app.QueryResult, error) {
+			return app.QueryResult{Count: 0}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/things/missing", nil)
+	req.SetPathValue("id", "missing")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", rr.Code)
+	}
+}
+
+func TestDeleteHandlerRequiresDeleteScope(t *testing.T) {
+	called := false
+
+	h := deleteHandler(slog.Default(), fakeThingsApp{
+		deleteFunc: func(ctx context.Context, id string, tenants []string) error {
+			called = true
+			return nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/things/thing-1", nil)
+	req.SetPathValue("id", "thing-1")
+	rr := httptest.NewRecorder()
+
+	// Endast läs-scope: får inte radera.
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401 without delete scope, got %d", rr.Code)
+	}
+	if called {
+		t.Fatal("expected application Delete not to be called without delete scope")
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/things/thing-1", nil)
+	req.SetPathValue("id", "thing-1")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, requestWithAccess(req, DeleteThings))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 with delete scope, got %d", rr.Code)
+	}
+	if !called {
+		t.Fatal("expected application Delete to be called with delete scope")
+	}
+}
+
+func TestGetTagsHandlerReturnsTags(t *testing.T) {
+	h := getTagsHandler(slog.Default(), fakeThingsApp{
+		tagsFunc: func(ctx context.Context, tenants []string) ([]string, error) {
+			return []string{"tag-a", "tag-b"}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/things/tags", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "tag-a") {
+		t.Fatalf("expected tag in response body, got %q", rr.Body.String())
+	}
+}
+
+func TestGetTypesHandlerReturnsTypes(t *testing.T) {
+	h := getTypesHandler(slog.Default(), fakeThingsApp{
+		typesFunc: func(ctx context.Context, tenants []string) ([]things.ThingType, error) {
+			return []things.ThingType{{Type: "Room", Name: "Room"}}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/things/types", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, requestWithAccess(req, ReadThings))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Room") {
+		t.Fatalf("expected type in response body, got %q", rr.Body.String())
 	}
 }
 

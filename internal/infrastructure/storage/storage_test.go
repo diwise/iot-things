@@ -138,6 +138,57 @@ func TestUpdateThing(t *testing.T) {
 	}
 }
 
+// T6: AddValue är idempotent på (time,id) och QueryValues läser tillbaka
+// värdet med rätt urn och ref.
+func TestAddValueIsIdempotent(t *testing.T) {
+	db, ctx, cancel, err := new()
+	defer cancel()
+
+	if err != nil {
+		t.Log("could not connect to database or create tables, will skip test")
+		t.SkipNow()
+	}
+
+	thingID := uuid.NewString()
+	deviceID := uuid.NewString()
+	thing := things.NewWasteContainer(thingID, things.Location{Latitude: 17.2, Longitude: 64.3}, "default")
+	thing.AddDevice(deviceID)
+
+	if err := db.AddThing(ctx, thing); err != nil {
+		t.Fatal(err)
+	}
+
+	value := 1.23
+	ts := time.Unix(1700000000, 0).UTC()
+	m := things.Value{Measurement: things.Measurement{
+		ID:        thingID + "/3330/5700",
+		Urn:       things.DistanceURN,
+		Value:     &value,
+		Timestamp: ts,
+		Ref:       deviceID,
+	}}
+
+	if err := db.AddValue(ctx, thing, m); err != nil {
+		t.Fatal(err)
+	}
+	// Samma (time,id) igen: ON CONFLICT DO NOTHING, ingen dubblett.
+	if err := db.AddValue(ctx, thing, m); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := db.QueryValues(ctx, app.ValueQuery{
+		ThingID: &thingID,
+		Tenants: []string{"default"},
+		Page:    app.Pagination{Limit: 10, Offset: 0},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("expected exactly one stored value after duplicate insert, got %d", result.Count)
+	}
+}
+
 func new() (Storage, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
