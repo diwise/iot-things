@@ -77,6 +77,26 @@ func TestAddValueTenantFilterUsesLiteralPrefixMatch(t *testing.T) {
 	}
 }
 
+// T7.5: refdevice-filtret för värden matchar enhetsdelen av ref (källans
+// fullständiga recordnamn), inte hela strängen.
+func TestBuildValueQuerySQLRefDeviceMatchesDevicePart(t *testing.T) {
+	refDevice := "milesight:214"
+
+	query, args, err := buildValueQuerySQL(app.ValueQuery{
+		RefDeviceID: &refDevice,
+		Page:        app.Pagination{Limit: 100, Offset: 0},
+	})
+	if err != nil {
+		t.Fatalf("buildValueQuerySQL returned error: %v", err)
+	}
+	if !strings.Contains(query, "split_part(ref, '/', 1) = @ref") {
+		t.Fatalf("expected device-part match for refdevice, got query %q", query)
+	}
+	if got := args["ref"]; got != refDevice {
+		t.Fatalf("unexpected ref arg: %#v", got)
+	}
+}
+
 func TestBuildThingQuerySQLUsesNamedParameterForDynamicJSONField(t *testing.T) {
 	query, args, err := buildThingQuerySQL(app.ThingQuery{
 		NumericFilters: []app.NumericFieldFilter{{

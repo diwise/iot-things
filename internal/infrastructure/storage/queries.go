@@ -220,7 +220,10 @@ func buildValueFilterBuilder(query app.ValueQuery) (*sqlBuilder, error) {
 		b.Where("vb IS NOT NULL AND vb = " + b.Bind("vb", *query.BoolValue))
 	}
 	if query.RefDeviceID != nil {
-		b.Where("ref = " + b.Bind("ref", *query.RefDeviceID))
+		// ref är källans fullständiga recordnamn (<device>[/kanal]/...).
+		// Matcha på första segmentet (enhets-id) så att refdevice-filtret
+		// fungerar mot lagrad data.
+		b.Where("split_part(ref, '/', 1) = " + b.Bind("ref", *query.RefDeviceID))
 	}
 	if query.ValueName != nil {
 		b.Where("id LIKE " + b.Bind("value_name_pattern", fmt.Sprintf("%%/%s", *query.ValueName)))
