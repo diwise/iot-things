@@ -13,9 +13,8 @@ import (
 	"github.com/matryer/is"
 )
 
-// T0: en behandlad rapport ska resultera i thing.updated för den kopplade
-// saken. Provet fungerar både före och efter att publiceringen flyttats in
-// i handle-flödet (det väntar med timeout i stället för att anta synkronism).
+// En behandlad rapport ska publicera thing.updated för den kopplade saken,
+// direkt i hanteringsflödet (ingen publisher-goroutine, ingen Start/Stop).
 func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	is := is.New(t)
 
@@ -50,8 +49,6 @@ func TestHandleMeasurementsPublishesThingUpdated(t *testing.T) {
 	}
 
 	a := New(r, w, m)
-	a.Start(context.Background())
-	defer a.Stop()
 
 	value := 21.0
 	a.HandleMeasurements(context.Background(), []things.Measurement{{

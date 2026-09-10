@@ -126,7 +126,6 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			}
 
 			owned.messenger = msgCtx
-			owned.tracker = &handlerTracker{}
 			owned.storage = s
 
 			log.Debug("creating application...")
@@ -136,8 +135,6 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 				s = nil
 				return fmt.Errorf("unable to initialize app: %w", err)
 			}
-
-			owned.app = app
 
 			log.Debug("seeding things...")
 			err = seed(ctx, thingsFile, app)
@@ -160,9 +157,6 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 				}
 			}()
 
-			log.Debug("starting publisher...")
-			app.Start(ctx)
-
 			log.Debug("starting messaging...")
 			err = msgCtx.Start(ctx)
 			if err != nil {
@@ -170,8 +164,7 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 			}
 
 			log.Debug("register topic handler...")
-			tracked := &trackingMessenger{MsgContext: msgCtx, tracker: owned.tracker}
-			err = tracked.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
+			err = msgCtx.RegisterTopicMessageHandler("message.accepted", application.NewMeasurementsHandler(ctx, app))
 			if err != nil {
 				return fmt.Errorf("unable to register message handler: %w", err)
 			}
@@ -214,68 +207,18 @@ func readinessProbes() map[string]k8shandlers.ServiceProber {
 	}
 }
 
-// Shutdown budget for admitted handler drain, within the runner's 30s
-// shutdown hook budget. The hook itself never receives the runner's
-// timeout, so shutdown derives its own bound here.
-const shutdownHandlerDrainTimeout = 10 * time.Second
-
-// handlerTracker tracks admitted topic-message deliveries so shutdown
-// can await them. The messaging library acknowledges after the handler
-// completes; the tracker additionally lets shutdown await admitted
-// handlers within budget before stopping the publisher and storage.
-type handlerTracker struct {
-	wg sync.WaitGroup
-}
-
-func (t *handlerTracker) track(next messaging.TopicMessageHandler) messaging.TopicMessageHandler {
-	return func(ctx context.Context, msg messaging.IncomingTopicMessage, log *slog.Logger) error {
-		t.wg.Add(1)
-		defer t.wg.Done()
-		return next(ctx, msg, log)
-	}
-}
-
-// wait blocks until tracked handlers complete or the timeout elapses,
-// reporting whether all handlers finished.
-func (t *handlerTracker) wait(timeout time.Duration) bool {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		t.wg.Wait()
-	}()
-
-	select {
-	case <-done:
-		return true
-	case <-time.After(timeout):
-		return false
-	}
-}
-
-// trackingMessenger decorates handler registration with delivery
-// tracking. All other MsgContext behavior is forwarded unchanged.
-type trackingMessenger struct {
-	messaging.MsgContext
-	tracker *handlerTracker
-}
-
-func (m *trackingMessenger) RegisterTopicMessageHandler(routingKey string, h messaging.TopicMessageHandler) error {
-	return m.MsgContext.RegisterTopicMessageHandler(routingKey, m.tracker.track(h))
-}
-
 // ownedResources tracks the resources created during OnInit so shutdown
 // is nil-safe, ordered and idempotent via the sync.Once guard, so the
 // messenger is shut down at most once.
 //
-// Shutdown order: stop inflow (messenger), await admitted handlers
-// within budget, stop and join the publisher, then close storage. HTTP
-// servers stay live until after OnShutdown returns (runner behavior);
-// that residual window is documented, not fixed here.
+// Shutdown order: stop inflow (messenger) and let it drain in-flight
+// deliveries, then close storage. The messaging library acknowledges only
+// after the handler returns and drains on Shutdown, so no separate handler
+// tracker is needed. HTTP servers stay live until after OnShutdown returns
+// (runner behavior).
 type ownedResources struct {
 	once      sync.Once
 	messenger messaging.MsgContext
-	tracker   *handlerTracker
-	app       interface{ Stop() }
 	storage   interface{ Close() }
 }
 
@@ -285,12 +228,6 @@ func (o *ownedResources) close(ctx context.Context) {
 			if err := o.messenger.Shutdown(ctx); err != nil {
 				logging.GetFromContext(ctx).Debug("failed to shut down messenger", "err", err.Error())
 			}
-		}
-		if o.tracker != nil {
-			o.tracker.wait(shutdownHandlerDrainTimeout)
-		}
-		if o.app != nil {
-			o.app.Stop()
 		}
 		if o.storage != nil {
 			o.storage.Close()

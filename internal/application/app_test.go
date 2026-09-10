@@ -129,43 +129,20 @@ types:
 	is.NoErr(err)
 }
 
-func TestHandleMeasurementsPublishesWithContextValuesAfterCancellation(t *testing.T) {
+func TestHandleMeasurementsPublishesWithIngressTraceContext(t *testing.T) {
 	type contextKey string
 
 	const traceKey contextKey = "trace-id"
 	const traceValue = "trace-123"
 
-	appCtx := t.Context()
-
-	ingressCtx, cancelIngress := context.WithCancel(context.WithValue(context.Background(), traceKey, traceValue))
+	ingressCtx := context.WithValue(context.Background(), traceKey, traceValue)
 
 	room := things.NewRoom("room-001", things.DefaultLocation, "default")
 	room.AddDevice("device-1")
 
-	currentThing := room
-	allowPublishQuery := make(chan struct{})
-	published := make(chan struct{}, 1)
-
 	r := &ThingsReaderMock{
 		QueryThingsFunc: func(ctx context.Context, query ThingQuery) (QueryResult, error) {
-			if query.RefDeviceID != nil {
-				return QueryResult{Data: [][]byte{currentThing.Byte()}}, nil
-			}
-
-			if query.ID != nil && *query.ID == currentThing.ID() {
-				<-allowPublishQuery
-
-				if got := ctx.Value(traceKey); got != traceValue {
-					t.Fatalf("expected trace value %q in publisher query context, got %v", traceValue, got)
-				}
-				if err := ctx.Err(); err != nil {
-					return QueryResult{}, err
-				}
-
-				return QueryResult{Data: [][]byte{currentThing.Byte()}}, nil
-			}
-
-			return QueryResult{Data: [][]byte{}}, nil
+			return QueryResult{Data: [][]byte{room.Byte()}}, nil
 		},
 	}
 	w := &ThingsWriterMock{
@@ -173,17 +150,14 @@ func TestHandleMeasurementsPublishesWithContextValuesAfterCancellation(t *testin
 			return nil
 		},
 		UpdateThingFunc: func(ctx context.Context, t things.Thing) error {
-			currentThing = t
 			return nil
 		},
 	}
+	published := make(chan struct{}, 1)
 	m := &messaging.MsgContextMock{
 		PublishOnTopicFunc: func(ctx context.Context, message messaging.TopicMessage) error {
 			if got := ctx.Value(traceKey); got != traceValue {
 				t.Fatalf("expected trace value %q in publish context, got %v", traceValue, got)
-			}
-			if err := ctx.Err(); err != nil {
-				t.Fatalf("expected detached publish context, got err %v", err)
 			}
 
 			published <- struct{}{}
@@ -192,8 +166,6 @@ func TestHandleMeasurementsPublishesWithContextValuesAfterCancellation(t *testin
 	}
 
 	a := New(r, w, m)
-	a.Start(appCtx)
-	t.Cleanup(a.Stop)
 
 	value := 21.0
 	a.HandleMeasurements(ingressCtx, []things.Measurement{{
@@ -202,9 +174,6 @@ func TestHandleMeasurementsPublishesWithContextValuesAfterCancellation(t *testin
 		Value:     &value,
 		Timestamp: time.Now().UTC(),
 	}})
-
-	cancelIngress()
-	close(allowPublishQuery)
 
 	select {
 	case <-published:

@@ -24,17 +24,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// publisherShutdownTimeout bounds the publisher join during Stop. It
-// must fit well inside the runner's shutdown hook budget together with
-// handler drain and storage close.
-const publisherShutdownTimeout = 10 * time.Second
-
 //go:generate moq -rm -out app_mock.go . ThingsApp
 type ThingsApp interface {
 	HandleMeasurements(ctx context.Context, measurements []things.Measurement)
-
-	Start(ctx context.Context)
-	Stop()
 
 	Add(ctx context.Context, b []byte) error
 	Delete(ctx context.Context, thingID string, tenants []string) error
@@ -75,25 +67,36 @@ var (
 	ErrMissingThingType   = errors.New("thing type must be provided")
 )
 
-type changedThing struct {
-	ID      string
-	Context context.Context
-}
-
 type app struct {
 	reader ThingsReader
 	writer ThingsWriter
 	msgCtx messaging.MsgContext
 	cfg    *config
 
-	pub chan changedThing
-	mu  sync.Mutex
+	mu sync.Mutex
+}
 
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	running  bool
-	stopCh   chan struct{}
-	stopOnce sync.Once
+// thingsUpdatedCounter is created lazily once. It was previously created
+// by the publisher goroutine; with direct publication there is no such
+// goroutine.
+var (
+	thingsUpdatedCounter     metric.Int64Counter
+	thingsUpdatedCounterOnce sync.Once
+)
+
+func updatedCounter() metric.Int64Counter {
+	thingsUpdatedCounterOnce.Do(func() {
+		c, err := otel.Meter("iot-things/measurements").Int64Counter(
+			"diwise.things.updated",
+			metric.WithUnit("1"),
+			metric.WithDescription("Total number of updated things"),
+		)
+		if err == nil {
+			thingsUpdatedCounter = c
+		}
+	})
+
+	return thingsUpdatedCounter
 }
 
 type config struct {
@@ -110,56 +113,6 @@ func New(r ThingsReader, w ThingsWriter, msgCtx messaging.MsgContext) ThingsApp 
 		reader: r,
 		writer: w,
 		msgCtx: msgCtx,
-
-		pub:    make(chan changedThing),
-		stopCh: make(chan struct{}),
-	}
-}
-
-// Start launches the thing.updated publisher. A second call while
-// running is a no-op.
-func (a *app) Start(ctx context.Context) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.running {
-		return
-	}
-	a.running = true
-
-	runCtx, cancel := context.WithCancel(ctx)
-	a.cancel = cancel
-
-	a.wg.Go(func() {
-		publisher(runCtx, a.reader, a.msgCtx, a.pub)
-	})
-}
-
-// Stop terminates the publisher and waits for it within
-// publisherShutdownTimeout. Safe to call before Start and more than
-// once.
-func (a *app) Stop() {
-	a.stopOnce.Do(func() {
-		close(a.stopCh)
-	})
-
-	a.mu.Lock()
-	cancel := a.cancel
-	a.mu.Unlock()
-
-	if cancel != nil {
-		cancel()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		a.wg.Wait()
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(publisherShutdownTimeout):
 	}
 }
 
@@ -179,56 +132,42 @@ func (a *app) HandleMeasurements(ctx context.Context, measurements []things.Meas
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	changedThings := []string{}
-
 	for _, measurement := range measurements {
-		changedThings = append(changedThings, a.handle(ctx, measurement)...)
-	}
-
-	if len(changedThings) > 0 {
-		log := logging.GetFromContext(ctx)
-		for _, thingID := range unique(changedThings) {
-			select {
-			case a.pub <- changedThing{ID: thingID, Context: context.WithoutCancel(ctx)}:
-			case <-a.stopCh:
-				// The publisher is gone; blocking here would hang
-				// shutdown. Dropped updates are logged; the broker
-				// acknowledged on dispatch, so they are not redelivered.
-				log.Warn("dropping thing update, publisher stopped", "thing_id", thingID)
-				return
-			}
-		}
+		a.handle(ctx, measurement)
 	}
 }
 
-func (a *app) handle(ctx context.Context, m things.Measurement) []string {
-	log := logging.GetFromContext(ctx)
+// handle applicerar en mätning på alla saker som enheten är kopplad till,
+// sparar saken och publicerar thing.updated direkt. Ingen väntan, ingen
+// omläsning från lagring: det objekt som just behandlats och sparats är det
+// som publiceras.
+func (a *app) handle(ctx context.Context, m things.Measurement) {
+	baseLog := logging.GetFromContext(ctx)
 
 	connectedThings, err := a.getConnectedThings(ctx, m.DeviceID())
 	if err != nil {
-		log.Error("could not get connected things", "err", err.Error())
-		return []string{}
+		baseLog.Error("could not get connected things", "err", err.Error())
+		return
 	}
 
 	if len(connectedThings) == 0 {
-		return []string{}
+		return
 	}
 
-	changedThings := []string{}
-
 	for _, thing := range connectedThings {
-		ctx = logging.NewContextWithLogger(ctx, log, "thing_id", thing.ID())
+		thingCtx := logging.NewContextWithLogger(ctx, baseLog, "thing_id", thing.ID())
+		log := logging.GetFromContext(thingCtx)
 
 		measurements := []things.Measurement{m}
 
-		err := thing.Handle(ctx, measurements, func(valueProvider things.ValueProvider) error {
+		err := thing.Handle(thingCtx, measurements, func(valueProvider things.ValueProvider) error {
 			var errs []error
 
 			values := valueProvider.Values()
 
 			for _, v := range values {
 				// add value to storage. A value is a measurement with the thingID instead of the deviceID
-				errs = append(errs, a.AddValue(ctx, thing, v))
+				errs = append(errs, a.AddValue(thingCtx, thing, v))
 			}
 
 			return errors.Join(errs...)
@@ -241,93 +180,30 @@ func (a *app) handle(ctx context.Context, m things.Measurement) []string {
 		// adds the current measurement to its (ref)device and ObservedAt if the timestamp is newer
 		thing.SetLastObserved(measurements)
 
-		err = a.saveThing(ctx, thing)
+		err = a.saveThing(thingCtx, thing)
 		if err != nil {
 			log.Error("could not save thing", "err", err.Error())
 			continue
 		}
 
-		changedThings = append(changedThings, thing.ID())
-	}
-
-	if len(changedThings) == 0 {
-		return []string{}
-	}
-
-	return changedThings
-}
-
-func publisher(ctx context.Context, r ThingsReader, msgCtx messaging.MsgContext, inbox chan changedThing) {
-	log := logging.GetFromContext(ctx)
-
-	updatedCounter, err := otel.Meter("iot-things/measurements").Int64Counter(
-		"diwise.things.updated",
-		metric.WithUnit("1"),
-		metric.WithDescription("Total number of updated things"),
-	)
-
-	if err != nil {
-		log.Error("failed to create otel updated things counter", "err", err.Error())
-	}
-
-	process := func(changedThing changedThing) {
-		log := logging.GetFromContext(changedThing.Context)
-		log = log.With("thing_id", changedThing.ID)
-
-		// Bound in-flight work to the worker lifetime while preserving
-		// ingress trace values: changedThing.Context is detached, so a
-		// worker stop would otherwise never reach an admitted update and
-		// it could continue against closing dependencies.
-		itemCtx, itemCancel := context.WithCancel(changedThing.Context)
-		defer itemCancel()
-		stop := context.AfterFunc(ctx, itemCancel)
-		defer stop()
-
-		ctx := logging.NewContextWithLogger(itemCtx, log)
-
-		result, err := r.QueryThings(ctx, ThingByIDQuery(changedThing.ID, nil))
-		if err != nil {
-			log.Error("could not query thing", "err", err.Error())
-			return
-		}
-
-		if len(result.Data) != 1 {
-			log.Debug("thing not found", "count", len(result.Data))
-			return
-		}
-
-		t, err := things.ConvToThing(result.Data[0])
-		if err != nil {
-			log.Error("could not convert thing", "err", err.Error())
-			return
-		}
-
-		msg := &types.ThingUpdated{ // for each updated connected thing, publish thing.updated
-			ID:        t.ID(),
-			Type:      t.Type(),
-			Thing:     removeInternalState(t),
-			Tenant:    t.Tenant(),
+		msg := &types.ThingUpdated{
+			ID:        thing.ID(),
+			Type:      thing.Type(),
+			Thing:     removeInternalState(thing),
+			Tenant:    thing.Tenant(),
 			Timestamp: time.Now().UTC(),
 		}
 
-		log.Debug("publish message", "content_type", msg.ContentType(), "tenant", t.Tenant(), "type", t.Type())
+		log.Debug("publish message", "content_type", msg.ContentType(), "tenant", thing.Tenant(), "type", thing.Type())
 
-		err = msgCtx.PublishOnTopic(ctx, msg)
-		if err != nil {
+		if err := a.msgCtx.PublishOnTopic(thingCtx, msg); err != nil {
+			// Bevarad semantik: publiceringsfel loggas och påverkar inte ack.
 			log.Error("could not publish message", "err", err.Error())
-			return
+			continue
 		}
 
-		updatedCounter.Add(ctx, 1)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-
-		case changedThing := <-inbox:
-			process(changedThing)
+		if c := updatedCounter(); c != nil {
+			c.Add(thingCtx, 1)
 		}
 	}
 }

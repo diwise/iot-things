@@ -83,20 +83,6 @@ func NewMeasurementsHandler(c context.Context, app ThingsApp) messaging.TopicMes
 	}
 }
 
-func unique(arr []string) []string {
-	unique := make(map[string]struct{})
-	for _, s := range arr {
-		unique[s] = struct{}{}
-	}
-
-	result := make([]string, 0, len(unique))
-	for s := range unique {
-		result = append(result, s)
-	}
-
-	return result
-}
-
 func removeInternalState(t things.Thing) map[string]any {
 	m := make(map[string]any)
 	b, err := json.Marshal(t)
