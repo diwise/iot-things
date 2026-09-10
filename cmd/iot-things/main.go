@@ -46,6 +46,7 @@ func defaultFlags() flagMap {
 		authzAccessObject: "false",
 		thingsFile:        "/opt/diwise/config/things.csv",
 		configFile:        "/opt/diwise/config/config.yaml",
+		migrateBindings:   "true",
 
 		logLevel: "debug",
 	}
@@ -144,6 +145,26 @@ func initialize(ctx context.Context, flags flagMap, cfg *appConfig, policiesFile
 				return fmt.Errorf("unable to seed things: %w", err)
 			}
 
+			if migrateBindingsEnabled(flags) {
+				n, err := app.MigrateBindings(ctx)
+				if err != nil {
+					s.Close()
+					s = nil
+					return fmt.Errorf("bindings migration failed: %w", err)
+				}
+				if n > 0 {
+					log.Info("migrated things to bindings", "count", n)
+				}
+			} else if pending, err := app.HasUnmigratedThings(ctx); err != nil {
+				s.Close()
+				s = nil
+				return fmt.Errorf("could not check for unmigrated things: %w", err)
+			} else if pending {
+				s.Close()
+				s = nil
+				return fmt.Errorf("things without bindings remain and THINGS_MIGRATE_BINDINGS is disabled")
+			}
+
 			return nil
 		}),
 		onstarting(func(ctx context.Context, appCfg *appConfig) (err error) {
@@ -196,6 +217,12 @@ func tracingEnabled(flags flagMap) bool {
 func accessObjectEnabled(flags flagMap) bool {
 	v, _ := strconv.ParseBool(flags[authzAccessObject])
 	return v
+}
+
+// migrateBindingsEnabled styr uppstartsmigreringen till bindningar. Endast
+// den exakta strängen "true" aktiverar den.
+func migrateBindingsEnabled(flags flagMap) bool {
+	return flags[migrateBindings] == "true"
 }
 
 // readinessProbes returns the named readiness stubs. Per harmonization
@@ -265,6 +292,7 @@ func parseExternalConfig(ctx context.Context, flags flagMap) (context.Context, f
 	flags[authzAccessObject] = envOrDef(ctx, "AUTHZ_ACCESS_OBJECT_ENABLED", flags[authzAccessObject])
 	flags[thingsFile] = envOrDef(ctx, "THINGS_FILE", flags[thingsFile])
 	flags[configFile] = envOrDef(ctx, "CONFIG_FILE", flags[configFile])
+	flags[migrateBindings] = envOrDef(ctx, "THINGS_MIGRATE_BINDINGS", flags[migrateBindings])
 
 	flags[dbHost] = envOrDef(ctx, "POSTGRES_HOST", flags[dbHost])
 	flags[dbPort] = envOrDef(ctx, "POSTGRES_PORT", flags[dbPort])

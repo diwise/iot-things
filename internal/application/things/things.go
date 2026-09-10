@@ -75,6 +75,10 @@ type Base struct {
 	// LastMessageID_ spårar senast behandlade rapport. Internt fält (strippas
 	// före publicering) och används för idempotens vid återleverans.
 	LastMessageID_ string `json:"_lastMessageId,omitempty"`
+
+	// BindingsVersion_ markerar att en gammal post konverterats till
+	// bindningar. Internt fält (strippas före publicering).
+	BindingsVersion_ int `json:"_bindingsVersion,omitempty"`
 }
 
 // Signal är den fullständiga signalidentiteten: enhet, kanal, objekt och

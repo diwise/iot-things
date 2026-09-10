@@ -91,6 +91,10 @@ func (f fakeThingsApp) Types(ctx context.Context, tenants []string) ([]things.Th
 	return nil, nil
 }
 func (f fakeThingsApp) LoadConfig(ctx context.Context, r io.Reader) error { return nil }
+func (f fakeThingsApp) MigrateBindings(ctx context.Context) (int, error)  { return 0, nil }
+func (f fakeThingsApp) HasUnmigratedThings(ctx context.Context) (bool, error) {
+	return false, nil
+}
 func (f fakeThingsApp) Seed(ctx context.Context, r io.Reader) error {
 	if f.seedFunc != nil {
 		return f.seedFunc(ctx, r)

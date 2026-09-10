@@ -41,6 +41,9 @@ type ThingsApp interface {
 
 	LoadConfig(ctx context.Context, r io.Reader) error
 	Seed(ctx context.Context, r io.Reader) error
+
+	MigrateBindings(ctx context.Context) (int, error)
+	HasUnmigratedThings(ctx context.Context) (bool, error)
 }
 
 //go:generate moq -rm -out reader_mock.go . ThingsReader
@@ -306,6 +309,102 @@ func (a *app) publishThingUpdated(ctx context.Context, thing things.Thing) error
 	}
 
 	return nil
+}
+
+// bindingsVersion markerar att en post konverterats till bindningar.
+const bindingsVersion = 1
+
+// MigrateBindings konverterar gamla poster (refDevices utan bindningar) till
+// bindningar. Idempotent: poster med _bindingsVersion lämnas orörda.
+func (a *app) MigrateBindings(ctx context.Context) (int, error) {
+	result, err := a.reader.QueryThings(ctx, ThingQuery{Page: Pagination{Export: true}})
+	if err != nil {
+		return 0, err
+	}
+
+	log := logging.GetFromContext(ctx)
+	migrated := 0
+
+	for _, raw := range result.Data {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return migrated, fmt.Errorf("could not unmarshal thing for migration: %w", err)
+		}
+
+		if v, ok := m["_bindingsVersion"].(float64); ok && int(v) >= bindingsVersion {
+			continue
+		}
+
+		thingType, _ := m["type"].(string)
+
+		var bindings []map[string]any
+		if refDevices, ok := m["refDevices"].([]any); ok {
+			for _, rd := range refDevices {
+				rdm, ok := rd.(map[string]any)
+				if !ok {
+					continue
+				}
+				deviceID, _ := rdm["deviceID"].(string)
+				if deviceID == "" {
+					continue
+				}
+				for _, in := range things.InputsFor(thingType) {
+					bindings = append(bindings, map[string]any{
+						"deviceID": deviceID,
+						"object":   in.Object,
+						"resource": in.Resource,
+						"input":    in.Name,
+					})
+				}
+			}
+		}
+
+		delete(m, "refDevices")
+		if len(bindings) > 0 {
+			m["bindings"] = bindings
+		}
+		m["_bindingsVersion"] = bindingsVersion
+
+		b, err := json.Marshal(m)
+		if err != nil {
+			return migrated, fmt.Errorf("could not marshal migrated thing: %w", err)
+		}
+
+		t, err := things.ConvToThing(b)
+		if err != nil {
+			return migrated, fmt.Errorf("could not convert migrated thing: %w", err)
+		}
+
+		if err := a.writer.UpdateThing(ctx, t); err != nil {
+			return migrated, fmt.Errorf("could not save migrated thing: %w", err)
+		}
+
+		migrated++
+	}
+
+	if migrated > 0 {
+		log.Info("migrated things to bindings", "count", migrated)
+	}
+
+	return migrated, nil
+}
+
+// HasUnmigratedThings rapporterar om någon post saknar bindningsmarkör.
+func (a *app) HasUnmigratedThings(ctx context.Context) (bool, error) {
+	result, err := a.reader.QueryThings(ctx, ThingQuery{Page: Pagination{Export: true}})
+	if err != nil {
+		return false, err
+	}
+	for _, raw := range result.Data {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		if _, ok := m["_bindingsVersion"].(float64); !ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (a *app) Add(ctx context.Context, b []byte) error {

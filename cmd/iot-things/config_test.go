@@ -78,6 +78,7 @@ func TestDefaultFlags(t *testing.T) {
 		authzAccessObject: "false",
 		thingsFile:        "/opt/diwise/config/things.csv",
 		configFile:        "/opt/diwise/config/config.yaml",
+		migrateBindings:   "true",
 		logLevel:          "debug",
 	}
 
