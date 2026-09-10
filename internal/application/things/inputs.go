@@ -96,6 +96,18 @@ func InputExists(thingType, input string) bool {
 	return false
 }
 
+// BindingValidForType kräver att bindningens ingång finns för typen och att
+// dess objekt/resurs motsvarar ingångens källsignal. Det förhindrar att en
+// bindning kopplar fel signal till en ingång.
+func BindingValidForType(thingType string, b Binding) bool {
+	for _, s := range InputsFor(thingType) {
+		if s.Name == b.Input && s.Object == b.Object && s.Resource == b.Resource {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveInput hittar den första ingången som matchar en mätning.
 func resolveInput(thingType string, m Measurement) (string, bool) {
 	for _, s := range InputsFor(thingType) {

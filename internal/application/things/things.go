@@ -18,7 +18,6 @@ type Thing interface {
 	// Apply kör typens logik för en namngiven ingång. Ingången kommer från en
 	// bindning (eller, i bryggläget, från typens ingångstabell).
 	Apply(ctx context.Context, input string, m Measurement, onchange func(m ValueProvider) error) error
-	Refs() []Device
 	Bindings() []Binding
 	SignalCache() map[string]Measurement
 
@@ -134,11 +133,6 @@ type Location struct {
 
 var DefaultLocation = Location{Latitude: 0, Longitude: 0}
 
-type Device struct {
-	DeviceID     string                 `json:"deviceID"`
-	Measurements map[string]Measurement `json:"measurements,omitempty"`
-}
-
 func (t *Base) ID() string {
 	return t.ID_
 }
@@ -169,21 +163,6 @@ func (t *Base) Bindings() []Binding {
 
 func (t *Base) SignalCache() map[string]Measurement {
 	return t.Signals_
-}
-
-// Refs härleder de enheter som saken är bunden till. Används endast för
-// utdata (refDevices-fältet) eftersom refDevices inte längre lagras.
-func (t *Base) Refs() []Device {
-	seen := make(map[string]struct{})
-	devices := make([]Device, 0, len(t.Bindings_))
-	for _, b := range t.Bindings_ {
-		if _, ok := seen[b.DeviceID]; ok {
-			continue
-		}
-		seen[b.DeviceID] = struct{}{}
-		devices = append(devices, Device{DeviceID: b.DeviceID})
-	}
-	return devices
 }
 
 func (t *Base) LastMessageID() string {
@@ -370,14 +349,22 @@ func ShouldApply(t Thing, m Measurement) bool {
 	return true
 }
 
-// MatchInput returnerar den ingång som en mätning är bunden till, om någon.
-func MatchInput(t Thing, m Measurement) (string, bool) {
+// MatchInputs returnerar alla ingångar som en mätning är bunden till, utan
+// dubbletter och i bindningsordning.
+func MatchInputs(t Thing, m Measurement) []string {
+	var inputs []string
+	seen := make(map[string]struct{})
 	for _, b := range t.Bindings() {
-		if b.Matches(m) {
-			return b.Input, true
+		if !b.Matches(m) {
+			continue
 		}
+		if _, ok := seen[b.Input]; ok {
+			continue
+		}
+		seen[b.Input] = struct{}{}
+		inputs = append(inputs, b.Input)
 	}
-	return "", false
+	return inputs
 }
 
 func (m Measurement) DeviceID() string {

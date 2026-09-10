@@ -249,6 +249,24 @@ func TestMultipleChannelsInOneReportAggregate(t *testing.T) {
 
 func floatPtrApp(v float64) *float64 { return &v }
 
+// T7: en bindning med fel signal för ingången avvisas (t.ex. humidity-objekt
+// kopplat till ingången temperature).
+func TestAddRejectsBindingWithWrongSignal(t *testing.T) {
+	is := is.New(t)
+
+	a := New(&ThingsReaderMock{}, &ThingsWriterMock{}, &messaging.MsgContextMock{})
+	room := things.NewRoom("room-1", things.DefaultLocation, "default")
+	room.AddBinding(things.Binding{
+		DeviceID: "device-1",
+		Object:   things.HumidityURN,
+		Resource: "5700",
+		Input:    "temperature",
+	})
+
+	err := a.Add(context.Background(), marshalThing(room))
+	is.True(errors.Is(err, ErrInvalidBinding))
+}
+
 // Fynd 5: thing-ID med "/" avvisas så att värdeägarskapet är entydigt.
 func TestAddRejectsThingIDWithSlash(t *testing.T) {
 	is := is.New(t)

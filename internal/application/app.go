@@ -80,8 +80,9 @@ func validateBindings(t things.Thing) error {
 		if b.DeviceID == "" {
 			return fmt.Errorf("%w: missing deviceID", ErrInvalidBinding)
 		}
-		if !things.InputExists(t.Type(), b.Input) {
-			return fmt.Errorf("%w: unknown input %q for type %q", ErrInvalidBinding, b.Input, t.Type())
+		if !things.BindingValidForType(t.Type(), b) {
+			return fmt.Errorf("%w: %s/%s/%s is not a valid signal for input %q on type %q",
+				ErrInvalidBinding, b.DeviceID, b.Object, b.Resource, b.Input, t.Type())
 		}
 	}
 	return nil
@@ -222,14 +223,16 @@ func (a *app) HandleMeasurements(ctx context.Context, tenant string, messageID s
 			// är nyare än cachat värde, får ändra aktuellt tillstånd.
 			var work []pending
 			for _, m := range ms {
-				input, ok := things.MatchInput(thing, m)
-				if !ok {
+				inputs := things.MatchInputs(thing, m)
+				if len(inputs) == 0 {
 					continue
 				}
 				if !things.ShouldApply(thing, m) {
 					continue
 				}
-				work = append(work, pending{input: input, m: m})
+				for _, input := range inputs {
+					work = append(work, pending{input: input, m: m})
+				}
 			}
 			if len(work) == 0 {
 				continue
@@ -400,9 +403,14 @@ func (a *app) HasUnmigratedThings(ctx context.Context) (bool, error) {
 		if err := json.Unmarshal(raw, &m); err != nil {
 			continue
 		}
-		if _, ok := m["_bindingsVersion"].(float64); !ok {
-			return true, nil
+		if _, ok := m["_bindingsVersion"].(float64); ok {
+			continue
 		}
+		// Poster som redan har bindningar (skapade efter T7) är migrerade.
+		if _, ok := m["bindings"]; ok {
+			continue
+		}
+		return true, nil
 	}
 	return false, nil
 }
