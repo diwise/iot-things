@@ -416,6 +416,11 @@ func (a *app) HasUnmigratedThings(ctx context.Context) (bool, error) {
 }
 
 func (a *app) Add(ctx context.Context, b []byte) error {
+	b, err := things.NormalizeInputBindings(b)
+	if err != nil {
+		return err
+	}
+
 	t, err := things.ConvToThing(b)
 	if err != nil {
 		return err
@@ -448,6 +453,11 @@ func (a *app) Add(ctx context.Context, b []byte) error {
 func (a *app) Update(ctx context.Context, b []byte, tenants []string) error {
 	if len(tenants) == 0 {
 		return errors.New("tenants must be provided")
+	}
+
+	b, err := things.NormalizeInputBindings(b)
+	if err != nil {
+		return err
 	}
 
 	t, err := things.ConvToThing(b)
@@ -532,6 +542,14 @@ func (a *app) Merge(ctx context.Context, thingID string, b []byte, tenants []str
 		return err
 	}
 
+	// Bakåtkompatibilitet: en patch som anger refDevices expanderas till
+	// bindningar för saktypen.
+	if refs, ok := patch["refDevices"].([]any); ok {
+		thingType, _ := current["type"].(string)
+		patch["bindings"] = things.BindingsFromRefDevices(refs, thingType)
+		delete(patch, "refDevices")
+	}
+
 	for k, v := range patch {
 		if slices.Contains([]string{"id", "type"}, k) {
 			continue
@@ -557,6 +575,9 @@ func (a *app) Merge(ctx context.Context, thingID string, b []byte, tenants []str
 
 	patchedThing, err := things.ConvToThing(v)
 	if err != nil {
+		return err
+	}
+	if err := validateBindings(patchedThing); err != nil {
 		return err
 	}
 

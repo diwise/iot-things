@@ -249,6 +249,33 @@ func TestMultipleChannelsInOneReportAggregate(t *testing.T) {
 
 func floatPtrApp(v float64) *float64 { return &v }
 
+// T7: bakåtkompatibilitet på skrivvägen — ett äldre klientanrop med
+// refDevices ska skapa bindningar för saktypens ingångar.
+func TestAddWithRefDevicesCreatesBindings(t *testing.T) {
+	is := is.New(t)
+
+	var saved things.Thing
+	w := &ThingsWriterMock{
+		AddThingFunc: func(ctx context.Context, t things.Thing) error {
+			saved = t
+			return nil
+		},
+	}
+	a := New(&ThingsReaderMock{}, w, &messaging.MsgContextMock{})
+
+	body := `{"id":"container-1","type":"Container","tenant":"default","refDevices":[{"deviceID":"milesight:214"}]}`
+	is.NoErr(a.Add(context.Background(), []byte(body)))
+
+	is.True(saved != nil)
+	var found bool
+	for _, b := range saved.Bindings() {
+		if b.DeviceID == "milesight:214" && b.Input == "distance" && b.Object == things.DistanceURN {
+			found = true
+		}
+	}
+	is.True(found)
+}
+
 // T7: en bindning med fel signal för ingången avvisas (t.ex. humidity-objekt
 // kopplat till ingången temperature).
 func TestAddRejectsBindingWithWrongSignal(t *testing.T) {

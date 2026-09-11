@@ -1,6 +1,9 @@
 package things
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // InputSpec beskriver en namngiven ingångs källsignal: vilket LwM2M-objekt
 // (URN) och vilken resurs som matar den. Tabellen per typ är data och används
@@ -94,6 +97,63 @@ func InputExists(thingType, input string) bool {
 		}
 	}
 	return false
+}
+
+// BindingsFromRefDevices expanderar en lista av refDevices (deviceID) till
+// bindningar för alla ingångar som saktypen har. Används för att bevara
+// bakåtkompatibilitet på skrivvägen.
+func BindingsFromRefDevices(refDevices []any, thingType string) []map[string]any {
+	specs := InputsFor(thingType)
+	var bindings []map[string]any
+	seen := make(map[string]struct{})
+	for _, r := range refDevices {
+		rm, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		deviceID, _ := rm["deviceID"].(string)
+		if deviceID == "" {
+			continue
+		}
+		for _, in := range specs {
+			key := deviceID + "|" + in.Name
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			bindings = append(bindings, map[string]any{
+				"deviceID": deviceID,
+				"object":   in.Object,
+				"resource": in.Resource,
+				"input":    in.Name,
+			})
+		}
+	}
+	return bindings
+}
+
+// NormalizeInputBindings konverterar legacy refDevices i indata till
+// bindningar när inga bindningar anges. Anropas på skrivvägen (Add/Update),
+// inte vid läsning av lagrad data.
+func NormalizeInputBindings(b []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return b, err
+	}
+	if _, ok := m["bindings"]; ok {
+		return b, nil
+	}
+	refs, ok := m["refDevices"].([]any)
+	if !ok {
+		return b, nil
+	}
+	thingType, _ := m["type"].(string)
+	bindings := BindingsFromRefDevices(refs, thingType)
+	delete(m, "refDevices")
+	if len(bindings) > 0 {
+		m["bindings"] = bindings
+	}
+	return json.Marshal(m)
 }
 
 // BindingValidForType kräver att bindningens ingång finns för typen och att
