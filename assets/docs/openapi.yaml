@@ -430,6 +430,18 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/Measurement'
       required: [deviceID]
+    Binding:
+      type: object
+      description: >-
+        Kopplar en signal (enhet, kanal, objekt, resurs) till en namngiven
+        ingang pa saken. Channel tom matchar alla kanaler.
+      properties:
+        deviceID: { type: string }
+        channel: { type: string }
+        object: { type: string }
+        resource: { type: string }
+        input: { type: string }
+      required: [deviceID, object, resource, input]
     Thing:
       type: object
       additionalProperties: true
@@ -451,8 +463,14 @@ components:
               items: { type: number, format: double }
         refDevices:
           type: array
+          description: >-
+            Harledd fran bindningarna (distinkta enheter). Lagras inte.
           items:
             $ref: '#/components/schemas/RefDevice'
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Binding'
         tags:
           type: array
           items: { type: string }
@@ -487,6 +505,12 @@ components:
         type: { type: string }
         subType: { type: string }
         name: { type: string }
+        inputs:
+          type: array
+          description: >-
+            Saktypens namngivna ingangar. Anvands for att konfigurera
+            bindningar i ett GUI.
+          items: { type: string }
       required: [type, name]
     ThingResponse:
       allOf:

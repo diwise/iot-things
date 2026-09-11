@@ -880,9 +880,12 @@ func (a *app) Types(ctx context.Context, tenants []string) ([]things.ThingType, 
 	types := make([]things.ThingType, 0)
 
 	for _, t := range a.cfg.Types {
+		inputs := inputsFor(t.Type)
+
 		types = append(types, things.ThingType{
-			Type: t.Type,
-			Name: t.Type,
+			Type:   t.Type,
+			Name:   t.Type,
+			Inputs: inputs,
 		})
 
 		for _, s := range t.SubTypes {
@@ -890,9 +893,25 @@ func (a *app) Types(ctx context.Context, tenants []string) ([]things.ThingType, 
 				Type:    t.Type,
 				SubType: s,
 				Name:    fmt.Sprintf("%s-%s", t.Type, s),
+				Inputs:  inputs,
 			})
 		}
 	}
 
 	return types, nil
+}
+
+// inputsFor returnerar de unika ingångsnamnen för en saktyp.
+func inputsFor(thingType string) []string {
+	specs := things.InputsFor(thingType)
+	names := make([]string, 0, len(specs))
+	seen := make(map[string]struct{}, len(specs))
+	for _, s := range specs {
+		if _, ok := seen[s.Name]; ok {
+			continue
+		}
+		seen[s.Name] = struct{}{}
+		names = append(names, s.Name)
+	}
+	return names
 }

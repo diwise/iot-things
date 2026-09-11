@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,28 @@ func TestHandleMeasurementsPublishesWithIngressTraceContext(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for thing.updated publish")
 	}
+}
+
+// T7.7: saktypens ingångar exponeras så att ett GUI kan konfigurera bindningar.
+func TestTypesIncludeInputs(t *testing.T) {
+	ctx := context.Background()
+	is := is.New(t)
+
+	a := New(&ThingsReaderMock{}, &ThingsWriterMock{}, &messaging.MsgContextMock{})
+	is.NoErr(a.LoadConfig(ctx, strings.NewReader("types:\n  - type: \"Room\"\n    subTypes: [\"X\"]\n")))
+
+	types, err := a.Types(ctx, []string{"default"})
+	is.NoErr(err)
+
+	var found bool
+	for _, tt := range types {
+		if tt.Type == "Room" {
+			found = true
+			is.True(slices.Contains(tt.Inputs, "temperature"))
+			is.True(slices.Contains(tt.Inputs, "humidity"))
+		}
+	}
+	is.True(found)
 }
 
 const csvData string = `id;type;subType;name;decsription;location;tenant;tags;refDevices;args

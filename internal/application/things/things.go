@@ -38,6 +38,8 @@ type ThingType struct {
 	Type    string `json:"type"`
 	SubType string `json:"subType,omitempty"`
 	Name    string `json:"name"`
+	// Inputs är typens namngivna ingångar, för konfiguration av bindningar.
+	Inputs []string `json:"inputs,omitempty"`
 }
 
 func newBase(id, t string, l Location, tenant string) Base {
