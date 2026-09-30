@@ -59,7 +59,7 @@ Response content types
 
 There is no `application/geo+json` support in the code.
 
-Add an Authorization header with a valid Bearer token. The default policy validates the JWT against its configured issuer and derives allowed tenants from the token claims; an arbitrary token is rejected.
+Add an Authorization header with a valid Bearer token. The runtime policy validates the token and returns an `access` object with scopes per tenant, for example `{"access":{"default":["things.read"]}}`. Legacy policies returning only `tenants` require `AUTHZ_ACCESS_OBJECT_ENABLED=false` or `-authz-access-object=false`.
 
 #### Paging
 
@@ -170,7 +170,7 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 | `SERVICE_PORT` | `8080` | Publik server (`/api/v0/things/...`) |
 | `CONTROL_PORT` | `8000` | Kontrollserver: pprof, liveness, readiness-stubbar (`rabbitmq`, `timescale`) som returnerar OK |
 | `POLICIES_FILE` | `/opt/diwise/config/authz.rego` | Kravs vid startup |
-| `AUTHZ_ACCESS_OBJECT_ENABLED` | `false` | Switches between the `tenants` and `access` result models |
+| `AUTHZ_ACCESS_OBJECT_ENABLED` | `true` | Access-object result model; set `false` for legacy `tenants` policies |
 | `THINGS_FILE` | `/opt/diwise/config/things.csv` | Kravs vid startup, seedar things |
 | `CONFIG_FILE` | `/opt/diwise/config/config.yaml` | Kravs vid startup |
 | `POSTGRES_HOST` | (tom) |  |
@@ -195,7 +195,7 @@ Precedens: default < miljovariabel < CLI-flagga. RabbitMQ konfigureras i ovrigt 
 
 ## CLI flags
  - `policies` - An authorization policy file
- - `authz-access-object` - Enable the access-object authorization policy result model
+ - `authz-access-object` - Access-object authorization (default true); set false for legacy tenant-list policies
  - `things` - List of known things (`things.csv`)
  - `config` - A yaml file with configuration (`config.yaml`)
  - `loglevel` - Set the log level

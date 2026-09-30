@@ -43,7 +43,7 @@ func defaultFlags() flagMap {
 		dbSSLMode:  "disable",
 
 		policiesFile:      "/opt/diwise/config/authz.rego",
-		authzAccessObject: "false",
+		authzAccessObject: "true",
 		thingsFile:        "/opt/diwise/config/things.csv",
 		configFile:        "/opt/diwise/config/config.yaml",
 		migrateBindings:   "true",
